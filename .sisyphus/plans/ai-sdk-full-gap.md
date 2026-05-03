@@ -421,7 +421,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 2)
 
-- [ ] T17. **pkg/agent/ — Tool-loop agent with UI stream**
+- [x] T17. **pkg/agent/ — Tool-loop agent with UI stream**
 
   **What to do**: Create `pkg/agent/` with `Agent` struct that orchestrates multi-step tool loops. Follow `ToolLoopAgent` pattern from reference SDK.
 
@@ -466,7 +466,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 3)
 
-- [ ] T20. **pkg/ui/chat/httptransport.go — HTTP transport**
+- [x] T20. **pkg/ui/chat/httptransport.go — HTTP transport**
 
   **What to do**: Implement `HTTPTransport` that implements `chat.Transport` via HTTP POST + SSE. For browser clients that can't use NATS directly.
 
@@ -496,7 +496,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 3)
 
-- [ ] T23. **cmd/ai-sdk/ — Full entrypoint**
+- [x] T23. **cmd/ai-sdk/ — Full entrypoint**
 
   **What to do**: Complete `cmd/ai-sdk/` to wire all providers, start embedded NATS, serve HTTP with handlers, and run a working chat app.
 
