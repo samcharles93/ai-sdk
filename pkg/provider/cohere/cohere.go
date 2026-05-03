@@ -102,15 +102,15 @@ type cohereToolDef struct {
 }
 
 type cohereChatRequest struct {
-	Message     string               `json:"message"`
-	ChatHistory []cohereChatMessage  `json:"chat_history,omitempty"`
-	Model       string               `json:"model"`
-	Stream      bool                 `json:"stream"`
-	Tools       []cohereToolDef      `json:"tools,omitempty"`
-	MaxTokens   int                  `json:"max_tokens,omitempty"`
-	Temperature float32              `json:"temperature,omitempty"`
-	P           float32              `json:"p,omitempty"`
-	K           int                  `json:"k,omitempty"`
+	Message     string              `json:"message"`
+	ChatHistory []cohereChatMessage `json:"chat_history,omitempty"`
+	Model       string              `json:"model"`
+	Stream      bool                `json:"stream"`
+	Tools       []cohereToolDef     `json:"tools,omitempty"`
+	MaxTokens   int                 `json:"max_tokens,omitempty"`
+	Temperature float32             `json:"temperature,omitempty"`
+	P           float32             `json:"p,omitempty"`
+	K           int                 `json:"k,omitempty"`
 }
 
 type cohereToolCall struct {
@@ -129,7 +129,7 @@ type cohereChatResponse struct {
 }
 
 type cohereMeta struct {
-	Tokens *cohereTokens `json:"tokens,omitempty"`
+	Tokens      *cohereTokens      `json:"tokens,omitempty"`
 	BilledUnits *cohereBilledUnits `json:"billed_units,omitempty"`
 }
 
@@ -159,11 +159,11 @@ func finishReason(r string) string {
 // --- stream types ----------------------------------------------------------
 
 type cohereStreamEvent struct {
-	IsFinished   bool              `json:"is_finished"`
-	EventType    string            `json:"event_type"`
-	Text         string            `json:"text,omitempty"`
-	ToolCalls    []cohereToolCall  `json:"tool_calls,omitempty"`
-	FinishReason string            `json:"finish_reason,omitempty"`
+	IsFinished   bool                `json:"is_finished"`
+	EventType    string              `json:"event_type"`
+	Text         string              `json:"text,omitempty"`
+	ToolCalls    []cohereToolCall    `json:"tool_calls,omitempty"`
+	FinishReason string              `json:"finish_reason,omitempty"`
 	Response     *cohereChatResponse `json:"response,omitempty"`
 }
 
@@ -532,9 +532,9 @@ type cohereEmbedRequest struct {
 }
 
 type cohereEmbedResponse struct {
-	ID         string      `json:"id"`
-	Texts      []string    `json:"texts"`
-	Embeddings [][]float32 `json:"embeddings"`
+	ID         string           `json:"id"`
+	Texts      []string         `json:"texts"`
+	Embeddings [][]float32      `json:"embeddings"`
 	Meta       *cohereEmbedMeta `json:"meta,omitempty"`
 }
 

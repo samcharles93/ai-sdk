@@ -476,7 +476,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 3)
 
-- [ ] T21. **pkg/uimessage/sse/ — Complete SSE message streaming**
+- [x] T21. **pkg/uimessage/sse/ — Complete SSE message streaming**
 
   **What to do**: Expand `pkg/uimessage/sse/` to handle all `StreamEvent` types (text, tool-call, tool-result, reasoning, step-start, finish, error).
 
@@ -506,7 +506,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 3)
 
-- [ ] T24. **pkg/middleware/telemetry.go — OTel middleware**
+- [x] T24. **pkg/middleware/telemetry.go — OTel middleware**
 
   **What to do**: Add telemetry middleware that wraps providers and emits OpenTelemetry spans.
 
@@ -516,7 +516,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 3)
 
-- [ ] T25. **pkg/upload/ — File upload handling**
+- [x] T25. **pkg/upload/ — File upload handling**
 
   **What to do**: Create `pkg/upload/` for multipart file upload, base64 encoding, media type detection.
 
@@ -526,7 +526,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 4)
 
-- [ ] T26. **pkg/upload/skill.go — Skill/template upload**
+- [x] T26. **pkg/upload/skill.go — Skill/template upload**
 
   **What to do**: Upload skill definitions (system prompt templates).
 
@@ -536,7 +536,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 4)
 
-- [ ] T27-T30. **Utility packages**
+- [x] T27-T30. **Utility packages**
 
   **What to do**: Complete `pkg/util/prompt.go` (prompt engineering), `pkg/util/tokenizer.go` (token counting), `pkg/error/` (expanded errors), `pkg/logger/` (structured logging).
 

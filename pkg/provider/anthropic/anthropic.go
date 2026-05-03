@@ -119,9 +119,9 @@ type wireSSEEvent struct {
 }
 
 type wireSSEMsgData struct {
-	ID    string       `json:"id"`
-	Model string       `json:"model"`
-	Role  string       `json:"role"`
+	ID    string        `json:"id"`
+	Model string        `json:"model"`
+	Role  string        `json:"role"`
 	Usage *wireSSEUsage `json:"usage,omitempty"`
 }
 

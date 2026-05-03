@@ -40,7 +40,7 @@ type Provider struct {
 
 // Compile-time assertions.
 var (
-	_ chat.Provider = (*Provider)(nil)
+	_ chat.Provider  = (*Provider)(nil)
 	_ embed.Provider = (*Provider)(nil)
 )
 

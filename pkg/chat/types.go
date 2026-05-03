@@ -170,16 +170,16 @@ type Usage struct {
 // populated as the concatenation of all TextPart text for back-compat
 // and ergonomic text-only consumption.
 type Response struct {
-	ID           string     `json:"id,omitempty"`
-	Model        string     `json:"model,omitempty"`
-	Role         Role       `json:"role,omitempty"`
-	Content      string     `json:"content"`
-	Parts        Parts      `json:"parts,omitempty"`
-	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
-	FinishReason string     `json:"finish_reason,omitempty"`
-	Usage        Usage      `json:"usage"`
-	Warnings          []Warning      `json:"warnings,omitempty"`
-	ProviderMetadata  map[string]any `json:"provider_metadata,omitempty"`
+	ID               string         `json:"id,omitempty"`
+	Model            string         `json:"model,omitempty"`
+	Role             Role           `json:"role,omitempty"`
+	Content          string         `json:"content"`
+	Parts            Parts          `json:"parts,omitempty"`
+	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`
+	FinishReason     string         `json:"finish_reason,omitempty"`
+	Usage            Usage          `json:"usage"`
+	Warnings         []Warning      `json:"warnings,omitempty"`
+	ProviderMetadata map[string]any `json:"provider_metadata,omitempty"`
 }
 
 // Warning is a non-fatal provider message (e.g. "image part dropped:

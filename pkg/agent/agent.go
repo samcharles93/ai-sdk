@@ -28,15 +28,15 @@ const (
 // event has a [Type] and at most one payload field populated — the
 // payload depends on the [Type].
 type StreamEvent struct {
-	Type           EventType          `json:"type"`
-	TextDelta      string             `json:"text_delta,omitempty"`
-	ReasoningDelta string             `json:"reasoning_delta,omitempty"`
-	ToolCall       *core.ToolCall     `json:"tool_call,omitempty"`
-	ToolResult     *core.ToolResult   `json:"tool_result,omitempty"`
-	StepResult     *core.StepResult   `json:"step_result,omitempty"`
-	Error          error              `json:"-"`
-	FinishReason   core.FinishReason  `json:"finish_reason,omitempty"`
-	TotalUsage     *chat.Usage        `json:"total_usage,omitempty"`
+	Type           EventType         `json:"type"`
+	TextDelta      string            `json:"text_delta,omitempty"`
+	ReasoningDelta string            `json:"reasoning_delta,omitempty"`
+	ToolCall       *core.ToolCall    `json:"tool_call,omitempty"`
+	ToolResult     *core.ToolResult  `json:"tool_result,omitempty"`
+	StepResult     *core.StepResult  `json:"step_result,omitempty"`
+	Error          error             `json:"-"`
+	FinishReason   core.FinishReason `json:"finish_reason,omitempty"`
+	TotalUsage     *chat.Usage       `json:"total_usage,omitempty"`
 }
 
 // Agent orchestrates multi-step reasoning and tool execution by wrapping

@@ -108,7 +108,7 @@ func TestChat_ToolUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, err := p.Chat(context.Background(), chat.Request{
-		Model: "claude-sonnet-4-20250514",
+		Model:    "claude-sonnet-4-20250514",
 		Messages: []chat.Message{{Role: chat.RoleUser, Content: "weather?"}},
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
@@ -528,7 +528,7 @@ func TestChat_ToolChoiceTool(t *testing.T) {
 
 	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
 	_, err := p.Chat(context.Background(), chat.Request{
-		Model: "claude-sonnet-4-20250514",
+		Model:    "claude-sonnet-4-20250514",
 		Messages: []chat.Message{{Role: chat.RoleUser, Content: "weather?"}},
 		Tools: []chat.Tool{{
 			Name:       "get_weather",

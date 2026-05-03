@@ -118,7 +118,7 @@ func Pipe(ctx context.Context, src <-chan uimessage.Chunk, w *Writer) error {
 // into the JSON bodies of each event. It is intended for tests.
 func SSEEventLines(s string) []string {
 	var out []string
-	for _, ev := range strings.Split(s, "\n\n") {
+	for ev := range strings.SplitSeq(s, "\n\n") {
 		ev = strings.TrimSpace(ev)
 		if ev == "" {
 			continue
