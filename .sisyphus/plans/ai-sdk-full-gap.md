@@ -334,7 +334,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 1)
 
-- [ ] T9. **pkg/provider/openai/ — Chat + completion provider**
+- [x] T9. **pkg/provider/openai/ — Chat + completion provider**
 
   **What to do**: Implement OpenAI provider for `chat.Provider`, `embed.Provider`, `image.Provider`, `speech.Provider`. Follow `pkg/provider/deepseek/` pattern.
 
@@ -351,7 +351,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 2)
 
-- [ ] T10. **pkg/provider/anthropic/ — Claude provider**
+- [x] T10. **pkg/provider/anthropic/ — Claude provider**
 
   **What to do**: Implement Anthropic provider for `chat.Provider`. Supports messages API, tool use, streaming.
 
@@ -448,7 +448,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 3)
 
-- [ ] T19. **pkg/ui/handlers/ — HTTP handlers for chat + SSE**
+- [x] T19. **pkg/ui/handlers/ — HTTP handlers for chat + SSE**
 
   **What to do**: Implement real HTTP handlers in `pkg/ui/handlers/`:
   - POST /chat/send — accepts user message, starts Bridge
