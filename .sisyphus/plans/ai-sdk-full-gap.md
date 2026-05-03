@@ -546,7 +546,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 4)
 
-- [ ] T31-T36. **Registry wiring**
+- [x] T31-T36. **Registry wiring**
 
   **What to do**: Register all new providers in `pkg/registry/`. Add `RegisterObject`, `RegisterVideo`, `RegisterAgent` helpers.
 
@@ -556,7 +556,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 5)
 
-- [ ] T37-T42. **Examples + docs**
+- [x] T37-T42. **Examples + docs**
 
   **What to do**: Create examples in `ai-sdk-examples/` for OpenAI chat, agent, object generation, speech-to-text, image generation. Update `AGENTS.md`.
 

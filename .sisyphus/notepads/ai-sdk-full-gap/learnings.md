@@ -54,3 +54,35 @@ Verified and expanded test coverage for the SSE package:
 **Key behavioral insight:**
 - Error and Abort stream parts are *inline events*, not stream terminators. The stream continues until the channel closes, at which point finish is sent. This means error/abort chunks may be followed by finish in the output — this is correct behavior.
 
+### Registry wiring (T31-T36)
+
+- Added object, video and agent registries to pkg/registry/registry.go along with RegisterObject/RegisterVideo/RegisterAgent helpers and Object/Video/Agent getters.
+- Updated cmd/ai-sdk/main.go to optionally register Mistral, Groq, xAI, Perplexity, Azure and Cohere providers (chat + embed/image/rerank where applicable) using environment variables. Registrations are skipped when env vars are missing, matching existing provider pattern.
+- Verified: go build ./... and go vet ./... succeed locally after changes.
+
+### T37-T42: Examples and AGENTS.md
+
+Created 5 example programs in `ai-sdk-examples/`:
+
+- **openai-chat/main.go**: Interactive CLI using `core.GenerateText()` with OpenAI provider. Reads stdin line-by-line, sends to model, prints response. Requires `OPENAI_API_KEY`.
+- **anthropic-agent/main.go**: Agent with tool use using `agent.RunAgent()` with Anthropic provider. Defines a mock `get_weather` tool with JSON Schema parameters and hard-coded results. Demonstrates streaming event handling (TextDelta, ToolCall, ToolResult, Finish, Error/Abort). Requires `ANTHROPIC_API_KEY`.
+- **object-generation/main.go**: API pattern demonstration for `core.GenerateObject()` / `object.Provider`. Informational only (no provider implements object.Provider yet). Shows schema definition, request building, and result handling pattern.
+- **speech-to-text/main.go**: API pattern demonstration for `transcribe.Provider`. Informational only (no provider implements transcribe.Provider yet). Shows TranscribeRequest and response handling with segments.
+- **image-generation/main.go**: API pattern demonstration for `core.GenerateImage()` / `image.Provider`. References Azure and TogetherAI providers that implement image.Provider. Shows GenerateImageRequest construction and response handling.
+
+**Key decisions:**
+- Used `replace` directive in `ai-sdk-examples/go.mod` pointing to `../` to avoid external dependency issues
+- Examples that need API keys take them from environment variables (matching `cmd/ai-sdk/main.go` convention)
+- Object/speech/image examples are informational — they run without API keys and document the API pattern
+- All examples import from `github.com/samcharles93/ai-sdk` via the replace directive
+
+**AGENTS.md updated with:**
+- Full onion model diagram updated (added object, video, agent, rerank, upload, prompt, error, logger, telemetry, uimessage/sse layers)
+- Complete File Organization tree with all 12 providers and all 22 pkg/ directories
+- Provider Ecosystem table listing all 12 providers with capability matrix (Chat, Embed, Image, Speech, Transcribe, Object, Rerank, Video)
+- 9 new package documentation sections: object, video, agent, upload, util, error, logger, telemetry, middleware, uimessage/sse
+- Examples section with run commands
+
+**Verification:**
+- `go build ./...` — passes
+- `go vet ./...` — passes

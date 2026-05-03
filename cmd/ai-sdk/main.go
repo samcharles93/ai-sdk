@@ -14,10 +14,16 @@ import (
 	"time"
 
 	"github.com/samcharles93/ai-sdk/pkg/provider/anthropic"
+	"github.com/samcharles93/ai-sdk/pkg/provider/azure"
+	"github.com/samcharles93/ai-sdk/pkg/provider/cohere"
 	"github.com/samcharles93/ai-sdk/pkg/provider/deepseek"
 	"github.com/samcharles93/ai-sdk/pkg/provider/gemini"
+	"github.com/samcharles93/ai-sdk/pkg/provider/groq"
+	"github.com/samcharles93/ai-sdk/pkg/provider/mistral"
 	"github.com/samcharles93/ai-sdk/pkg/provider/ollama"
 	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
+	"github.com/samcharles93/ai-sdk/pkg/provider/perplexity"
+	"github.com/samcharles93/ai-sdk/pkg/provider/xai"
 	"github.com/samcharles93/ai-sdk/pkg/registry"
 	"github.com/samcharles93/ai-sdk/pkg/ui/handlers"
 )
@@ -93,6 +99,12 @@ func registerProviders(reg *registry.Registry) {
 		{"deepseek", func() error { return registerDeepSeek(reg) }},
 		{"gemini", func() error { return registerGemini(reg) }},
 		{"ollama", func() error { registerOllama(reg); return nil }},
+		{"mistral", func() error { return registerMistral(reg) }},
+		{"groq", func() error { return registerGroq(reg) }},
+		{"xai", func() error { return registerXAI(reg) }},
+		{"perplexity", func() error { return registerPerplexity(reg) }},
+		{"azure", func() error { return registerAzure(reg) }},
+		{"cohere", func() error { return registerCohere(reg) }},
 	}
 
 	logger := slog.Default()
@@ -164,4 +176,89 @@ func registerOllama(reg *registry.Registry) {
 	}
 	p := ollama.New(ollama.Config{BaseURL: baseURL})
 	reg.RegisterChat("ollama", p)
+}
+
+func registerMistral(reg *registry.Registry) error {
+	key := os.Getenv("MISTRAL_API_KEY")
+	if key == "" {
+		return fmt.Errorf("MISTRAL_API_KEY not set")
+	}
+	p, err := mistral.New(mistral.Config{APIKey: key})
+	if err != nil {
+		return fmt.Errorf("create mistral provider: %w", err)
+	}
+	reg.RegisterChat("mistral", p)
+	reg.RegisterEmbed("mistral", p)
+	return nil
+}
+
+func registerGroq(reg *registry.Registry) error {
+	key := os.Getenv("GROQ_API_KEY")
+	if key == "" {
+		return fmt.Errorf("GROQ_API_KEY not set")
+	}
+	p, err := groq.New(groq.Config{APIKey: key})
+	if err != nil {
+		return fmt.Errorf("create groq provider: %w", err)
+	}
+	reg.RegisterChat("groq", p)
+	return nil
+}
+
+func registerXAI(reg *registry.Registry) error {
+	key := os.Getenv("XAI_API_KEY")
+	if key == "" {
+		return fmt.Errorf("XAI_API_KEY not set")
+	}
+	p, err := xai.New(xai.Config{APIKey: key})
+	if err != nil {
+		return fmt.Errorf("create xai provider: %w", err)
+	}
+	reg.RegisterChat("xai", p)
+	return nil
+}
+
+func registerPerplexity(reg *registry.Registry) error {
+	key := os.Getenv("PERPLEXITY_API_KEY")
+	if key == "" {
+		return fmt.Errorf("PERPLEXITY_API_KEY not set")
+	}
+	p, err := perplexity.New(perplexity.Config{APIKey: key})
+	if err != nil {
+		return fmt.Errorf("create perplexity provider: %w", err)
+	}
+	reg.RegisterChat("perplexity", p)
+	return nil
+}
+
+func registerAzure(reg *registry.Registry) error {
+	key := os.Getenv("AZURE_OPENAI_API_KEY")
+	endpoint := os.Getenv("AZURE_OPENAI_ENDPOINT")
+	deployment := os.Getenv("AZURE_OPENAI_DEPLOYMENT")
+	if key == "" || endpoint == "" || deployment == "" {
+		return fmt.Errorf("azure config not set")
+	}
+	p, err := azure.New(azure.Config{APIKey: key, Endpoint: endpoint, Deployment: deployment})
+	if err != nil {
+		return fmt.Errorf("create azure provider: %w", err)
+	}
+	reg.RegisterChat("azure", p)
+	reg.RegisterEmbed("azure", p)
+	reg.RegisterImage("azure", p)
+	return nil
+}
+
+func registerCohere(reg *registry.Registry) error {
+	key := os.Getenv("COHERE_API_KEY")
+	if key == "" {
+		return fmt.Errorf("COHERE_API_KEY not set")
+	}
+	p, err := cohere.New(cohere.Config{APIKey: key})
+	if err != nil {
+		return fmt.Errorf("create cohere provider: %w", err)
+	}
+	reg.RegisterChat("cohere", p)
+	reg.RegisterEmbed("cohere", p)
+	reg.RegisterRerank("cohere", p)
+	return nil
 }
