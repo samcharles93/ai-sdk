@@ -566,7 +566,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 6)
 
-- [ ] T43-T45. **Final verification**
+- [x] T43-T45. **Final verification**
 
   **What to do**: `go mod tidy`, `go vet ./...`, `go test ./...` across all modules.
 
