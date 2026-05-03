@@ -1,0 +1,13 @@
+package chat
+
+// Templ component: individual message bubble.
+//
+// Supports user, assistant, and system roles with appropriate styling.
+
+templ Message(role string, content string) {
+	<div class="message" data-role={ role }>
+		<div class="message-content">
+			{ content }
+		</div>
+	</div>
+}

@@ -1,0 +1,23 @@
+{
+  "active_plan": "/work/projects/ai-sdk/.sisyphus/plans/ai-sdk-full-gap.md",
+  "started_at": "2026-05-03T00:48:16.323Z",
+  "session_ids": [
+    "ses_21c5b5a4bffe08g807tFEIitOQ"
+  ],
+  "session_origins": {
+    "ses_21c5b5a4bffe08g807tFEIitOQ": "direct"
+  },
+  "plan_name": "ai-sdk-full-gap",
+  "agent": "atlas",
+  "task_sessions": {
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_214aff8c8ffe6XFJynIFYJYQCo",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-03T00:51:02.656Z"
+    }
+  }
+}

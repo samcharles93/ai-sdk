@@ -1,0 +1,18 @@
+package chat
+
+// Templ component: chat input form.
+//
+// Renders a text input with send button. Uses Datastar
+// data-on-* attributes for form submission handling.
+
+templ ChatInput() {
+	<form id="chat-input" data-on-submit="$$post('/api/chat')">
+		<input
+			type="text"
+			name="message"
+			placeholder="Type a message..."
+			data-bind-input
+		/>
+		<button type="submit">Send</button>
+	</form>
+}
