@@ -12,4 +12,8 @@ type Provider interface {
 
 	// GenerateObject performs a non-streaming object generation operation.
 	GenerateObject(ctx context.Context, req Request) (ObjectResult, error)
+
+	// StreamObject performs a streaming object generation. Callers must
+	// Close the returned ObjectStream when finished.
+	StreamObject(ctx context.Context, req Request) (ObjectStream, error)
 }

@@ -86,3 +86,44 @@ Created 5 example programs in `ai-sdk-examples/`:
 **Verification:**
 - `go build ./...` — passes
 - `go vet ./...` — passes
+
+## F3 QA Findings (2026-05-03)
+
+**Verdict: APPROVE** — Zero failures across all verification checks.
+
+### QA Results
+
+| Check | Result |
+|-------|--------|
+| `go test -count=1 -race ./...` | ALL 25 packages PASS, 0 failures |
+| Flaky test check (3x repeated) | Core, OpenAI, SSE all pass consistently |
+| `go vet ./...` (main module) | Clean |
+| `go vet ./...` (examples module) | Clean |
+| `go build ./cmd/ai-sdk/` | Compiles cleanly |
+| `go build ./...` (ai-sdk-examples) | All 5 examples compile |
+| `go mod verify` | All modules verified |
+| Server dry-run | Starts on :8080, gracefully skips missing providers |
+
+### Key observations
+- Server gracefully handles missing API keys with informative log messages
+- Signal.NotifyContext used for proper graceful shutdown with 10s timeout
+- All examples follow consistent run() pattern with proper error handling
+- Domain packages (pkg/chat, pkg/embed, etc.) are clean — no cross-layer imports
+- Provider test coverage spans all 11 providers
+
+### Packages without tests (expected)
+cmd/ai-sdk (CLI entrypoint), pkg/agent (orchestrator), pkg/image/object/speech/transcribe/video (data-only domain types), pkg/prompt (standalone helper), pkg/registry (wiring), pkg/schema (standalone), pkg/telemetry (noop + interfaces), pkg/ui/* (Templ components + handlers)
+
+## GAP 2: StreamObject (2026-05-03)
+
+### Changes
+- **pkg/object/stream.go** (new): `ObjectChunk` struct (Delta, Done) and `ObjectStream` interface (Next, Close). Follows same pattern as `chat.Stream` in `pkg/chat/provider.go`.
+- **pkg/object/provider.go**: `Provider` interface gained `StreamObject(ctx, req) (ObjectStream, error)` method.
+- **pkg/object/client.go**: `Client` facade gained `StreamObject` nil-guard method matching `GenerateObject` pattern.
+- **pkg/core/object_impl.go**: New `StreamObject` orchestration function validating provider, context cancellation, and delegating to provider.
+- **pkg/core/object_impl_test.go** (new): 4 tests — nil provider, context cancellation, successful delegation, provider error. Uses `fakeObjectProvider` and `fakeObjectStream` test doubles.
+
+### Verification
+- `go build ./...` — passes
+- `go test -race ./pkg/object/... ./pkg/core/...` — passes
+- `go vet ./pkg/object/... ./pkg/core/...` — clean

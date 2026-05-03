@@ -27,3 +27,19 @@ func GenerateObject(ctx context.Context, provider object.Provider, req object.Re
 
 	return resp, nil
 }
+
+// StreamObject orchestrates a streaming object generation call.
+// It validates the provider, respects context cancellation, and
+// delegates to the provider. The caller must Close the returned
+// ObjectStream when finished.
+func StreamObject(ctx context.Context, provider object.Provider, req object.Request) (object.ObjectStream, error) {
+	if provider == nil {
+		return nil, ErrNoProvider
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAborted, err)
+	}
+
+	return provider.StreamObject(ctx, req)
+}

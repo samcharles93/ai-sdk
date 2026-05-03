@@ -29,3 +29,13 @@ func (c *Client) GenerateObject(ctx context.Context, req Request) (ObjectResult,
 	}
 	return c.p.GenerateObject(ctx, req)
 }
+
+// StreamObject performs a streaming object generation request. If the Client
+// or its Provider is nil, ErrNoProvider is returned. The caller must Close the
+// returned ObjectStream when finished.
+func (c *Client) StreamObject(ctx context.Context, req Request) (ObjectStream, error) {
+	if c == nil || c.p == nil {
+		return nil, ErrNoProvider
+	}
+	return c.p.StreamObject(ctx, req)
+}

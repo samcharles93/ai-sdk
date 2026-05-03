@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"errors"
+	"io"
 	"strconv"
 
 	"github.com/samcharles93/ai-sdk/pkg/chat"
@@ -79,7 +81,11 @@ type telemetryStream struct {
 func (s *telemetryStream) Next(ctx context.Context) (chat.Chunk, error) {
 	chunk, err := s.Stream.Next(ctx)
 	if err != nil {
-		s.span.RecordError(err)
+		// Do not record io.EOF as an error — it's the normal stream completion
+		// signal per the chat.Stream contract.
+		if !errors.Is(err, io.EOF) {
+			s.span.RecordError(err)
+		}
 	}
 	return chunk, err
 }

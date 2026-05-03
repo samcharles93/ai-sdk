@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/samcharles93/ai-sdk/pkg/agent"
 	"github.com/samcharles93/ai-sdk/pkg/chat"
 	"github.com/samcharles93/ai-sdk/pkg/embed"
 	"github.com/samcharles93/ai-sdk/pkg/image"
@@ -31,7 +30,7 @@ type Registry struct {
 	transcribe map[string]transcribe.Provider
 	object     map[string]object.Provider
 	video      map[string]video.Provider
-	agentProv  map[string]agent.Agent
+	// agentProv removed: agents belong in cmd/ (composition root)
 }
 
 // New creates an empty Registry.
@@ -45,7 +44,7 @@ func New() *Registry {
 		transcribe: make(map[string]transcribe.Provider),
 		object:     make(map[string]object.Provider),
 		video:      make(map[string]video.Provider),
-		agentProv:  make(map[string]agent.Agent),
+		// agentProv removed
 	}
 }
 
@@ -105,12 +104,7 @@ func (r *Registry) RegisterVideo(name string, p video.Provider) {
 	r.video[name] = p
 }
 
-// RegisterAgent registers an agent under the given name.
-func (r *Registry) RegisterAgent(name string, a agent.Agent) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.agentProv[name] = a
-}
+// RegisterAgent removed: agents must be wired at the composition root (cmd/)
 
 // Chat returns a chat.Client backed by the named provider, or an error if
 // not registered.
@@ -208,14 +202,4 @@ func (r *Registry) Video(name string) (*video.Client, error) {
 	return video.NewClient(p), nil
 }
 
-// Agent returns an agent.Agent registered under the given name, or an
-// error if not registered.
-func (r *Registry) Agent(name string) (*agent.Agent, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	a, ok := r.agentProv[name]
-	if !ok {
-		return nil, ErrProviderNotFound
-	}
-	return &a, nil
-}
+// Agent getter removed: agents are not managed by the registry (onion rule)
