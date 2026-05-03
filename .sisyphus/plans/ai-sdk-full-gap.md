@@ -361,7 +361,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 2)
 
-- [ ] T11. **pkg/provider/mistral/ — Mistral provider**
+- [x] T11. **pkg/provider/mistral/ — Mistral provider**
 
   **What to do**: Implement Mistral provider for `chat.Provider`, `embed.Provider`.
 
@@ -371,7 +371,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 2)
 
-- [ ] T12. **pkg/provider/groq/ — Groq provider**
+- [x] T12. **pkg/provider/groq/ — Groq provider**
 
   **What to do**: Implement Groq provider for `chat.Provider` (OpenAI-compatible API).
 
@@ -381,7 +381,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 2)
 
-- [ ] T13. **pkg/provider/xai/ — xAI/Grok provider**
+- [x] T13. **pkg/provider/xai/ — xAI/Grok provider**
 
   **What to do**: Implement xAI provider for `chat.Provider`.
 
@@ -391,7 +391,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 2)
 
-- [ ] T14. **pkg/provider/perplexity/ — Perplexity provider**
+- [x] T14. **pkg/provider/perplexity/ — Perplexity provider**
 
   **What to do**: Implement Perplexity provider for `chat.Provider`.
 
@@ -401,7 +401,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 2)
 
-- [ ] T15. **pkg/provider/azure/ — Azure OpenAI provider**
+- [x] T15. **pkg/provider/azure/ — Azure OpenAI provider**
 
   **What to do**: Implement Azure OpenAI provider for `chat.Provider`, `embed.Provider`, `image.Provider`.
 
@@ -411,7 +411,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 2)
 
-- [ ] T16. **pkg/provider/cohere/ — Cohere provider**
+- [x] T16. **pkg/provider/cohere/ — Cohere provider**
 
   **What to do**: Implement Cohere provider for `chat.Provider`, `embed.Provider`, `rerank.Provider`.
 
