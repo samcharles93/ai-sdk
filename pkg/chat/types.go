@@ -178,7 +178,8 @@ type Response struct {
 	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
 	FinishReason string     `json:"finish_reason,omitempty"`
 	Usage        Usage      `json:"usage"`
-	Warnings     []Warning  `json:"warnings,omitempty"`
+	Warnings          []Warning      `json:"warnings,omitempty"`
+	ProviderMetadata  map[string]any `json:"provider_metadata,omitempty"`
 }
 
 // Warning is a non-fatal provider message (e.g. "image part dropped:
