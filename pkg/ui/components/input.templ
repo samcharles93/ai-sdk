@@ -1,4 +1,4 @@
-package chat
+package components
 
 // Templ component: chat input form.
 //
@@ -6,13 +6,14 @@ package chat
 // data-on-* attributes for form submission handling.
 
 templ ChatInput() {
-	<form id="chat-input" data-on-submit="$$post('/api/chat')">
+	<form id="chat-input" data-on-submit="$$post('/chat'); $message = ''">
 		<input
 			type="text"
 			name="message"
 			placeholder="Type a message..."
-			data-bind-input
+			data-bind="message"
+			data-attr-disabled="$status == 'streaming'"
 		/>
-		<button type="submit">Send</button>
+		<button type="submit" data-attr-disabled="$status == 'streaming'">Send</button>
 	</form>
 }

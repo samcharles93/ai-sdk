@@ -1,4 +1,4 @@
-package chat
+package components
 
 // Templ component: main chat container.
 //
@@ -6,8 +6,8 @@ package chat
 // Uses Datastar data-signals for reactive state.
 
 templ Chat() {
-	<div id="chat" data-signals="{}">
-		<div id="chat-messages" data-signals="{}">
+	<div id="chat" data-signals="{messages: [], status: 'idle', error: null}" data-connect="/chat/stream">
+		<div id="chat-messages" data-on-signal-change="$$append(messages)">
 			// Messages rendered here via SSE updates
 		</div>
 		@ChatInput()

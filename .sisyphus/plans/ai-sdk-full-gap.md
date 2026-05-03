@@ -438,7 +438,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 3)
 
-- [ ] T18. **pkg/core/agent_impl.go — Agent orchestration**
+- [x] T18. **pkg/core/agent_impl.go — Agent orchestration** (implemented in `pkg/agent/agent_impl.go` due to circular dependency avoidance)
 
   **What to do**: Implement agent-specific orchestration in `pkg/core/` that bridges `pkg/agent/` with providers.
 
@@ -486,7 +486,7 @@ T1 → T3 → T17 → T18 → T19 → T23 → F1-F4 → user okay
 
   **Commit**: YES (Wave 3)
 
-- [ ] T22. **pkg/ui/components/ — Wire Templ components**
+- [x] T22. **pkg/ui/components/ — Wire Templ components**
 
   **What to do**: Make `.templ` components actually render events from SSE. Add Datastar `data-on-*` handlers for real-time updates.
 

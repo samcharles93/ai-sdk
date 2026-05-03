@@ -1,13 +1,38 @@
-package chat
+package components
+
+import "github.com/samcharles93/ai-sdk/pkg/uimessage"
 
 // Templ component: individual message bubble.
 //
 // Supports user, assistant, and system roles with appropriate styling.
 
-templ Message(role string, content string) {
-	<div class="message" data-role={ role }>
+templ Message(msg uimessage.Message) {
+	<div class="message" data-role={ string(msg.Role) }>
+		<div class="message-role-badge">{ string(msg.Role) }</div>
 		<div class="message-content">
-			{ content }
+			for _, part := range msg.Parts {
+				@MessagePart(part)
+			}
 		</div>
 	</div>
+}
+
+templ MessagePart(part uimessage.MessagePart) {
+	switch p := part.(type) {
+	case uimessage.TextUIPart:
+		<div class="text-part" data-text={ p.Text }>
+			{ p.Text }
+		</div>
+	case uimessage.ReasoningUIPart:
+		<div class="reasoning-part" data-text={ p.Text }>
+			{ p.Text }
+		</div>
+	case uimessage.ToolUIPart:
+		<div class="tool-part">
+			<div class="tool-call">Tool Call: { p.ToolName }</div>
+			if p.Output != nil {
+				<div class="tool-result">Tool Result: { p.ToolName }</div>
+			}
+		</div>
+	}
 }
