@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/samcharles93/ai-sdk/pkg/chat"
 	"github.com/samcharles93/ai-sdk/pkg/core"
 	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
 )
@@ -48,6 +49,7 @@ func run() error {
 	fmt.Println(strings.Repeat("-", 50))
 
 	scanner := bufio.NewScanner(os.Stdin)
+	messages := make([]chat.Message, 0)
 	for {
 		fmt.Print("> ")
 		if !scanner.Scan() {
@@ -61,12 +63,10 @@ func run() error {
 			break
 		}
 
-		// GenerateText orchestrates a non-streaming text generation with
-		// the given provider and options. It handles the tool-call loop
-		// internally if tools are configured.
+		messages = append(messages, chat.Message{Role: chat.RoleUser, Content: prompt})
 		result, err := core.GenerateText(ctx, provider, core.GenerateOptions{
-			Model:  model,
-			Prompt: prompt,
+			Model:    model,
+			Messages: messages,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -80,6 +80,7 @@ func run() error {
 			fmt.Println(strings.Repeat("—", 40))
 		}
 		fmt.Println(result.Text)
+		messages = append(messages, chat.Message{Role: chat.RoleAssistant, Content: result.Text})
 		fmt.Println()
 	}
 
