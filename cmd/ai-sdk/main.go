@@ -127,6 +127,9 @@ func registerOpenAI(reg *registry.Registry) error {
 		return fmt.Errorf("create openai provider: %w", err)
 	}
 	reg.RegisterChat("openai", p)
+	reg.RegisterEmbed("openai", p)
+	reg.RegisterSpeech("openai", p)
+	reg.RegisterTranscribe("openai", p)
 	return nil
 }
 
@@ -202,6 +205,7 @@ func registerGroq(reg *registry.Registry) error {
 		return fmt.Errorf("create groq provider: %w", err)
 	}
 	reg.RegisterChat("groq", p)
+	reg.RegisterTranscribe("groq", p)
 	return nil
 }
 
@@ -215,6 +219,8 @@ func registerXAI(reg *registry.Registry) error {
 		return fmt.Errorf("create xai provider: %w", err)
 	}
 	reg.RegisterChat("xai", p)
+	reg.RegisterImage("xai", p)
+	reg.RegisterVideo("xai", p)
 	return nil
 }
 

@@ -1,5 +1,7 @@
 package core
 
+import "strings"
+
 import "github.com/samcharles93/ai-sdk/pkg/chat"
 
 // mapFinishReason translates a provider-level finish reason string into
@@ -92,10 +94,7 @@ func effectiveStopCondition(opts GenerateOptions) StopCondition {
 	if opts.StopWhen != nil {
 		return opts.StopWhen
 	}
-	maxSteps := opts.MaxSteps
-	if maxSteps < 1 {
-		maxSteps = 1
-	}
+	maxSteps := max(opts.MaxSteps, 1)
 	return StepCountIs(maxSteps)
 }
 
@@ -106,11 +105,11 @@ func partsReasoning(parts chat.Parts) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	out := ""
+	var out strings.Builder
 	for _, p := range parts {
 		if rp, ok := p.(chat.ReasoningPart); ok {
-			out += rp.Text
+			out.WriteString(rp.Text)
 		}
 	}
-	return out
+	return out.String()
 }

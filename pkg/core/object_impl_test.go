@@ -13,8 +13,8 @@ import (
 type fakeObjectProvider struct {
 	name string
 
-	streamRes  object.ObjectStream
-	streamErr  error
+	streamRes   object.ObjectStream
+	streamErr   error
 	streamCalls []object.Request
 }
 

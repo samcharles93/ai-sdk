@@ -304,14 +304,14 @@ func TestStreamText_TextOnly(t *testing.T) {
 	}
 
 	// Full text reconstruction.
-	var got string
+	var got strings.Builder
 	for _, p := range parts {
 		if p.Type == StreamPartTextDelta {
-			got += p.TextDelta
+			got.WriteString(p.TextDelta)
 		}
 	}
-	if got != "hello world" {
-		t.Fatalf("text: %q", got)
+	if got.String() != "hello world" {
+		t.Fatalf("text: %q", got.String())
 	}
 
 	u, err := r.Usage()
@@ -395,7 +395,7 @@ func TestStreamText_ToolLoop(t *testing.T) {
 		sawToolCall   bool
 		sawToolResult bool
 		finishCount   int
-		finalText     string
+		finalText     strings.Builder
 	)
 	for _, p := range parts {
 		switch p.Type {
@@ -410,7 +410,7 @@ func TestStreamText_ToolLoop(t *testing.T) {
 			}
 			sawToolResult = true
 		case StreamPartTextDelta:
-			finalText += p.TextDelta
+			finalText.WriteString(p.TextDelta)
 		case StreamPartFinish:
 			finishCount++
 		}
@@ -418,8 +418,8 @@ func TestStreamText_ToolLoop(t *testing.T) {
 	if !sawToolCall || !sawToolResult {
 		t.Fatalf("missing tool events: parts=%+v", parts)
 	}
-	if finalText != "the sum is 7" {
-		t.Fatalf("final text: %q", finalText)
+	if finalText.String() != "the sum is 7" {
+		t.Fatalf("final text: %q", finalText.String())
 	}
 	if finishCount != 1 {
 		t.Fatalf("finish count: %d", finishCount)
