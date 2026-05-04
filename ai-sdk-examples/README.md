@@ -17,6 +17,7 @@ Example programs demonstrating the Go AI SDK.
 | speech-to-text | Audio transcription API pattern reference | — | `go run ./ai-sdk-examples/speech-to-text/` |
 | streaming-chat | Real-time streaming text generation via `core.StreamText` with token usage reporting | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/streaming-chat/ "prompt"` |
 | video-generation | Video generation API pattern reference (xAI grok-video provider) | — | `go run ./ai-sdk-examples/video-generation/` |
+| web-chat | Full browser chat UI with SSE streaming, handlers, registry, and message rendering | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/web-chat/` |
 
 ## Concepts Demonstrated
 
@@ -28,7 +29,8 @@ Example programs demonstrating the Go AI SDK.
 - **embedding** — Vector embeddings with cosine similarity, dot product, and vector norm (embedding, multi-provider)
 - **reranking** — Document reranking by relevance score (rerank, multi-provider)
 - **agent** — Tool-loop agent with event-driven streaming (anthropic-agent)
-- **registry** — Multi-provider registration, retrieval, and capability switching (multi-provider)
+- **UI layer** — Server-side chat state manager, HTTP handlers, SSE streaming, browser-based UI (web-chat)
+- **registry** — Multi-provider registration, retrieval, and capability switching (multi-provider, web-chat)
 - **middleware** — Retry with exponential backoff, circuit breaker, and telemetry tracing (production-setup)
 - **informational examples** — API pattern documentation when providers or keys are unavailable (image-generation, object-generation, speech-to-text, video-generation)
 
@@ -43,3 +45,4 @@ Example programs demonstrating the Go AI SDK.
 | production-setup | OpenAI |
 | rerank | Cohere |
 | streaming-chat | OpenAI |
+| web-chat | OpenAI |
