@@ -146,7 +146,9 @@ const input = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
 const statusEl = document.getElementById('status');
 
-form.addEventListener('submit', async e => {
+let sessionID = crypto.randomUUID();
+
+form.addEventListener('submit', e => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
@@ -155,66 +157,79 @@ form.addEventListener('submit', async e => {
   sendBtn.disabled = true;
   statusEl.textContent = 'Thinking...';
 
-  try {
-    const resp = await fetch('/chat', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text})
-    });
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error || resp.statusText);
-    }
-    const msg = await resp.json();
-    addMessage('assistant', '', msg);
-  } catch (err) {
-    addMessage('assistant', 'Error: ' + err.message);
-  } finally {
-    sendBtn.disabled = false;
-    statusEl.textContent = '';
-  }
-});
-
-function addMessage(role, text, rawMsg) {
   const div = document.createElement('div');
-  div.className = 'msg ' + role;
-
-  const roleBadge = document.createElement('div');
-  roleBadge.className = 'role';
-  roleBadge.textContent = role;
-  div.appendChild(roleBadge);
-
+  div.className = 'msg assistant';
+  div.innerHTML = '<div class="role">assistant</div>';
   const content = document.createElement('div');
   content.className = 'content';
-
-  if (rawMsg && rawMsg.parts) {
-    for (const part of rawMsg.parts) {
-      switch (part.type) {
-        case 'text':
-          content.textContent += part.text || '';
-          break;
-        case 'reasoning':
-          const r = document.createElement('div');
-          r.className = 'reasoning';
-          r.textContent = part.text;
-          div.insertBefore(r, content);
-          break;
-        default:
-          if (part.type && (part.type.startsWith('tool-') || part.type === 'dynamic-tool')) {
-            const tc = document.createElement('div');
-            tc.className = 'tool';
-            tc.innerHTML = '<span class="name">🔧 ' + part.toolName + '</span>';
-            if (part.output) {
-              tc.innerHTML += '<div class="result">→ ' + JSON.stringify(part.output) + '</div>';
-            }
-            div.appendChild(tc);
-          }
-          break;
-      }
-    }
-  }
-  if (text && !rawMsg) content.textContent = text;
   div.appendChild(content);
+  messagesEl.appendChild(div);
+  let reasoningEl = null;
+  let toolEl = null;
+
+  const url = '/chat?prompt=' + encodeURIComponent(text) + '&sessionID=' + sessionID;
+  const es = new EventSource(url);
+
+  es.onmessage = event => {
+    const chunk = JSON.parse(event.data);
+    switch (chunk.type) {
+      case 'text-start':
+        break;
+      case 'text-delta':
+        content.textContent += chunk.delta;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        break;
+      case 'reasoning-delta':
+        if (!reasoningEl) {
+          reasoningEl = document.createElement('div');
+          reasoningEl.className = 'reasoning';
+          div.insertBefore(reasoningEl, content);
+        }
+        reasoningEl.textContent += chunk.delta;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        break;
+      case 'tool-input-available':
+        toolEl = document.createElement('div');
+        toolEl.className = 'tool';
+        toolEl.innerHTML = '<span class="name">🔧 ' + chunk.toolName + '</span>';
+        div.appendChild(toolEl);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        break;
+      case 'tool-output-available':
+        if (toolEl) {
+          toolEl.innerHTML += '<div class="result">→ ' + JSON.stringify(chunk.output) + '</div>';
+        }
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        break;
+      case 'finish':
+        statusEl.textContent = chunk.usage
+          ? '(' + chunk.usage.totalTokens + ' tokens)'
+          : '';
+        es.close();
+        sendBtn.disabled = false;
+        break;
+      case 'error':
+        content.textContent = 'Error: ' + (chunk.errorText || 'unknown');
+        statusEl.textContent = '';
+        es.close();
+        sendBtn.disabled = false;
+        break;
+    }
+  };
+
+  es.onerror = () => {
+    if (es.readyState === EventSource.CLOSED) return;
+    content.textContent = content.textContent || 'Connection error.';
+    statusEl.textContent = '';
+    es.close();
+    sendBtn.disabled = false;
+  };
+});
+
+function addMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = '<div class="role">' + role + '</div><div class="content">' + text + '</div>';
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
