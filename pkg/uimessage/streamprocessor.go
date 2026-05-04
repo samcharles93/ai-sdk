@@ -118,9 +118,7 @@ func (s *StreamProcessor) Apply(c Chunk) error {
 		s.Message.Parts[idx] = r
 		delete(s.activeReasoning, v.ID)
 	case CustomChunk:
-		s.Message.Parts = append(s.Message.Parts, CustomContentUIPart{
-			Kind: v.Kind, ProviderMetadata: v.ProviderMetadata,
-		})
+		s.Message.Parts = append(s.Message.Parts, CustomContentUIPart(v))
 	case FileChunk:
 		s.Message.Parts = append(s.Message.Parts, FileUIPart{
 			URL: v.URL, MediaType: v.MediaType, ProviderMetadata: v.ProviderMetadata,
@@ -130,14 +128,9 @@ func (s *StreamProcessor) Apply(c Chunk) error {
 			URL: v.URL, MediaType: v.MediaType, ProviderMetadata: v.ProviderMetadata,
 		})
 	case SourceURLChunk:
-		s.Message.Parts = append(s.Message.Parts, SourceURLUIPart{
-			SourceID: v.SourceID, URL: v.URL, Title: v.Title, ProviderMetadata: v.ProviderMetadata,
-		})
+		s.Message.Parts = append(s.Message.Parts, SourceURLUIPart(v))
 	case SourceDocumentChunk:
-		s.Message.Parts = append(s.Message.Parts, SourceDocumentUIPart{
-			SourceID: v.SourceID, MediaType: v.MediaType, Title: v.Title,
-			Filename: v.Filename, ProviderMetadata: v.ProviderMetadata,
-		})
+		s.Message.Parts = append(s.Message.Parts, SourceDocumentUIPart(v))
 	case ToolInputStartChunk:
 		dyn := v.Dynamic != nil && *v.Dynamic
 		s.partialTools[v.ToolCallID] = &partialToolCall{

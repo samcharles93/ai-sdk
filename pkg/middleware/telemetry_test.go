@@ -236,16 +236,14 @@ func TestTelemetryMiddleware_ChatStream_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var chunks []string
 	for {
-		chunk, err := stream.Next(context.Background())
+		_, err := stream.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			t.Fatalf("unexpected stream error: %v", err)
 		}
-		chunks = append(chunks, chunk.Delta)
 	}
 
 	if err := stream.Close(); err != nil {
