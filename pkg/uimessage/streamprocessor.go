@@ -3,6 +3,7 @@ package uimessage
 import (
 	"errors"
 	"fmt"
+	"maps"
 )
 
 // StreamProcessor is a stateful reducer that ingests Chunks and mutates
@@ -504,11 +505,7 @@ func mergeMetadata(a, b any) any {
 		return b
 	}
 	out := make(map[string]any, len(am)+len(bm))
-	for k, v := range am {
-		out[k] = v
-	}
-	for k, v := range bm {
-		out[k] = v
-	}
+	maps.Copy(out, am)
+	maps.Copy(out, bm)
 	return out
 }

@@ -316,7 +316,7 @@ func MarshalChunk(c Chunk) ([]byte, error) {
 	}
 	t := c.TypeName()
 	if string(body) == "{}" {
-		return []byte(fmt.Sprintf(`{"type":%q}`, t)), nil
+		return fmt.Appendf(nil, `{"type":%q}`, t), nil
 	}
 	if len(body) < 2 || body[0] != '{' {
 		return nil, fmt.Errorf("uimessage: chunk must marshal to a JSON object, got %s", body)

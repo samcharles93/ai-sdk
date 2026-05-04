@@ -1,5 +1,7 @@
 package uimessage
 
+import "strings"
+
 // Role identifies the author of a Message.
 type Role string
 
@@ -22,11 +24,11 @@ type Message struct {
 
 // Text concatenates the text of every TextUIPart in the message.
 func (m Message) Text() string {
-	var s string
+	var s strings.Builder
 	for _, p := range m.Parts {
 		if t, ok := p.(TextUIPart); ok {
-			s += t.Text
+			s.WriteString(t.Text)
 		}
 	}
-	return s
+	return s.String()
 }

@@ -247,7 +247,7 @@ func marshalPart(p MessagePart) ([]byte, error) {
 	}
 	t := p.PartType()
 	if string(body) == "{}" {
-		return []byte(fmt.Sprintf(`{"type":%q}`, t)), nil
+		return fmt.Appendf(nil, `{"type":%q}`, t), nil
 	}
 	if len(body) < 2 || body[0] != '{' {
 		return nil, fmt.Errorf("part %q must marshal to JSON object, got %s", t, body)

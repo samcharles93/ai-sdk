@@ -225,14 +225,14 @@ func decodeMaybeDataURL(url, fallbackMediaType string) ([]byte, string, bool, er
 		return nil, fallbackMediaType, false, nil
 	}
 	rest := strings.TrimPrefix(url, "data:")
-	semi := strings.Index(rest, ",")
-	if semi < 0 {
+	before, after, ok := strings.Cut(rest, ",")
+	if !ok {
 		return nil, "", false, fmt.Errorf("invalid data URL: missing comma")
 	}
-	meta, body := rest[:semi], rest[semi+1:]
+	meta, body := before, after
 	mediaType := fallbackMediaType
 	isB64 := false
-	for _, tok := range strings.Split(meta, ";") {
+	for tok := range strings.SplitSeq(meta, ";") {
 		tok = strings.TrimSpace(tok)
 		if tok == "base64" {
 			isB64 = true
