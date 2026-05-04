@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -19,9 +20,10 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/samcharles93/ai-sdk/pkg/chat"
+	"github.com/samcharles93/ai-sdk/pkg/core"
 	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
-	"github.com/samcharles93/ai-sdk/pkg/registry"
-	"github.com/samcharles93/ai-sdk/pkg/ui/handlers"
+	"github.com/samcharles93/ai-sdk/pkg/uimessage/sse"
 )
 
 func main() {
@@ -48,12 +50,22 @@ func run() error {
 		return fmt.Errorf("create openai provider: %w", err)
 	}
 
-	reg := registry.New()
-	reg.RegisterChat("openai", provider)
+	tools := core.ToolSet{
+		"get_time": core.NewTool(
+			"get_time",
+			"Get the current date and time",
+			json.RawMessage(`{"type":"object","properties":{},"required":[]}`),
+			func(ctx context.Context, input string) (string, error) {
+				return time.Now().Format(time.RFC1123), nil
+			},
+		),
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", serveIndex)
-	mux.Handle("/chat", handlers.NewChatHandler(reg, "openai", "gpt-5.4-nano"))
+	mux.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
+		handleChat(w, r, provider, tools)
+	})
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
@@ -79,6 +91,29 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+func handleChat(w http.ResponseWriter, r *http.Request, provider chat.Provider, tools core.ToolSet) {
+	prompt := r.URL.Query().Get("prompt")
+	if prompt == "" {
+		http.Error(w, "prompt required", http.StatusBadRequest)
+		return
+	}
+
+	result, err := core.StreamText(r.Context(), provider, core.GenerateOptions{
+		Model:    "gpt-5.4-nano",
+		Prompt:   prompt,
+		Tools:    tools,
+		MaxSteps: 5,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	chunks := sse.FromTextStream(r.Context(), &result, "")
+	sw := sse.NewWriter(w)
+	_ = sse.Pipe(r.Context(), chunks, sw)
 }
 
 func serveIndex(w http.ResponseWriter, r *http.Request) {
