@@ -41,7 +41,7 @@ func run() error {
 	}
 
 	ctx := context.Background()
-	model := "gpt-4o"
+	model := "gpt-5.4-nano"
 
 	fmt.Printf("OpenAI Chat (%s)\n", model)
 	fmt.Println("Enter prompts (one per line). Type \"exit\" or press Ctrl+D to quit.")
@@ -73,6 +73,12 @@ func run() error {
 			continue
 		}
 
+		if result.Reasoning != "" {
+			fmt.Print("\x1b[2m") // dim
+			fmt.Println(result.Reasoning)
+			fmt.Print("\x1b[0m") // reset
+			fmt.Println(strings.Repeat("—", 40))
+		}
 		fmt.Println(result.Text)
 		fmt.Println()
 	}
