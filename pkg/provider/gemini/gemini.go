@@ -579,8 +579,8 @@ func (s *stream) readDataEvent() ([]byte, error) {
 				// blank separator with no data; keep reading
 			} else if strings.HasPrefix(line, ":") {
 				// SSE comment, ignore
-			} else if strings.HasPrefix(line, "data:") {
-				v := strings.TrimPrefix(line, "data:")
+			} else if after, ok := strings.CutPrefix(line, "data:"); ok {
+				v := after
 				v = strings.TrimPrefix(v, " ")
 				if buf.Len() > 0 {
 					buf.WriteByte('\n')

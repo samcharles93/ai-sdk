@@ -408,12 +408,12 @@ func TestChatStream_ToolUse(t *testing.T) {
 	if len(toolDeltas) != 2 {
 		t.Fatalf("tool deltas count: got %d want 2", len(toolDeltas))
 	}
-	var args string
+	var args strings.Builder
 	for _, td := range toolDeltas {
-		args += td.ArgsDelta
+		args.WriteString(td.ArgsDelta)
 	}
-	if args != `{"location":"SF"}` {
-		t.Errorf("accumulated tool args: %q", args)
+	if args.String() != `{"location":"SF"}` {
+		t.Errorf("accumulated tool args: %q", args.String())
 	}
 	if doneChunk == nil {
 		t.Fatal("no done chunk")
