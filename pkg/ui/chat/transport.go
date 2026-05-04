@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -88,14 +87,4 @@ func (t *DirectTransport) SendMessages(ctx context.Context, chatID string, messa
 		return nil, fmt.Errorf("stream text: %w", err)
 	}
 	return sse.FromTextStream(ctx, &result, chatID), nil
-}
-
-// ---------------------------------------------------------------------------
-// JSON helpers (used by HTTPTransport once it lands)
-// ---------------------------------------------------------------------------
-
-// encodeMessages JSON-encodes messages for transmission over the wire.
-// Exposed for testing.
-func encodeMessages(messages []Message) ([]byte, error) {
-	return json.Marshal(messages)
 }
