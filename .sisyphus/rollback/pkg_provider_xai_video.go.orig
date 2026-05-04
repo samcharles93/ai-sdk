@@ -1,0 +1,301 @@
+// Package xai provides access to xAI's video generation API
+// via the video.Provider interface.
+package xai
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/samcharles93/ai-sdk/pkg/video"
+)
+
+const (
+	videoGenerationsAPIPath = "/v1/videos/generations"
+	videoStatusAPIPath       = "/v1/videos/"
+	defaultPollInterval     = 5 * time.Second
+	defaultPollTimeout      = 10 * time.Minute
+)
+
+// --- wire types ----------------------------------------------------------
+
+type wireVideoCreateResponse struct {
+	RequestID string `json:"request_id"`
+}
+
+type wireVideoStatusResponse struct {
+	Status   string         `json:"status,omitempty"`
+	Video    *wireVideoInfo `json:"video,omitempty"`
+	Model    string         `json:"model,omitempty"`
+	Usage    *wireVideoUsage `json:"usage,omitempty"`
+	Progress float64        `json:"progress,omitempty"`
+	Error    *wireVideoError `json:"error,omitempty"`
+}
+
+type wireVideoInfo struct {
+	URL               string  `json:"url,omitempty"`
+	Duration          float64 `json:"duration,omitempty"`
+	RespectModeration *bool   `json:"respect_moderation,omitempty"`
+}
+
+type wireVideoUsage struct {
+	CostInUsdTicks float64 `json:"cost_in_usd_ticks,omitempty"`
+}
+
+type wireVideoError struct {
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// VideoOptions carries xAI-specific video generation options.
+type VideoOptions struct {
+	Mode               string   `json:"mode,omitempty"`
+	Resolution         string   `json:"resolution,omitempty"`
+	VideoURL           string   `json:"video_url,omitempty"`
+	ReferenceImageURLs  []string `json:"reference_image_urls,omitempty"`
+	PollIntervalMs     int      `json:"poll_interval_ms,omitempty"`
+	PollTimeoutMs      int      `json:"poll_timeout_ms,omitempty"`
+}
+
+// --- Video Generation ----------------------------------------------------
+
+// GenerateVideo creates videos from text prompts using xAI's video generation API.
+// It satisfies video.Provider.
+func (p *Provider) GenerateVideo(ctx context.Context, req video.GenerateVideoRequest) (video.GenerateVideoResponse, error) {
+	if req.Model == "" {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: model is required: %w", video.ErrInvalidRequest)
+	}
+	if req.Prompt == "" {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: prompt is required: %w", video.ErrInvalidRequest)
+	}
+
+	// Parse provider options.
+	var opts VideoOptions
+	if rawOpts, ok := req.ProviderOptions["xai"].(map[string]any); ok {
+		if v, ok := rawOpts["mode"].(string); ok {
+			opts.Mode = v
+		}
+		if v, ok := rawOpts["resolution"].(string); ok {
+			opts.Resolution = v
+		}
+		if v, ok := rawOpts["video_url"].(string); ok {
+			opts.VideoURL = v
+		}
+		if urls, ok := rawOpts["reference_image_urls"].([]any); ok {
+			for _, u := range urls {
+				if s, ok := u.(string); ok {
+					opts.ReferenceImageURLs = append(opts.ReferenceImageURLs, s)
+				}
+			}
+		}
+		if v, ok := rawOpts["poll_interval_ms"].(float64); ok {
+			opts.PollIntervalMs = int(v)
+		}
+		if v, ok := rawOpts["poll_timeout_ms"].(float64); ok {
+			opts.PollTimeoutMs = int(v)
+		}
+	}
+
+	// Build request body.
+	body := map[string]any{
+		"model":  req.Model,
+		"prompt": req.Prompt,
+	}
+
+	// Duration.
+	if req.Duration != "" {
+		body["duration"] = req.Duration
+	}
+
+	// Resolution mapping for xAI.
+	if req.Resolution != "" {
+		res := mapResolution(req.Resolution)
+		if res != "" {
+			body["resolution"] = res
+		}
+	}
+	if opts.Resolution != "" {
+		body["resolution"] = opts.Resolution
+	}
+
+	// Video editing: pass source video URL.
+	if opts.Mode == "edit-video" && opts.VideoURL != "" {
+		body["video"] = map[string]any{"url": opts.VideoURL}
+	}
+
+	// Video extension: pass source video URL.
+	if opts.Mode == "extend-video" && opts.VideoURL != "" {
+		body["video"] = map[string]any{"url": opts.VideoURL}
+	}
+
+	// Reference images for reference-to-video mode.
+	if opts.Mode == "reference-to-video" && len(opts.ReferenceImageURLs) > 0 {
+		body["reference_images"] = make([]map[string]string, len(opts.ReferenceImageURLs))
+		for i, url := range opts.ReferenceImageURLs {
+			body["reference_images"].([]map[string]string)[i] = map[string]string{"url": url}
+		}
+	}
+
+	// Determine endpoint based on mode.
+	endpoint := p.baseURL + videoGenerationsAPIPath
+	if opts.Mode == "edit-video" {
+		endpoint = p.baseURL + "/v1/videos/edits"
+	} else if opts.Mode == "extend-video" {
+		endpoint = p.baseURL + "/v1/videos/extensions"
+	}
+
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: marshal video request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(buf))
+	if err != nil {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: build video request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: http do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		snippet := strings.TrimSpace(string(respBody))
+		return video.GenerateVideoResponse{}, classifyVideoHTTPError(resp.StatusCode, snippet)
+	}
+
+	var createResp wireVideoCreateResponse
+	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: decode create response: %w", err)
+	}
+
+	requestID := createResp.RequestID
+	if requestID == "" {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: no request_id returned")
+	}
+
+	// Poll for completion.
+	pollInterval := time.Duration(opts.PollIntervalMs) * time.Millisecond
+	if pollInterval == 0 {
+		pollInterval = defaultPollInterval
+	}
+
+	pollTimeout := time.Duration(opts.PollTimeoutMs) * time.Millisecond
+	if pollTimeout == 0 {
+		pollTimeout = defaultPollTimeout
+	}
+
+	pollCtx, cancel := context.WithTimeout(ctx, pollTimeout)
+	defer cancel()
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-pollCtx.Done():
+			return video.GenerateVideoResponse{}, fmt.Errorf("xai: video generation timed out: %w", pollCtx.Err())
+		case <-ticker.C:
+			status, err := p.pollVideoStatus(pollCtx, requestID)
+			if err != nil {
+				return video.GenerateVideoResponse{}, err
+			}
+
+			switch status.Status {
+			case "done":
+				if status.Video == nil || status.Video.URL == "" {
+					return video.GenerateVideoResponse{}, fmt.Errorf("xai: video generation completed but no URL returned")
+				}
+				if status.Video.RespectModeration != nil && !*status.Video.RespectModeration {
+					return video.GenerateVideoResponse{}, fmt.Errorf("xai: video generation blocked by content policy")
+				}
+				return video.GenerateVideoResponse{
+					Videos: []video.VideoResult{
+						{
+							URL:       status.Video.URL,
+							MediaType: "video/mp4",
+						},
+					},
+				}, nil
+
+			case "expired":
+				return video.GenerateVideoResponse{}, fmt.Errorf("xai: video generation request expired")
+
+			case "failed":
+				return video.GenerateVideoResponse{}, fmt.Errorf("xai: video generation failed")
+
+			// "pending" or unknown - continue polling
+			}
+		}
+	}
+}
+
+// pollVideoStatus checks the status of a video generation request.
+func (p *Provider) pollVideoStatus(ctx context.Context, requestID string) (*wireVideoStatusResponse, error) {
+	url := p.baseURL + videoStatusAPIPath + requestID
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("xai: build status request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	httpReq.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("xai: http do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		snippet := strings.TrimSpace(string(respBody))
+		return nil, classifyVideoHTTPError(resp.StatusCode, snippet)
+	}
+
+	var status wireVideoStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		return nil, fmt.Errorf("xai: decode status response: %w", err)
+	}
+
+	return &status, nil
+}
+
+// mapResolution converts standard resolution strings to xAI format.
+func mapResolution(res string) string {
+	switch res {
+	case "1920x1080", "1280x720":
+		return "720p"
+	case "854x480", "640x480":
+		return "480p"
+	default:
+		return ""
+	}
+}
+
+func classifyVideoHTTPError(code int, body string) error {
+	var base error
+	switch {
+	case code == 401 || code == 403:
+		base = video.ErrAuthFailed
+	case code == 429:
+		base = video.ErrRateLimited
+	case code >= 500:
+		base = video.ErrProviderUnavailable
+	default:
+		base = video.ErrProviderUnavailable
+	}
+	return fmt.Errorf("xai: status %d: %s: %w", code, body, base)
+}
+
+// Compile-time assertion that *Provider satisfies video.Provider.
+var _ video.Provider = (*Provider)(nil)
