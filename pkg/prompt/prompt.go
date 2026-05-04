@@ -69,7 +69,7 @@ func NewUserPrompt(text string) UserPrompt {
 func FormatMessages(msgs []map[string]any) string {
 	var out []string
 	for _, m := range msgs {
-		roleRaw, _ := m["role"]
+		roleRaw := m["role"]
 		role := fmt.Sprint(roleRaw)
 
 		// Prefer content

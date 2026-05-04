@@ -44,7 +44,9 @@ func TestParseMultipartForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fw.Write([]byte("abc123"))
+	if _, err := fw.Write([]byte("abc123")); err != nil {
+		t.Fatal(err)
+	}
 	w.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/upload", &b)

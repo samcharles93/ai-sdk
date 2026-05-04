@@ -586,8 +586,6 @@ func (s *stream) readDataEvent() ([]byte, error) {
 					buf.WriteByte('\n')
 				}
 				buf.WriteString(v)
-			} else {
-				// Other SSE fields (event:, id:, retry:) are ignored.
 			}
 		}
 		if err != nil {

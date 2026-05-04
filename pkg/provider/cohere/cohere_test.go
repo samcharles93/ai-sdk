@@ -43,7 +43,7 @@ func TestChat_NonStreaming(t *testing.T) {
 			t.Errorf("auth = %s, want Bearer secret", r.Header.Get("Authorization"))
 		}
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["model"] != "command-r" {
 			t.Errorf("model = %v", body["model"])
 		}
@@ -54,7 +54,7 @@ func TestChat_NonStreaming(t *testing.T) {
 			t.Errorf("stream = %v", body["stream"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{
+		_, _ = io.WriteString(w, `{
 			"text": "hi there",
 			"generation_id": "gen-1",
 			"finish_reason": "COMPLETE",
@@ -101,7 +101,7 @@ func TestChat_NonStreaming(t *testing.T) {
 func TestChat_History(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		// The last user message "latest question" should be in "message".
 		if body["message"] != "latest question" {
 			t.Errorf("message = %v", body["message"])
@@ -123,7 +123,7 @@ func TestChat_History(t *testing.T) {
 			t.Errorf("history[1] = %v", h1)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"text": "answer", "finish_reason": "COMPLETE"}`)
+		_, _ = io.WriteString(w, `{"text": "answer", "finish_reason": "COMPLETE"}`)
 	}))
 	defer srv.Close()
 
@@ -145,7 +145,7 @@ func TestChat_History(t *testing.T) {
 func TestChat_ToolCalls(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		// Verify tools are sent correctly.
 		tools, ok := body["tools"].([]any)
 		if !ok || len(tools) != 1 {
@@ -156,7 +156,7 @@ func TestChat_ToolCalls(t *testing.T) {
 			t.Errorf("tool name = %v", tool["name"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{
+		_, _ = io.WriteString(w, `{
 			"text": "",
 			"generation_id": "gen-tc",
 			"finish_reason": "COMPLETE",
@@ -217,7 +217,7 @@ func TestChat_FinishReasonMappings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				io.WriteString(w, `{"text":"x","finish_reason":"`+tt.cohereFR+`"}`)
+				_, _ = io.WriteString(w, `{"text":"x","finish_reason":"`+tt.cohereFR+`"}`)
 			}))
 			defer srv.Close()
 
@@ -240,7 +240,7 @@ func TestChat_FinishReasonMappings(t *testing.T) {
 func TestChatStream_Basic(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["stream"] != true {
 			t.Errorf("stream flag missing: %v", body["stream"])
 		}
@@ -253,7 +253,7 @@ func TestChatStream_Basic(t *testing.T) {
 			`event: stream-end` + "\n" + `data: {"is_finished":true,"event_type":"stream-end","finish_reason":"COMPLETE","response":{"meta":{"tokens":{"input_tokens":4,"output_tokens":2}}}}` + "\n\n",
 		}
 		for _, ev := range events {
-			io.WriteString(w, ev)
+			_, _ = io.WriteString(w, ev)
 			if fl != nil {
 				fl.Flush()
 			}
@@ -315,7 +315,7 @@ func TestEmbed(t *testing.T) {
 			t.Errorf("path = %s, want /embed", r.URL.Path)
 		}
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["model"] != "embed-english-v3" {
 			t.Errorf("model = %v", body["model"])
 		}
@@ -327,7 +327,7 @@ func TestEmbed(t *testing.T) {
 			t.Fatalf("texts = %v", body["texts"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{
+		_, _ = io.WriteString(w, `{
 			"id": "emb-1",
 			"texts": ["hello", "world"],
 			"embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
@@ -374,7 +374,7 @@ func TestRerank(t *testing.T) {
 			t.Errorf("path = %s, want /rerank", r.URL.Path)
 		}
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["model"] != "rerank-english-v3" {
 			t.Errorf("model = %v", body["model"])
 		}
@@ -386,7 +386,7 @@ func TestRerank(t *testing.T) {
 			t.Fatalf("documents = %v", body["documents"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{
+		_, _ = io.WriteString(w, `{
 			"results": [
 				{"index": 2, "relevance_score": 0.95},
 				{"index": 0, "relevance_score": 0.50},
