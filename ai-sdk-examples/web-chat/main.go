@@ -4,7 +4,7 @@
 // :8080 with a browser-based chat UI.
 //
 //	Usage:
-//	  OPENAI_API_KEY=sk-... go run ./ai-sdk-examples/web-chat/
+//	  OPENAI_API_KEY=sk-... (cd ai-sdk-examples && go run ./web-chat/)
 //
 //	Open http://localhost:8080 in your browser.
 package main
