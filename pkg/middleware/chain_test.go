@@ -2,14 +2,6 @@ package middleware
 
 import "testing"
 
-type mockProvider struct {
-	calls []string
-}
-
-// For tests we use a simple function type as the provider so we can observe
-// middleware composition. We'll model T as func(string) string in the test by
-// using the generic Chain with that concrete type.
-
 func TestChain_ComposesLeftToRight(t *testing.T) {
 	// base provider: appends "base" to input
 	base := func(s string) string { return s + "->base" }
