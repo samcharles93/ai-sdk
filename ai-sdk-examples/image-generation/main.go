@@ -1,83 +1,84 @@
-// Command image-generation demonstrates how to use core.GenerateImage
-// (or image.Provider.GenerateImage) to create images from text prompts.
-//
-// This example shows the API pattern for image generation. It currently
-// prints usage documentation because providers that implement
-// image.Provider (Azure, TogetherAI) require API keys. The pattern is
-// shown for reference.
+// Command image-generation demonstrates image generation from text prompts
+// using the AI SDK with the TogetherAI provider. If TOGETHER_API_KEY is set,
+// it calls the API and writes the output as a PNG file. Otherwise it prints
+// the API pattern for reference.
 //
 //	Usage:
-//	  AZURE_API_KEY=... AZURE_ENDPOINT=... go run ./ai-sdk-examples/image-generation/
+//	  TOGETHER_API_KEY=... go run ./ai-sdk-examples/image-generation/
+//	  (without key — prints API documentation)
 package main
 
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/samcharles93/ai-sdk/pkg/core"
 	"github.com/samcharles93/ai-sdk/pkg/image"
+	"github.com/samcharles93/ai-sdk/pkg/provider/togetherai"
 )
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Printf("error: %v\n", err)
+		log.Fatal(err)
 	}
 }
 
 func run() error {
-	ctx := context.Background()
-
-	// GenerateImageRequest is a provider-agnostic image generation request.
-	// It supports model selection, prompt, negative prompt, image count,
-	// size/aspect ratio, seed, and provider-specific options.
-	req := image.GenerateImageRequest{
-		Model:  "dall-e-3",
-		Prompt: "A serene mountain lake at sunset with pine trees reflecting in the water",
-		Size:   "1024x1024",
-		N:      1,
+	apiKey := os.Getenv("TOGETHER_API_KEY")
+	if apiKey == "" {
+		printDocs()
+		return nil
 	}
 
-	// When using the Azure provider (pkg/provider/azure/):
-	//
-	//   provider, err := azure.New(azure.Config{
-	//       APIKey:     os.Getenv("AZURE_API_KEY"),
-	//       Endpoint:   os.Getenv("AZURE_ENDPOINT"),
-	//       Deployment: "dall-e-3",
-	//   })
-	//   if err != nil { ... }
-	//
-	//   resp, err := core.GenerateImage(ctx, provider, req)
-	//   if err != nil { ... }
-	//
-	//   for i, img := range resp.Images {
-	//       if img.URL != "" {
-	//           fmt.Printf("Image %d: %s\n", i, img.URL)
-	//       }
-	//       if len(img.Data) > 0 {
-	//           os.WriteFile(fmt.Sprintf("output_%d.png", i), img.Data, 0o644)
-	//       }
-	//   }
+	provider, err := togetherai.New(togetherai.Config{APIKey: apiKey})
+	if err != nil {
+		return fmt.Errorf("create togetherai provider: %w", err)
+	}
 
-	_ = core.GenerateImage // suppresses unused import
-	_ = ctx
-	_ = req
-	_ = os.Getenv
+	ctx := context.Background()
+	resp, err := core.GenerateImage(ctx, provider, image.GenerateImageRequest{
+		Model:  "black-forest-labs/FLUX.1-schnell",
+		Prompt: "A serene mountain lake at sunset with pine trees reflecting in the water",
+		N:      1,
+	})
+	if err != nil {
+		return fmt.Errorf("generate image: %w", err)
+	}
 
-	fmt.Println("Image Generation API:")
-	fmt.Println("  1. Create an image.Provider implementation")
-	fmt.Println("     - pkg/provider/azure/ implements image.Provider for Azure OpenAI")
-	fmt.Println("     - pkg/provider/togetherai/ implements image.Provider for TogetherAI")
-	fmt.Println("  2. Call core.GenerateImage(ctx, provider, req)")
-	fmt.Println("  3. The GenerateImageResponse includes:")
-	fmt.Println("     - Images: slice of GeneratedImage (Data, URL, Base64, MediaType)")
-	fmt.Println("     - Warnings: non-fatal warnings")
-	fmt.Println()
-	fmt.Println("The image package (pkg/image/) provides:")
-	fmt.Println("  - Provider interface with GenerateImage method")
-	fmt.Println("  - GenerateImageRequest/GenerateImageResponse types")
-	fmt.Println("  - A thin Client facade with nil-guard")
-	fmt.Println("  - Sentinel errors (ErrNoProvider, ErrInvalidRequest)")
-
+	if err := os.MkdirAll("out", 0o755); err != nil {
+		return err
+	}
+	for i, img := range resp.Images {
+		if img.URL != "" {
+			fmt.Printf("Image %d: %s\n", i+1, img.URL)
+		}
+		if img.Base64 != "" {
+			filename := fmt.Sprintf("out/output_%d.png", i+1)
+			if err := os.WriteFile(filename, []byte(img.Base64), 0o644); err != nil {
+				return err
+			}
+			fmt.Printf("Saved: %s\n", filename)
+		}
+	}
 	return nil
+}
+
+func printDocs() {
+	fmt.Println("Image Generation API — usage:")
+	fmt.Println("  TOGETHER_API_KEY=sk-... go run ./ai-sdk-examples/image-generation/")
+	fmt.Println()
+	fmt.Println("Providers implementing image.Provider:")
+	fmt.Println("  - pkg/provider/azure/   — Azure OpenAI (AZURE_API_KEY + AZURE_ENDPOINT)")
+	fmt.Println("  - pkg/provider/togetherai/ — TogetherAI (TOGETHER_API_KEY)")
+	fmt.Println("  - pkg/provider/xai/     — xAI (XAI_API_KEY)")
+	fmt.Println()
+	fmt.Println("API pattern:")
+	fmt.Println("  resp, err := core.GenerateImage(ctx, provider, image.GenerateImageRequest{")
+	fmt.Println("      Model: \"black-forest-labs/FLUX.1-schnell\",")
+	fmt.Println("      Prompt: \"...\",")
+	fmt.Println("      N: 1,")
+	fmt.Println("  })")
+	fmt.Println("  // resp.Images[0].URL / resp.Images[0].Base64")
 }

@@ -1,81 +1,69 @@
-// Command video-generation demonstrates how to use core.GenerateVideo
-// (or video.Provider.GenerateVideo) to create videos from text prompts.
-//
-// This example shows the API pattern for video generation. It currently
-// prints usage documentation because the xAI provider that implements
-// video.Provider requires an API key and video generation is an expensive
-// and slow operation.
+// Command video-generation demonstrates video generation from text prompts
+// using the AI SDK with the xAI provider. If XAI_API_KEY is set, it creates a
+// short video. Otherwise it prints the API pattern for reference.
 //
 //	Usage:
 //	  XAI_API_KEY=... go run ./ai-sdk-examples/video-generation/
+//	  (without key — prints API documentation)
 package main
 
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/samcharles93/ai-sdk/pkg/core"
+	"github.com/samcharles93/ai-sdk/pkg/provider/xai"
 	"github.com/samcharles93/ai-sdk/pkg/video"
 )
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Printf("error: %v\n", err)
+		log.Fatal(err)
 	}
 }
 
 func run() error {
-	ctx := context.Background()
-
-	// GenerateVideoRequest is a provider-agnostic video generation request.
-	// It supports model selection, prompt, duration, resolution, frame rate,
-	// and provider-specific options.
-	req := video.GenerateVideoRequest{
-		Model:      "grok-video",
-		Prompt:     "A serene mountain lake at sunset with gentle ripples on the water and birds flying across the sky",
-		Duration:   "00:00:05",
-		Resolution: "1920x1080",
-		FrameRate:  24,
+	apiKey := os.Getenv("XAI_API_KEY")
+	if apiKey == "" {
+		printDocs()
+		return nil
 	}
 
-	// When using the xAI provider (pkg/provider/xai/):
-	//
-	//   provider, err := xai.New(xai.Config{
-	//       APIKey: os.Getenv("XAI_API_KEY"),
-	//   })
-	//   if err != nil { ... }
-	//
-	//   resp, err := core.GenerateVideo(ctx, provider, req)
-	//   if err != nil { ... }
-	//
-	//   for i, vid := range resp.Videos {
-	//       if vid.URL != "" {
-	//           fmt.Printf("Video %d: %s\n", i, vid.URL)
-	//       }
-	//       if len(vid.Data) > 0 {
-	//           os.WriteFile(fmt.Sprintf("output_%d.mp4", i), vid.Data, 0o644)
-	//       }
-	//   }
+	provider, err := xai.New(xai.Config{APIKey: apiKey})
+	if err != nil {
+		return fmt.Errorf("create xai provider: %w", err)
+	}
 
-	_ = core.GenerateVideo // suppresses unused import
-	_ = ctx
-	_ = req
-	_ = os.Getenv
+	ctx := context.Background()
+	resp, err := core.GenerateVideo(ctx, provider, video.GenerateVideoRequest{
+		Model:  "grok-video",
+		Prompt: "A drone flyover of a misty mountain valley at sunrise",
+	})
+	if err != nil {
+		return fmt.Errorf("generate video: %w", err)
+	}
 
-	fmt.Println("Video Generation API:")
-	fmt.Println("  1. Create a video.Provider implementation")
-	fmt.Println("     - pkg/provider/xai/ implements video.Provider for xAI grok-video")
-	fmt.Println("  2. Call core.GenerateVideo(ctx, provider, req)")
-	fmt.Println("  3. The GenerateVideoResponse includes:")
-	fmt.Println("     - Videos: slice of VideoResult (Data, URL, MediaType)")
-	fmt.Println("     - Warnings: non-fatal warnings")
-	fmt.Println()
-	fmt.Println("The video package (pkg/video/) provides:")
-	fmt.Println("  - Provider interface with GenerateVideo method")
-	fmt.Println("  - GenerateVideoRequest / GenerateVideoResponse types")
-	fmt.Println("  - A thin Client facade with nil-guard")
-	fmt.Println("  - Sentinel errors (ErrNoProvider, ErrInvalidRequest)")
-
+	for i, v := range resp.Videos {
+		fmt.Printf("Video %d: %s (%s)\n", i+1, v.URL, v.MediaType)
+	}
 	return nil
+}
+
+func printDocs() {
+	fmt.Println("Video Generation API — usage:")
+	fmt.Println("  XAI_API_KEY=... go run ./ai-sdk-examples/video-generation/")
+	fmt.Println()
+	fmt.Println("Providers implementing video.Provider:")
+	fmt.Println("  - pkg/provider/xai/ — xAI grok-video")
+	fmt.Println()
+	fmt.Println("API pattern:")
+	fmt.Println("  resp, err := core.GenerateVideo(ctx, provider, video.GenerateVideoRequest{")
+	fmt.Println("      Model:  \"grok-video\",")
+	fmt.Println("      Prompt: \"A drone flyover...\",")
+	fmt.Println("  })")
+	fmt.Println()
+	fmt.Println("Note: video generation is expensive and may take minutes to complete.")
+	fmt.Println("The provider handles polling internally.")
 }
