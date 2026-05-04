@@ -34,6 +34,6 @@ type Warning struct {
 type Response struct {
 	ID       string    `json:"id,omitempty"`
 	Model    string    `json:"model,omitempty"`
-	Object   Object    `json:"object,omitempty"`
+	Object   Object    `json:"object"`
 	Warnings []Warning `json:"warnings,omitempty"`
 }
