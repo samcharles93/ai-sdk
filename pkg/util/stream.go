@@ -15,8 +15,8 @@ func SimulateStream(text string, delay time.Duration) <-chan string {
 	ch := make(chan string)
 	go func() {
 		defer close(ch)
-		tokens := strings.Split(text, "")
-		for _, t := range tokens {
+		tokens := strings.SplitSeq(text, "")
+		for t := range tokens {
 			ch <- t
 			time.Sleep(delay)
 		}
