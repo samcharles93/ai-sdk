@@ -189,7 +189,7 @@ function addMessage(role, text, rawMsg) {
 
   if (rawMsg && rawMsg.parts) {
     for (const part of rawMsg.parts) {
-      switch (part.part) {
+      switch (part.type) {
         case 'text':
           content.textContent += part.text || '';
           break;
@@ -199,14 +199,16 @@ function addMessage(role, text, rawMsg) {
           r.textContent = part.text;
           div.insertBefore(r, content);
           break;
-        case 'tool-call':
-          const tc = document.createElement('div');
-          tc.className = 'tool';
-          tc.innerHTML = '<span class="name">🔧 ' + part.toolName + '</span>';
-          if (part.output) {
-            tc.innerHTML += '<div class="result">→ ' + JSON.stringify(part.output) + '</div>';
+        default:
+          if (part.type && (part.type.startsWith('tool-') || part.type === 'dynamic-tool')) {
+            const tc = document.createElement('div');
+            tc.className = 'tool';
+            tc.innerHTML = '<span class="name">🔧 ' + part.toolName + '</span>';
+            if (part.output) {
+              tc.innerHTML += '<div class="result">→ ' + JSON.stringify(part.output) + '</div>';
+            }
+            div.appendChild(tc);
           }
-          div.appendChild(tc);
           break;
       }
     }
