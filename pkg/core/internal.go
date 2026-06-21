@@ -1,8 +1,10 @@
 package core
 
-import "strings"
+import (
+	"strings"
 
-import "github.com/samcharles93/ai-sdk/pkg/chat"
+	"github.com/samcharles93/ai-sdk/pkg/chat"
+)
 
 // mapFinishReason translates a provider-level finish reason string into
 // the canonical [FinishReason] vocabulary. Both underscore and hyphen

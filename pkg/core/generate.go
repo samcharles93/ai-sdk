@@ -60,11 +60,11 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 		}
 
 		req := chat.Request{
-			Model:       opts.Model,
-			Messages:    messages,
-			MaxTokens:   opts.MaxTokens,
-			Temperature: opts.Temperature,
-			Tools:       wireTools,
+			Model:           opts.Model,
+			Messages:        messages,
+			MaxTokens:       opts.MaxTokens,
+			Temperature:     opts.Temperature,
+			Tools:           wireTools,
 			ProviderOptions: opts.ProviderOptions,
 		}
 

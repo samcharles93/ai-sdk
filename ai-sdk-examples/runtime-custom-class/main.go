@@ -28,6 +28,7 @@ func (echoProvider) Chat(ctx context.Context, req chat.Request) (chat.Response, 
 		Usage:   chat.Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2},
 	}, nil
 }
+
 func (echoProvider) ChatStream(ctx context.Context, req chat.Request) (chat.Stream, error) {
 	return &echoStream{content: "echo: " + lastUserContent(req.Messages)}, nil
 }
@@ -62,6 +63,7 @@ func (echoClass) Name() string { return "echo" }
 func (echoClass) Supports(cap runtime.Capability) bool {
 	return cap == runtime.CapabilityChat
 }
+
 func (echoClass) New(ctx context.Context, cfg runtime.ProviderConfig, model runtime.ModelInfo) (runtime.ProviderSet, error) {
 	return runtime.ProviderSet{Chat: echoProvider{}}, nil
 }
