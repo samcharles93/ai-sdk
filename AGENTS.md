@@ -16,6 +16,12 @@ Dependency direction: **inward only** — outer layers depend on inner layers, n
 │                  pkg/uimessage/                   │  UI message protocol (SSE, chunks)
 │                  pkg/uimessage/sse/               │  SSE writer, stream processor
 ├──────────────────────────────────────────────────┤
+│  Runtime         pkg/runtime/                     │  Provider-agnostic model resolution:
+│  ─────────────────────────────────────────────── │    models.dev catalog, pluggable
+│                                                   │    ProviderClass registry, Chat/Embed
+│                                                   │    entry points.
+│                                                   │  Knows: catalog, classes, core, domains
+├──────────────────────────────────────────────────┤
 │  Agent           pkg/agent/                       │  Tool-loop agent over StreamText
 │  ─────────────────────────────────────────────── │  Knows: core, domain interfaces
 ├──────────────────────────────────────────────────┤
@@ -76,20 +82,22 @@ Dependency direction: **inward only** — outer layers depend on inner layers, n
 
 3. **Core/Services (`pkg/core/`)** MAY import domain packages and their interfaces. It MUST NOT import provider implementations or UI packages. It works strictly against interfaces.
 
-4. **Middleware (`pkg/middleware/`)** MAY import domain packages. It MUST NOT import core, providers, or UI.
+4. **Runtime (`pkg/runtime/`)** MAY import domain packages, provider implementations, and core. It is the provider-resolution and model-discovery layer. It MUST NOT be imported by providers, domain packages, or core.
 
-5. **Infrastructure (`pkg/registry/`, `pkg/schema/`, `pkg/util/`)**:
+5. **Middleware (`pkg/middleware/`)** MAY import domain packages. It MUST NOT import core, providers, UI, or runtime.
+
+6. **Infrastructure (`pkg/registry/`, `pkg/schema/`, `pkg/util/`)**:
    - `registry` — MAY import all domain interface packages. MUST NOT import providers, core, or UI.
    - `schema` — standalone, no pkg/ imports.
    - `util` — standalone, stdlib only.
 
-6. **UI (`pkg/ui/`)** is the outermost layer. It MAY import core, domain interfaces, and registry. It MUST NOT import provider implementations directly. It contains:
+7. **UI (`pkg/ui/`)** is the outermost layer. It MAY import core, domain interfaces, registry, and runtime. It MUST NOT import provider implementations directly. It contains:
    - State management structs (Go equivalents of React hooks like `useChat`)
    - Templ components (`.templ` files)
    - HTTP handlers
    - All UI depends on Datastar for streaming reactivity.
 
-7. **`cmd/`** is the composition root. It wires everything together via dependency injection. It MAY import all packages.
+8. **`cmd/`** is the composition root. It wires everything together via dependency injection. It MAY import all packages.
 
 ### Package Conventions
 
@@ -213,6 +221,44 @@ pkg/
 | xAI           | `pkg/provider/xai`             | ✅   | —     | —     | —      | —          | —      | —      | —     |
 
 ## New Package Documentation
+
+### `pkg/runtime/` — AI Provider Runtime
+
+The runtime layer resolves model references like `openai/gpt-4o` into working
+provider instances. It is designed for applications (such as `tau`) that
+want to consume AI providers without hardcoding every implementation.
+
+```
+pkg/runtime/
+  doc.go            Package-level documentation
+  provider_class.go ProviderClass interface + class registry
+  catalog.go        models.dev catalog loader + merge/overrides
+  config.go         Declarative runtime configuration
+  runtime.go        Runtime: Chat, ChatStream, provider resolution
+  builtin.go        Built-in classes (openai-compatible, openai, anthropic, ...)
+```
+
+**Key abstractions:**
+
+- `ProviderClass` — a factory that turns a `ProviderConfig` into a
+  `ProviderSet` of domain providers. Built-in classes include
+  `openai-compatible` (any OpenAI-compatible endpoint) and the known
+  models.dev npm mappings (`openai`, `anthropic`, `groq`, ...).
+- `Catalog` — loads `https://models.dev/api.json`, merges overrides,
+  and exposes provider/model metadata.
+- `Runtime` — public entry point: `Chat(ctx, "provider/model", opts)` and
+  `ChatStream(ctx, "provider/model", opts)`.
+
+**Extensibility:**
+
+```go
+runtime.RegisterClass(myCustomClass{})
+```
+
+Custom classes can perform arbitrary setup (discovery, auth exchange,
+header injection) before returning domain providers. This is the
+escape hatch for providers like OpenShift MaaS that are not directly
+covered by the built-in classes.
 
 ### `pkg/object/` — Object Generation Domain
 
