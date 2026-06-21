@@ -1,0 +1,92 @@
+version: "3"
+
+vars:
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+
+tasks:
+  default:
+    desc: Build all packages and run tests
+    cmds:
+      - go build ./...
+      - go test ./pkg/...
+
+  check:
+    desc: Run all quality checks (format, vet, lint, deadcode, test)
+    cmds:
+      - gofumpt -w .
+      - go vet ./...
+      - staticcheck ./...
+      - golangci-lint run ./...
+      - task: deadcode
+      - go test ./pkg/...
+
+  fmt:
+    desc: Format all Go source files
+    cmds:
+      - gofumpt -w .
+      - goimports -w .
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  staticcheck:
+    desc: Run staticcheck
+    cmds:
+      - staticcheck ./...
+
+  deadcode:
+    desc: Detect dead code (exclude tests)
+    cmds:
+      - golangci-lint run --tests=false --enable-only=unused,staticcheck ./...
+
+  modernize:
+    desc: Apply modern Go idioms
+    cmds:
+      - go fix ./...
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./pkg/...
+
+  test:race:
+    desc: Run tests with race detector
+    cmds:
+      - go test -race ./pkg/...
+
+  test:cover:
+    desc: Run tests with coverage
+    cmds:
+      - go test -coverprofile=coverage.out ./pkg/...
+      - go tool cover -func=coverage.out
+
+  tidy:
+    desc: Tidy go.mod across all modules
+    cmds:
+      - go mod tidy
+      - cd ai-sdk-examples && go mod tidy
+
+  clean:
+    desc: Remove build and coverage artefacts
+    cmds:
+      - rm -f coverage.out
+
+  release:check:
+    desc: Verify release readiness
+    cmds:
+      - task: check
+      - task: tidy
+      - echo "{{.VERSION}}"
+
+  release:dry:
+    desc: Dry-run goreleaser
+    cmds:
+      - goreleaser release --snapshot --clean --skip=publish

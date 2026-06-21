@@ -1,0 +1,40 @@
+# GoReleaser configuration for the ai-sdk Go library.
+# Since this is a library (no binaries), goreleaser only manages the
+# GitHub release with changelog. The Go module proxy picks up tags
+# automatically — no build artefacts needed.
+version: 2
+
+# No builds — this is a library.
+builds:
+  - skip: true
+
+# Generate changelog from conventional commits.
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^ci:"
+      - "^test:"
+  groups:
+    - title: Features
+      regexp: "^feat(\\(.*\\))?:.*"
+      order: 0
+    - title: Bug fixes
+      regexp: "^fix(\\(.*\\))?:.*"
+      order: 1
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: samcharles93
+    name: ai-sdk
+  prerelease: auto
+
+# Verify the module is tidy before releasing.
+before:
+  hooks:
+    - go mod tidy
+    - cd ai-sdk-examples && go mod tidy
