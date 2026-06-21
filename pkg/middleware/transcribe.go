@@ -9,5 +9,5 @@ type TranscribeMiddleware func(transcribe.Provider) transcribe.Provider
 // ChainTranscribe composes multiple TranscribeMiddleware into a single middleware.
 // It uses the generic Chain function from chain.go.
 func ChainTranscribe(ms ...TranscribeMiddleware) TranscribeMiddleware {
-	return ChainGeneric[transcribe.Provider, TranscribeMiddleware](ms...)
+	return ChainGeneric(ms...)
 }

@@ -243,7 +243,6 @@ func (r *Runtime) resolveModel(ref ModelRef) (ModelInfo, error) {
 		ID:         ref.ModelID,
 		ProviderID: ref.ProviderID,
 		URL:        strings.TrimRight(cfg.BaseURL, "/"),
-		Ready:      true,
 	}, nil
 }
 
@@ -370,7 +369,6 @@ func configToModelInfo(providerID string, mc ModelConfig) ModelInfo {
 		ProviderID:       providerID,
 		Name:             mc.Name,
 		URL:              strings.TrimRight(mc.URL, "/"),
-		Ready:            true,
 		Reasoning:        mc.Reasoning,
 		ToolCall:         mc.ToolCall,
 		StructuredOutput: mc.StructuredOutput,

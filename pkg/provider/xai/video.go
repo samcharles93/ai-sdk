@@ -142,9 +142,10 @@ func (p *Provider) GenerateVideo(ctx context.Context, req video.GenerateVideoReq
 
 	// Determine endpoint based on mode.
 	endpoint := p.baseURL + videoGenerationsAPIPath
-	if opts.Mode == "edit-video" {
+	switch opts.Mode {
+	case "edit-video":
 		endpoint = p.baseURL + "/v1/videos/edits"
-	} else if opts.Mode == "extend-video" {
+	case "extend-video":
 		endpoint = p.baseURL + "/v1/videos/extensions"
 	}
 

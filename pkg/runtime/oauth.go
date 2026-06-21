@@ -31,7 +31,7 @@ import (
 
 const (
 	oauthDefaultTimeout = 5 * time.Minute
-	tokenCacheDir        = "oauth"
+	tokenCacheDir       = "oauth"
 )
 
 // OAuthPKCEResolver is the built-in AuthResolver for AuthTypeOAuthPKCE.

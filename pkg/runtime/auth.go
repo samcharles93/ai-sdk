@@ -98,8 +98,8 @@ func (noneResolver) Resolve(ctx context.Context, cfg ProviderConfig) (AuthResult
 var (
 	authMu        sync.RWMutex
 	authResolvers = map[AuthType]AuthResolver{
-		AuthTypeNone:      noneResolver{},
-		AuthTypeAPIKey:    apiKeyResolver{},
+		AuthTypeNone:   noneResolver{},
+		AuthTypeAPIKey: apiKeyResolver{},
 	}
 )
 

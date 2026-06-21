@@ -60,17 +60,17 @@ type ProviderConfig struct {
 // ModelConfig is a configured model entry for a provider. It is merged
 // with catalog metadata by the runtime.
 type ModelConfig struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name,omitempty"`
-	URL              string            `json:"url,omitempty"`
-	ContextWindow    int               `json:"context_window,omitempty"`
-	MaxOutputTokens  int               `json:"max_output_tokens,omitempty"`
-	Reasoning        bool              `json:"reasoning,omitempty"`
-	ToolCall         bool              `json:"tool_call,omitempty"`
-	StructuredOutput bool              `json:"structured_output,omitempty"`
-	Temperature      bool              `json:"temperature,omitempty"`
-	Cost             CostConfig        `json:"cost,omitempty"`
-	Extra            map[string]any    `json:"extra,omitempty"`
+	ID               string         `json:"id"`
+	Name             string         `json:"name,omitempty"`
+	URL              string         `json:"url,omitempty"`
+	ContextWindow    int            `json:"context_window,omitempty"`
+	MaxOutputTokens  int            `json:"max_output_tokens,omitempty"`
+	Reasoning        bool           `json:"reasoning,omitempty"`
+	ToolCall         bool           `json:"tool_call,omitempty"`
+	StructuredOutput bool           `json:"structured_output,omitempty"`
+	Temperature      bool           `json:"temperature,omitempty"`
+	Cost             CostConfig     `json:"cost"`
+	Extra            map[string]any `json:"extra,omitempty"`
 }
 
 // CostConfig carries per-token pricing metadata.
@@ -81,14 +81,13 @@ type CostConfig struct {
 	CacheWrite float64 `json:"cache_write,omitempty"`
 }
 
-// ModelInfo is the runtime's normalized view of a model, combining
+// ModelInfo is the runtime's normalised view of a model, combining
 // catalog data and configured overrides.
 type ModelInfo struct {
 	ID               string
 	ProviderID       string
 	Name             string
 	URL              string
-	Ready            bool
 	ContextWindow    int
 	MaxOutputTokens  int
 	Reasoning        bool

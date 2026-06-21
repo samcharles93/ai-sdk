@@ -25,38 +25,38 @@ var ErrCatalogUnavailable = errors.New("runtime: model catalog unavailable")
 // CatalogProvider mirrors models.dev's provider entry.
 type CatalogProvider struct {
 	ID     string                  `json:"id"`
-	NPM    string                  `json:"npm,omitempty"`
-	API    string                  `json:"api,omitempty"`
-	Env    []string                `json:"env,omitempty"`
-	Models map[string]CatalogModel `json:"models,omitempty"`
+	NPM    string                  `json:"npm,omitzero"`
+	API    string                  `json:"api,omitzero"`
+	Env    []string                `json:"env,omitzero"`
+	Models map[string]CatalogModel `json:"models,omitzero"`
 }
 
 // CatalogModel mirrors the per-provider model entries from models.dev.
 // The runtime uses these as metadata; it does not enforce that every
 // provider exposes every advertised model.
 type CatalogModel struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name,omitempty"`
-	Family     string     `json:"family,omitempty"`
-	Attachment bool       `json:"attachment,omitempty"`
-	Reasoning  bool       `json:"reasoning,omitempty"`
-	ToolCall   bool       `json:"tool_call,omitempty"`
-	Structured bool       `json:"structured_output,omitempty"`
-	Temperature bool    `json:"temperature,omitempty"`
-	Modalities struct {
-		Input  []string `json:"input,omitempty"`
-		Output []string `json:"output,omitempty"`
-	} `json:"modalities,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name,omitzero"`
+	Family      string `json:"family,omitzero"`
+	Attachment  bool   `json:"attachment,omitzero"`
+	Reasoning   bool   `json:"reasoning,omitzero"`
+	ToolCall    bool   `json:"tool_call,omitzero"`
+	Structured  bool   `json:"structured_output,omitzero"`
+	Temperature bool   `json:"temperature,omitzero"`
+	Modalities  struct {
+		Input  []string `json:"input,omitzero"`
+		Output []string `json:"output,omitzero"`
+	} `json:"modalities"`
 	Limit struct {
-		Context int `json:"context,omitempty"`
-		Output  int `json:"output,omitempty"`
-	} `json:"limit,omitempty"`
+		Context int `json:"context,omitzero"`
+		Output  int `json:"output,omitzero"`
+	} `json:"limit"`
 	Cost struct {
-		Input      float64 `json:"input,omitempty"`
-		Output     float64 `json:"output,omitempty"`
-		CacheRead  float64 `json:"cache_read,omitempty"`
-		CacheWrite float64 `json:"cache_write,omitempty"`
-	} `json:"cost,omitempty"`
+		Input      float64 `json:"input,omitzero"`
+		Output     float64 `json:"output,omitzero"`
+		CacheRead  float64 `json:"cache_read,omitzero"`
+		CacheWrite float64 `json:"cache_write,omitzero"`
+	} `json:"cost"`
 }
 
 // ContextWindow returns the model's context limit if known.
@@ -114,7 +114,7 @@ func NewCatalog(opts CatalogOptions) *Catalog {
 	return &Catalog{opts: opts}
 }
 
-// Provider returns a provider by id, normalized to lower case.
+// Provider returns a provider by id, normalised to lower case.
 func (c *Catalog) Provider(id string) (CatalogProvider, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -293,25 +293,27 @@ func (c *Catalog) readCache() (map[string]CatalogProvider, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	info, err := os.Stat(c.opts.CachePath)
-	if err != nil {
-		return providers, false, nil
+	info, statErr := os.Stat(c.opts.CachePath)
+	fresh := false
+	if statErr == nil {
+		fresh = c.opts.TTL > 0 && time.Since(info.ModTime()) <= c.opts.TTL
 	}
-	fresh := c.opts.TTL > 0 && time.Since(info.ModTime()) <= c.opts.TTL
+	// Return nil on purpose: stale cache is better than nothing.
+	_ = statErr
 	return providers, fresh, nil
 }
 
 func (c *Catalog) writeCache(body []byte) error {
 	dir := filepath.Dir(c.opts.CachePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("creating catalog cache dir: %w", err)
+		return fmt.Errorf("creating catalogue cache dir: %w", err)
 	}
 	tmp := c.opts.CachePath + ".tmp"
 	if err := os.WriteFile(tmp, body, 0o644); err != nil {
-		return fmt.Errorf("writing catalog cache: %w", err)
+		return fmt.Errorf("writing catalogue cache: %w", err)
 	}
 	if err := os.Rename(tmp, c.opts.CachePath); err != nil {
-		return fmt.Errorf("finalizing catalog cache: %w", err)
+		return fmt.Errorf("finalising catalogue cache: %w", err)
 	}
 	return nil
 }
@@ -319,7 +321,7 @@ func (c *Catalog) writeCache(body []byte) error {
 func (c *Catalog) fetchCatalog(ctx context.Context) ([]byte, error) {
 	url := c.opts.url()
 	if url == "" {
-		return nil, fmt.Errorf("%w: no catalog URL configured", ErrCatalogUnavailable)
+		return nil, fmt.Errorf("%w: no catalogue URL configured", ErrCatalogUnavailable)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

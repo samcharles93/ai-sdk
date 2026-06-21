@@ -102,9 +102,9 @@ func TestCatalogMergeProviders(t *testing.T) {
 			},
 		},
 		"custom-vendor": {
-			ID:   "custom-vendor",
-			NPM:  "@ai-sdk/openai-compatible",
-			API:  "https://custom-vendor.example.com",
+			ID:  "custom-vendor",
+			NPM: "@ai-sdk/openai-compatible",
+			API: "https://custom-vendor.example.com",
 		},
 	})
 

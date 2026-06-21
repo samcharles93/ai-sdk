@@ -328,6 +328,12 @@ func (p *Provider) newHTTPRequest(ctx context.Context, body map[string]any) (*ht
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
+	// Inject extra headers from the request context, e.g. from plugin hooks.
+	if headers, ok := chat.ContextHeaders(ctx); ok {
+		for k, v := range headers {
+			httpReq.Header.Set(k, v)
+		}
+	}
 	return httpReq, nil
 }
 

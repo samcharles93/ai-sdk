@@ -9,5 +9,5 @@ type VideoMiddleware func(video.Provider) video.Provider
 // ChainVideo composes multiple VideoMiddleware into a single middleware.
 // It uses the generic Chain function from chain.go.
 func ChainVideo(ms ...VideoMiddleware) VideoMiddleware {
-	return ChainGeneric[video.Provider, VideoMiddleware](ms...)
+	return ChainGeneric(ms...)
 }

@@ -9,5 +9,5 @@ type ObjectMiddleware func(object.Provider) object.Provider
 // ChainObject composes multiple ObjectMiddleware into a single middleware.
 // It uses the generic Chain function from chain.go.
 func ChainObject(ms ...ObjectMiddleware) ObjectMiddleware {
-	return ChainGeneric[object.Provider, ObjectMiddleware](ms...)
+	return ChainGeneric(ms...)
 }

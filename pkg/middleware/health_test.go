@@ -20,9 +20,11 @@ func (p *healthProvider) HealthCheck(ctx context.Context) error {
 	}
 	return nil
 }
+
 func (p *healthProvider) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
 	return p.chatFn(ctx, req)
 }
+
 func (p *healthProvider) ChatStream(ctx context.Context, req chat.Request) (chat.Stream, error) {
 	return nil, errors.New("not implemented")
 }

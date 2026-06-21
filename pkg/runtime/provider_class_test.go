@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/samcharles93/ai-sdk/pkg/chat"
@@ -13,6 +14,7 @@ func (fakeProvider) Name() string { return "fake" }
 func (fakeProvider) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
 	return chat.Response{}, nil
 }
+
 func (fakeProvider) ChatStream(ctx context.Context, req chat.Request) (chat.Stream, error) {
 	return nil, nil
 }
@@ -24,13 +26,9 @@ type fakeClass struct {
 
 func (c fakeClass) Name() string { return c.name }
 func (c fakeClass) Supports(cap Capability) bool {
-	for _, s := range c.caps {
-		if s == cap {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.caps, cap)
 }
+
 func (c fakeClass) New(ctx context.Context, cfg ProviderConfig, model ModelInfo) (ProviderSet, error) {
 	return ProviderSet{Chat: fakeProvider{}}, nil
 }

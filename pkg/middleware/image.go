@@ -9,5 +9,5 @@ type ImageMiddleware func(image.Provider) image.Provider
 // ChainImage composes multiple ImageMiddleware into a single middleware.
 // It uses the generic Chain function from chain.go.
 func ChainImage(ms ...ImageMiddleware) ImageMiddleware {
-	return ChainGeneric[image.Provider, ImageMiddleware](ms...)
+	return ChainGeneric(ms...)
 }

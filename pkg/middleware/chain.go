@@ -18,5 +18,5 @@ func ChainGeneric[T any, M ~func(T) T](middlewares ...M) M {
 // wrapper over ChainGeneric with the same semantics. Call sites in the repo
 // use Chain[T](...) and rely on type inference for the middleware type M.
 func Chain[T any, M ~func(T) T](middlewares ...M) M {
-	return ChainGeneric[T, M](middlewares...)
+	return ChainGeneric(middlewares...)
 }

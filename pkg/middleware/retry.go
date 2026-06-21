@@ -119,7 +119,7 @@ func DefaultRetryableError(err error) bool {
 
 	// Explicit auth / invalid-request exclusions.
 	nonRetryable := []string{
-		"auth", "unauthorized", "forbidden", "401", "403",
+		"auth", "unauthorised", "forbidden", "401", "403",
 		"invalid request", "invalid api key",
 	}
 	errMsg := strings.ToLower(err.Error())
@@ -189,7 +189,7 @@ func unwrap(err error) error {
 // failure rather than a transient rate limit.
 func isQuotaPermanent(err error) bool {
 	errMsg := strings.ToLower(err.Error())
-	permanent := []string{"auth", "unauthorized", "forbidden", "invalid key", "payment"}
+	permanent := []string{"auth", "unauthorised", "forbidden", "invalid key", "payment"}
 	for _, kw := range permanent {
 		if strings.Contains(errMsg, kw) {
 			return true

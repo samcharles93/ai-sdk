@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,18 +48,18 @@ func RegisterBuiltinClasses() {
 // provider class names registered by RegisterBuiltinClasses. This lets
 // the Runtime select a class automatically for known providers.
 var NPMClassMapping = map[string]string{
-	"@ai-sdk/openai":           "openai",
-	"@ai-sdk/anthropic":          "anthropic",
-	"@ai-sdk/azure":              "azure",
-	"@ai-sdk/cohere":             "cohere",
-	"@ai-sdk/deepseek":           "deepseek",
-	"@ai-sdk/gemini":             "gemini",
-	"@ai-sdk/groq":               "groq",
-	"@ai-sdk/mistral":            "mistral",
-	"@ai-sdk/ollama":             "ollama",
-	"@ai-sdk/perplexity":         "perplexity",
-	"@ai-sdk/xai":                "xai",
-	"@ai-sdk/openai-compatible":  "openai-compatible",
+	"@ai-sdk/openai":            "openai",
+	"@ai-sdk/anthropic":         "anthropic",
+	"@ai-sdk/azure":             "azure",
+	"@ai-sdk/cohere":            "cohere",
+	"@ai-sdk/deepseek":          "deepseek",
+	"@ai-sdk/gemini":            "gemini",
+	"@ai-sdk/groq":              "groq",
+	"@ai-sdk/mistral":           "mistral",
+	"@ai-sdk/ollama":            "ollama",
+	"@ai-sdk/perplexity":        "perplexity",
+	"@ai-sdk/xai":               "xai",
+	"@ai-sdk/openai-compatible": "openai-compatible",
 }
 
 // openAICompatibleClass is the generic class for any endpoint that speaks
@@ -117,12 +118,7 @@ type providerSetBuilder interface {
 func (c simpleClass) Name() string { return c.name }
 
 func (c simpleClass) Supports(cap Capability) bool {
-	for _, supported := range c.caps {
-		if supported == cap {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.caps, cap)
 }
 
 func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInfo) (ProviderSet, error) {

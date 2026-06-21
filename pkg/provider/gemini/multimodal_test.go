@@ -13,7 +13,7 @@ import (
 )
 
 // TestChat_Multimodal_InlineData verifies that an inline ImagePart is
-// base64-encoded and serialized as a contents[].parts[].inline_data
+// base64-encoded and serialised as a contents[].parts[].inline_data
 // wire entry alongside any text parts.
 func TestChat_Multimodal_InlineData(t *testing.T) {
 	var bodyBytes []byte

@@ -9,5 +9,5 @@ type SpeechMiddleware func(speech.Provider) speech.Provider
 // ChainSpeech composes multiple SpeechMiddleware into a single middleware.
 // It uses the generic Chain function from chain.go.
 func ChainSpeech(ms ...SpeechMiddleware) SpeechMiddleware {
-	return ChainGeneric[speech.Provider, SpeechMiddleware](ms...)
+	return ChainGeneric(ms...)
 }

@@ -9,5 +9,5 @@ type RerankMiddleware func(rerank.Provider) rerank.Provider
 // ChainRerank composes multiple RerankMiddleware into a single middleware.
 // It uses the generic Chain function from chain.go.
 func ChainRerank(ms ...RerankMiddleware) RerankMiddleware {
-	return ChainGeneric[rerank.Provider, RerankMiddleware](ms...)
+	return ChainGeneric(ms...)
 }

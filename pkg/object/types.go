@@ -1,6 +1,6 @@
 package object
 
-// Object is a simple named artifact produced by providers.
+// Object is a simple named artefact produced by providers.
 // Name is a short identifier (for example a filename) and Content holds
 // the textual payload.
 type Object struct {

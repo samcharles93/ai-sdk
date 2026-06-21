@@ -9,5 +9,5 @@ type EmbedMiddleware func(embed.Provider) embed.Provider
 // ChainEmbed composes multiple EmbedMiddleware into a single middleware.
 // It uses the generic Chain function from chain.go.
 func ChainEmbed(ms ...EmbedMiddleware) EmbedMiddleware {
-	return ChainGeneric[embed.Provider, EmbedMiddleware](ms...)
+	return ChainGeneric(ms...)
 }

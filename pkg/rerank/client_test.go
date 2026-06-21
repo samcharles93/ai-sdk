@@ -35,7 +35,7 @@ func TestClient_NoProvider(t *testing.T) {
 		t.Fatalf("no provider: got %v, want ErrNoProvider", err)
 	}
 	if c.Provider() != nil {
-		t.Fatal("nil-initialized client.Provider must return nil")
+		t.Fatal("nil-initialised client.Provider must return nil")
 	}
 }
 

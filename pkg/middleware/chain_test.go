@@ -21,7 +21,7 @@ func TestChain_ComposesLeftToRight(t *testing.T) {
 		}
 	}
 
-	composed := Chain[func(string) string](funcs(m1, m2)...)(base)
+	composed := Chain(funcs(m1, m2)...)(base)
 
 	out := composed("start")
 

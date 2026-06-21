@@ -26,5 +26,5 @@ type ChatResponseHook func(ctx context.Context, req *chat.Request, resp *chat.Re
 
 // ChainChat composes ChatMiddleware slices using the generic ChainGeneric.
 func ChainChat(ms ...ChatMiddleware) ChatMiddleware {
-	return ChainGeneric[chat.Provider](ms...)
+	return ChainGeneric(ms...)
 }

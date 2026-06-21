@@ -29,7 +29,7 @@ func (t PromptTemplate) Render(vars map[string]string) string {
 	})
 }
 
-// SystemPrompt represents a prompt that sets the system / model behavior.
+// SystemPrompt represents a prompt that sets the system / model behaviour.
 type SystemPrompt string
 
 // NewSystemPrompt constructs a SystemPrompt from instructions. If constraints
