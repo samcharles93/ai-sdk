@@ -68,6 +68,16 @@ func (r *Runtime) LoadCatalog(ctx context.Context) error {
 	return r.catalog.Load(ctx)
 }
 
+// ResolveAuth resolves credentials for a configured provider using its
+// registered auth resolver.
+func (r *Runtime) ResolveAuth(ctx context.Context, providerID string) (AuthResult, error) {
+	cfg, err := r.buildProviderConfig(providerID)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	return resolveAuth(ctx, cfg)
+}
+
 // Catalog returns the runtime's catalog. It may be nil until LoadCatalog
 // is called.
 func (r *Runtime) Catalog() *Catalog {
