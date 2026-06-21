@@ -37,4 +37,4 @@ release:
 before:
   hooks:
     - go mod tidy
-    - cd ai-sdk-examples && go mod tidy
+    - sh -c 'cd ai-sdk-examples && go mod tidy'
