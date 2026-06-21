@@ -27,6 +27,10 @@ type GenerateOptions struct {
 	MaxTokens int
 	// StopWhen is an optional stop condition. Defaults to StepCountIs(1).
 	StopWhen StopCondition
+	// ProviderOptions carries provider-specific options keyed by
+	// provider name (e.g. "openai", "anthropic"). These are passed
+	// directly to chat.Request.ProviderOptions.
+	ProviderOptions map[string]any
 }
 
 // GenerateText performs a non-streaming text generation with optional
@@ -61,6 +65,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 			MaxTokens:   opts.MaxTokens,
 			Temperature: opts.Temperature,
 			Tools:       wireTools,
+			ProviderOptions: opts.ProviderOptions,
 		}
 
 		resp, err := provider.Chat(ctx, req)

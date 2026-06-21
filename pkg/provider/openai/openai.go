@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,23 @@ import (
 
 	"github.com/samcharles93/ai-sdk/pkg/chat"
 )
+
+// imagePartToURL converts a chat.ImagePart into a URL string suitable
+// for OpenAI's image_url content block. Inline data is base64-encoded
+// into a data URI.
+func imagePartToURL(p chat.ImagePart) (string, error) {
+	if strings.TrimSpace(p.URL) != "" {
+		return p.URL, nil
+	}
+	if len(p.Data) == 0 {
+		return "", fmt.Errorf("ImagePart has neither URL nor Data")
+	}
+	mediaType := strings.TrimSpace(p.MediaType)
+	if mediaType == "" {
+		return "", fmt.Errorf("ImagePart Data requires MediaType")
+	}
+	return fmt.Sprintf("data:%s;base64,%s", mediaType, base64.StdEncoding.EncodeToString(p.Data)), nil
+}
 
 const (
 	defaultBaseURL = "https://api.openai.com"
@@ -40,16 +58,18 @@ type Provider struct {
 // Compile-time assertion that *Provider implements chat.Provider.
 var _ chat.Provider = (*Provider)(nil)
 
-// New returns a new OpenAI Provider. It returns an error if APIKey is empty.
+// New returns a new OpenAI Provider. APIKey is required for the
+// official api.openai.com endpoint, but may be empty for self-hosted
+// or local OpenAI-compatible endpoints (e.g. llama.cpp, Ollama).
 func New(cfg Config) (*Provider, error) {
-	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("openai: APIKey is required: %w", chat.ErrInvalidRequest)
-	}
 	base := cfg.BaseURL
 	if base == "" {
 		base = defaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
+	if cfg.APIKey == "" && base == defaultBaseURL {
+		return nil, fmt.Errorf("openai: APIKey is required for api.openai.com: %w", chat.ErrInvalidRequest)
+	}
 	hc := cfg.HTTPClient
 	if hc == nil {
 		hc = &http.Client{Timeout: defaultTimeout}
@@ -76,11 +96,12 @@ type wireToolCall struct {
 }
 
 type wireMessage struct {
-	Role       string         `json:"role"`
-	Content    string         `json:"content"`
-	Name       string         `json:"name,omitempty"`
-	ToolCalls  []wireToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string         `json:"tool_call_id,omitempty"`
+	Role             string         `json:"role"`
+	Content          any            `json:"content"`
+	ReasoningContent string         `json:"reasoning_content,omitempty"`
+	Name             string         `json:"name,omitempty"`
+	ToolCalls        []wireToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string         `json:"tool_call_id,omitempty"`
 }
 
 type wireUsage struct {
@@ -113,9 +134,10 @@ type wireDeltaToolCall struct {
 }
 
 type wireDelta struct {
-	Role      string              `json:"role,omitempty"`
-	Content   string              `json:"content,omitempty"`
-	ToolCalls []wireDeltaToolCall `json:"tool_calls,omitempty"`
+	Role             string              `json:"role,omitempty"`
+	Content          string              `json:"content,omitempty"`
+	ReasoningContent string              `json:"reasoning_content,omitempty"`
+	ToolCalls        []wireDeltaToolCall `json:"tool_calls,omitempty"`
 }
 
 type wireStreamChoice struct {
@@ -144,9 +166,11 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 	msgs := make([]wireMessage, len(req.Messages))
 	for i, m := range req.Messages {
 		wm := wireMessage{Role: string(m.Role), Name: m.Name}
-		// Walk canonical Parts, joining text and warning on non-text
-		// content types that OpenAI does not support as input.
+		// Walk canonical Parts. OpenAI supports either a single
+		// content string or an array of content blocks. We use the
+		// array form whenever non-text parts are present.
 		var textChunks []string
+		var contentBlocks []map[string]any
 		for _, part := range m.GetParts() {
 			switch p := part.(type) {
 			case chat.TextPart:
@@ -154,9 +178,19 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 					textChunks = append(textChunks, p.Text)
 				}
 			case chat.ImagePart:
-				warnings = append(warnings, chat.Warning{
-					Type:    "unsupported-content",
-					Message: "openai: ImagePart not supported by current models",
+				imageURL, err := imagePartToURL(p)
+				if err != nil {
+					warnings = append(warnings, chat.Warning{
+						Type:    "invalid-content",
+						Message: fmt.Sprintf("openai: %v", err),
+					})
+					continue
+				}
+				contentBlocks = append(contentBlocks, map[string]any{
+					"type": "image_url",
+					"image_url": map[string]any{
+						"url": imageURL,
+					},
 				})
 			case chat.FilePart:
 				warnings = append(warnings, chat.Warning{
@@ -179,7 +213,14 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 				}
 			}
 		}
-		if len(textChunks) > 0 {
+		switch {
+		case len(contentBlocks) > 0:
+			// Structured array content. Add text as a text block if present.
+			if len(textChunks) > 0 {
+				contentBlocks = append([]map[string]any{{"type": "text", "text": strings.Join(textChunks, "")}}, contentBlocks...)
+			}
+			wm.Content = contentBlocks
+		case len(textChunks) > 0:
 			wm.Content = strings.Join(textChunks, "")
 		}
 		switch m.Role {
@@ -251,6 +292,11 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 		default:
 			return nil, nil, fmt.Errorf("openai: unknown tool_choice type %q: %w", req.ToolChoice.Type, chat.ErrInvalidRequest)
 		}
+	}
+	// Apply provider-specific options.
+	opts, _ := chat.ProviderOptionsFor[openaiProviderOptions](req.ProviderOptions, "openai")
+	if opts.ReasoningEffort != "" {
+		body["reasoning_effort"] = opts.ReasoningEffort
 	}
 	if req.Temperature != 0 {
 		body["temperature"] = req.Temperature
@@ -344,14 +390,18 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 	}
 	if len(wr.Choices) > 0 {
 		c := wr.Choices[0]
-		out.Content = c.Message.Content
+		contentText := extractTextContent(c.Message.Content)
+		out.Content = contentText
 		out.FinishReason = c.FinishReason
 		if c.Message.Role != "" {
 			out.Role = chat.Role(c.Message.Role)
 		}
-		// Populate canonical Parts: TextPart from content.
-		if c.Message.Content != "" {
-			out.Parts = append(out.Parts, chat.TextPart{Text: c.Message.Content})
+		// Populate canonical Parts: ReasoningPart first (if any), then TextPart.
+		if c.Message.ReasoningContent != "" {
+			out.Parts = append(out.Parts, chat.ReasoningPart{Text: c.Message.ReasoningContent})
+		}
+		if contentText != "" {
+			out.Parts = append(out.Parts, chat.TextPart{Text: contentText})
 		}
 		if len(c.Message.ToolCalls) > 0 {
 			tcs := make([]chat.ToolCall, len(c.Message.ToolCalls))
@@ -369,6 +419,44 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 		}
 	}
 	return out, nil
+}
+
+// --- provider-specific options ------------------------------------------
+
+// openaiProviderOptions holds provider-specific options for OpenAI.
+type openaiProviderOptions struct {
+	// ReasoningEffort controls how much internal reasoning the model
+	// performs before responding. Supported values: "none", "minimal",
+	// "low", "medium", "high", "xhigh".
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	// ReasoningSummary controls whether reasoning content includes
+	// summaries. Supported values: "auto", "detailed".
+	ReasoningSummary string `json:"reasoning_summary,omitempty"`
+}
+
+// extractTextContent returns the plain text from a wire content field
+// that may be either a string or a content-block array.
+func extractTextContent(v any) string {
+	switch c := v.(type) {
+	case string:
+		return c
+	case []any:
+		var out []string
+		for _, item := range c {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if typ, _ := m["type"].(string); typ == "text" {
+				if t, ok := m["text"].(string); ok {
+					out = append(out, t)
+				}
+			}
+		}
+		return strings.Join(out, "")
+	default:
+		return ""
+	}
 }
 
 // --- ChatStream ----------------------------------------------------------
@@ -540,12 +628,13 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 				Usage:        s.pendingUsage,
 			}
 			s.bufferedFinal = &final
-			// If this same chunk also carried delta content or tool-call
-			// deltas, emit those now and let the buffered final go out on
-			// the next call.
-			if c.Delta.Content != "" || len(tcDeltas) > 0 {
+			// If this same chunk also carried delta content, reasoning,
+			// or tool-call deltas, emit those now and let the buffered
+			// final go out on the next call.
+			if c.Delta.Content != "" || c.Delta.ReasoningContent != "" || len(tcDeltas) > 0 {
 				out := chat.Chunk{
 					Delta:          c.Delta.Content,
+					ReasoningDelta: c.Delta.ReasoningContent,
 					Role:           role,
 					ToolCallDeltas: tcDeltas,
 				}
@@ -559,6 +648,7 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 		}
 		out := chat.Chunk{
 			Delta:          c.Delta.Content,
+			ReasoningDelta: c.Delta.ReasoningContent,
 			Role:           role,
 			ToolCallDeltas: tcDeltas,
 		}

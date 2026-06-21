@@ -121,6 +121,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				MaxTokens:   opts.MaxTokens,
 				Temperature: opts.Temperature,
 				Tools:       wireTools,
+				ProviderOptions: opts.ProviderOptions,
 			}
 
 			stream, err := provider.ChatStream(ctx, req)
