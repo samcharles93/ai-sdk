@@ -1,2 +1,5 @@
 .sisyphus/
 specs/
+
+dist/
+coverage.out
