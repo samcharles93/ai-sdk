@@ -9,7 +9,7 @@ Each layer is responsible for a specific concern and **MUST NOT** know about any
 
 Dependency direction: **inward only** — outer layers depend on inner layers, never the reverse.
 
-```
+```tree
 ┌──────────────────────────────────────────────────┐
 │  UI Layer        pkg/ui/                         │  Templ + Datastar components & handlers
 │  ─────────────────────────────────────────────── │  Knows: services, domain interfaces
@@ -76,32 +76,34 @@ Dependency direction: **inward only** — outer layers depend on inner layers, n
 
 ### Dependency Rules (NON-NEGOTIABLE)
 
-1. **Domain packages (`pkg/chat`, `pkg/embed`, etc.)** MUST NOT import any other `pkg/` package. Only `context`, `encoding/json`, `errors`, and other stdlib packages are allowed.
-
+1. **Domain packages (`pkg/chat`, `pkg/embed`, etc.)** MUST NOT import any other `pkg/` package. Only stdlib imports are allowed.
+   - The required `client.go` in each domain package is a thin in-package facade over that package's own `Provider` interface and types. It remains domain-layer code and does not import `pkg/core` or any other `pkg/` package.
 2. **Provider packages (`pkg/provider/*`)** MAY import domain packages (`pkg/chat`, `pkg/embed`) to implement their interfaces. They MUST NOT import `pkg/core`, `pkg/ui`, `pkg/registry`, or `pkg/middleware`.
-
 3. **Core/Services (`pkg/core/`)** MAY import domain packages and their interfaces. It MUST NOT import provider implementations or UI packages. It works strictly against interfaces.
-
+   - The `client.go` files shown in the Services row (for example, `pkg/chat/client.go`) live in their respective domain packages. `pkg/core/` does not own these files; it imports domain packages.
 4. **Runtime (`pkg/runtime/`)** MAY import domain packages, provider implementations, and core. It is the provider-resolution and model-discovery layer. It MUST NOT be imported by providers, domain packages, or core.
-
-5. **Middleware (`pkg/middleware/`)** MAY import domain packages. It MUST NOT import core, providers, UI, or runtime.
-
-6. **Infrastructure (`pkg/registry/`, `pkg/schema/`, `pkg/util/`)**:
+5. **Middleware (`pkg/middleware/`)** MAY import domain packages and infrastructure packages (`pkg/telemetry/`, `pkg/logger/`, `pkg/error/`). It MUST NOT import `pkg/core/`, provider implementations, `pkg/ui/`, or `pkg/runtime/`.
+6. **Agent (`pkg/agent/`)** MAY import `pkg/core/` and domain packages. It MUST NOT import `pkg/ui/`, `pkg/runtime/`, or provider implementations.
+7. **Infrastructure (`pkg/registry/`, `pkg/schema/`, `pkg/util/`, `pkg/upload/`, `pkg/error/`, `pkg/logger/`, `pkg/telemetry/`, `pkg/prompt/`)**:
    - `registry` — MAY import all domain interface packages. MUST NOT import providers, core, or UI.
    - `schema` — standalone, no pkg/ imports.
    - `util` — standalone, stdlib only.
-
-7. **UI (`pkg/ui/`)** is the outermost layer. It MAY import core, domain interfaces, registry, and runtime. It MUST NOT import provider implementations directly. It contains:
+   - `upload` — MAY import stdlib and domain types where needed for transport-level file handling. MUST NOT import providers, core, runtime, or UI.
+   - `error` — standalone sentinel errors; stdlib only.
+   - `logger` — standalone logging abstraction over stdlib logging primitives/interfaces. MUST NOT import providers, core, runtime, or UI.
+   - `telemetry` — standalone tracing interfaces and no-op implementations. MUST NOT import providers, core, runtime, or UI.
+   - `prompt` — standalone prompt management utilities; MUST NOT import providers, core, runtime, or UI.
+8. **UI (`pkg/ui/`)** is the outermost layer. It MAY import core, domain interfaces, registry, and runtime. It MUST NOT import provider implementations directly. It contains:
    - State management structs (Go equivalents of React hooks like `useChat`)
    - Templ components (`.templ` files)
    - HTTP handlers
    - All UI depends on Datastar for streaming reactivity.
-
-8. **`cmd/`** is the composition root. It wires everything together via dependency injection. It MAY import all packages.
+9. **`cmd/`** is the composition root. It wires everything together via dependency injection. It MAY import all packages.
 
 ### Package Conventions
 
 Every domain package MUST contain:
+
 - `doc.go` — Package-level documentation
 - `types.go` — Request/Response types
 - `provider.go` — Provider interface
@@ -111,6 +113,7 @@ Every domain package MUST contain:
 ### Interface Ownership
 
 Following [Go's interface conventions](https://go.dev/wiki/CodeReviewComments#interfaces):
+
 - **Consumers define interfaces they need**, not producers.
 - Domain packages define the `Provider` interface because they are consumed by higher layers.
 - HTTP handlers define service interfaces, not the other way around.
@@ -146,6 +149,7 @@ for real-time streaming reactivity via SSE.
 
 Templ components from the JS component libraries are ported as `.templ` files  
 using Datastar attributes for reactivity:
+
 - `data-signals` for local state
 - `data-on-*` for event handling
 - SSE streaming for real-time text deltas from `streamText`
@@ -154,7 +158,7 @@ using Datastar attributes for reactivity:
 
 ## File Organization
 
-```
+```tree
 ai-sdk-examples/            # Example programs demonstrating SDK usage
   openai-chat/              #   Simple chat CLI with OpenAI
   anthropic-agent/          #   Agent with tool-use and streaming
@@ -220,6 +224,8 @@ pkg/
 | TogetherAI    | `pkg/provider/togetherai`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
 | xAI           | `pkg/provider/xai`             | ✅   | —     | —     | —      | —          | —      | —      | —     |
 
+This table reflects currently implemented interfaces in this repository. Additional provider capabilities may be added as packages evolve against domain interface contracts.
+
 ## New Package Documentation
 
 ### `pkg/runtime/` — AI Provider Runtime
@@ -228,7 +234,7 @@ The runtime layer resolves model references like `openai/gpt-4o` into working
 provider instances. It is designed for applications (such as `tau`) that
 want to consume AI providers without hardcoding every implementation.
 
-```
+```tree
 pkg/runtime/
   doc.go            Package-level documentation
   provider_class.go ProviderClass interface + class registry
@@ -266,7 +272,7 @@ The object generation domain provides types and interfaces for structured
 JSON output from language models. It mirrors the AI SDK's `generateObject`
 function.
 
-```
+```tree
 pkg/object/
   client.go           Thin Client facade with nil-guard
   doc.go              Package-level documentation
@@ -277,12 +283,14 @@ pkg/object/
 ```
 
 **Key types:**
+
 - `Provider` interface — `GenerateObject(ctx, req) (ObjectResult, error)`
 - `Request` — Model, Prompt, MaxTokens, ProviderOptions
 - `Response` — ID, Model, Object, Warnings
 - `ObjectResult` — type alias for `any`; providers return concrete types
 
 **Usage via core:**
+
 ```go
 result, err := core.GenerateObject(ctx, provider, objRequest)
 ```
@@ -291,7 +299,7 @@ result, err := core.GenerateObject(ctx, provider, objRequest)
 
 Types and interfaces for video generation from text prompts.
 
-```
+```tree
 pkg/video/
   client.go           Thin Client facade with nil-guard
   doc.go              Package-level documentation
@@ -301,6 +309,7 @@ pkg/video/
 ```
 
 **Key types:**
+
 - `GenerateVideoRequest` — Model, Prompt, Duration, Resolution, FrameRate
 - `GenerateVideoResponse` — Videos ([]VideoResult), Warnings
 - `VideoResult` — Data, URL, MediaType
@@ -310,7 +319,7 @@ pkg/video/
 The agent package provides a tool-loop agent that orchestrates multi-step
 reasoning and tool execution over `core.StreamText`.
 
-```
+```tree
 pkg/agent/
   agent.go            Agent struct, StreamEvent types, translate()
   agent_impl.go       RunAgent function (convenience API)
@@ -318,12 +327,14 @@ pkg/agent/
 ```
 
 **Key concepts:**
+
 - `Agent` struct — Provider, Model, System, Tools, MaxSteps, Temperature, MaxTokens
 - `Agent.Run(ctx, prompt)` — returns `<-chan StreamEvent`
 - `RunAgent(ctx, provider, prompt, tools, maxSteps)` — convenience function
 - `StreamEvent` — Type-based event dispatch (TextDelta, ToolCall, ToolResult, etc.)
 
 **Event system:**
+
 ```go
 switch ev.Type {
 case agent.EventTextDelta:   // streaming text
@@ -343,7 +354,7 @@ and lifecycle management.
 
 Parses multipart form data and provides file type detection.
 
-```
+```tree
 pkg/upload/
   doc.go              Package-level documentation
   skill.go            Skill-specific upload helpers
@@ -384,6 +395,7 @@ pkg/util/
 ```
 
 **Prompt construction:**
+
 ```go
 util.SystemPrompt("You are a helpful assistant.")
 util.UserPrompt("What is the weather?")
@@ -396,13 +408,14 @@ util.FormatMessages(messages) // human-readable formatting
 
 Package-level sentinel error values for use across the project.
 
-```
+```tree
 pkg/error/
   errors.go           Sentinel error variables
   errors_test.go      Tests
 ```
 
 **Sentinel errors:**
+
 ```go
 ErrInvalidInput      = errors.New("invalid input")
 ErrTimeout           = errors.New("timeout")
@@ -417,13 +430,14 @@ ErrQuotaExceeded     = errors.New("quota exceeded")
 
 Minimal structured logging abstraction. Adaptable to `log/slog`.
 
-```
+```tree
 pkg/logger/
   logger.go           Logger interface, slogLogger adapter, NoopLogger
   logger_test.go      Tests
 ```
 
 **Key types:**
+
 - `Logger` interface — `Info(msg, attrs...), Error(msg, attrs...), Debug(msg, attrs...)`
 - `NewSlogLogger(l *slog.Logger) Logger` — adapts stdlib slog
 - `NoopLogger` — no-op implementation for tests
@@ -432,13 +446,14 @@ pkg/logger/
 
 Minimal tracing interfaces compatible with OpenTelemetry conventions.
 
-```
+```tree
 pkg/telemetry/
   doc.go              Package-level documentation
   telemetry.go        Span, Tracer interfaces, NoopSpan, NoopTracer
 ```
 
 **Key interfaces:**
+
 ```go
 type Span interface {
     End()
@@ -459,7 +474,7 @@ type Tracer interface {
 Middleware layer wrapping domain Provider interfaces. Supports composition
 via `Chain()`.
 
-```
+```tree
 pkg/middleware/
   doc.go              Package-level documentation
   middleware.go       ChatMiddleware type, ChatRequestHook, ChatResponseHook, Chain()
@@ -468,6 +483,7 @@ pkg/middleware/
 ```
 
 **Key patterns:**
+
 - `ChatMiddleware func(next chat.Provider) chat.Provider`
 - `Chain(middlewares ...ChatMiddleware) ChatMiddleware` — composes left-to-right
 - `TelemetryMiddleware` — wraps provider with OTel spans for Chat and ChatStream
@@ -477,7 +493,7 @@ pkg/middleware/
 
 Server-Sent Events wire format for the AI SDK UI message stream protocol.
 
-```
+```tree
 pkg/uimessage/sse/
   sse_test.go         Tests
   transform.go        Core text-stream to chunk channel adaptation
@@ -485,6 +501,7 @@ pkg/uimessage/sse/
 ```
 
 **Key components:**
+
 - `Writer` — streams `uimessage.Chunk` values as SSE `data:` events
 - `NewWriter(rw http.ResponseWriter)` — applies headers, flushes automatically
 - `Headers` — canonical AI SDK UI stream headers (`X-Vercel-Ai-Ui-Message-Stream: v1`)
@@ -504,6 +521,7 @@ Example programs demonstrating SDK usage live in `ai-sdk-examples/`:
 | `image-generation/`    | Image generation API pattern (Azure, TogetherAI)   |
 
 Run examples from the workspace root:
+
 ```bash
 # Openai chat
 OPENAI_API_KEY=sk-... go run ./ai-sdk-examples/openai-chat/
@@ -519,7 +537,7 @@ go run ./ai-sdk-examples/image-generation/
 
 ## References
 
-- Project structure: https://templ.guide/project-structure/project-structure
-- AI SDK Core: https://ai-sdk.dev/docs/reference/ai-sdk-core
-- AI SDK UI useChat: https://ai-sdk.dev/docs/reference/ai-sdk-core/ui-message
-- Datastar: https://data-star.dev
+- Project structure: <https://templ.guide/project-structure/project-structure>
+- AI SDK Core: <https://ai-sdk.dev/docs/reference/ai-sdk-core>
+- AI SDK UI useChat: <https://ai-sdk.dev/docs/reference/ai-sdk-core/ui-message>
+- Datastar: <https://data-star.dev>
