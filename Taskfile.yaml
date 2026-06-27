@@ -47,7 +47,7 @@ tasks:
     cmds:
       - golangci-lint run --tests=false --enable-only=unused,staticcheck ./...
 
-  modernize:
+  modernise:
     desc: Apply modern Go idioms
     cmds:
       - go fix ./...

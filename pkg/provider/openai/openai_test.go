@@ -22,7 +22,7 @@ func TestNew_RequiresAPIKey(t *testing.T) {
 	}
 }
 
-func TestNormalizeBaseURL(t *testing.T) {
+func TestNormaliseBaseURL(t *testing.T) {
 	cases := map[string]string{
 		// Host-only URLs get the conventional /v1 appended.
 		"https://api.openai.com":  "https://api.openai.com/v1",
@@ -37,8 +37,8 @@ func TestNormalizeBaseURL(t *testing.T) {
 		"https://api.deepseek.com/v1/": "https://api.deepseek.com/v1",
 	}
 	for in, want := range cases {
-		if got := normalizeBaseURL(in); got != want {
-			t.Errorf("normalizeBaseURL(%q) = %q, want %q", in, got, want)
+		if got := normaliseBaseURL(in); got != want {
+			t.Errorf("normaliseBaseURL(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

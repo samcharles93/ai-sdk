@@ -167,7 +167,7 @@ func (r *Runtime) ChatStream(ctx context.Context, ref string, opts core.Generate
 // Models returns the resolved model information for a provider, merged
 // from configured overrides and the catalog.
 func (r *Runtime) Models(providerID string) ([]ModelInfo, error) {
-	id := normalizeProviderID(providerID)
+	id := normaliseProviderID(providerID)
 	cfg, cfgOK := r.config.ProviderByID(id)
 
 	configured := make(map[string]ModelConfig)
@@ -251,7 +251,7 @@ func (r *Runtime) resolveModel(ref ModelRef) (ModelInfo, error) {
 // per-model endpoints (e.g. MaaS) get distinct HTTP clients.
 func (r *Runtime) providerSetFor(ctx context.Context, providerID string, model ModelInfo) (ProviderSet, error) {
 	url := model.providerURL("")
-	key := fmt.Sprintf("%s\x00%s\x00%s", normalizeProviderID(providerID), model.ID, url)
+	key := fmt.Sprintf("%s\x00%s\x00%s", normaliseProviderID(providerID), model.ID, url)
 
 	r.mu.RLock()
 	set, ok := r.instances[key]
@@ -287,7 +287,7 @@ func (r *Runtime) providerSetFor(ctx context.Context, providerID string, model M
 // buildProviderConfig constructs a ProviderConfig for a provider ID using
 // the runtime configuration first, then falling back to the catalog.
 func (r *Runtime) buildProviderConfig(providerID string) (ProviderConfig, error) {
-	id := normalizeProviderID(providerID)
+	id := normaliseProviderID(providerID)
 	if cfg, ok := r.config.ProviderByID(id); ok {
 		return cfg, nil
 	}

@@ -75,10 +75,10 @@ func New(cfg Config) (*Provider, error) {
 	if hc == nil {
 		hc = &http.Client{Timeout: defaultTimeout}
 	}
-	return &Provider{apiKey: cfg.APIKey, baseURL: normalizeBaseURL(base), client: hc}, nil
+	return &Provider{apiKey: cfg.APIKey, baseURL: normaliseBaseURL(base), client: hc}, nil
 }
 
-// normalizeBaseURL canonicalises an OpenAI-compatible base URL to the API root
+// normaliseBaseURL canonicalises an OpenAI-compatible base URL to the API root
 // that includes the version segment, so callers may pass either a bare host or
 // a full versioned base and the endpoints below append only their method path.
 //
@@ -91,7 +91,7 @@ func New(cfg Config) (*Provider, error) {
 //	https://api.deepseek.com/v1                   → https://api.deepseek.com/v1
 //	https://openrouter.ai/api/v1                  → https://openrouter.ai/api/v1
 //	https://generativelanguage.googleapis.com/v1beta/openai (unchanged)
-func normalizeBaseURL(base string) string {
+func normaliseBaseURL(base string) string {
 	base = strings.TrimRight(base, "/")
 	u, err := url.Parse(base)
 	if err != nil {

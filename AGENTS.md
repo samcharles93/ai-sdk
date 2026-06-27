@@ -176,7 +176,7 @@ pkg/
   middleware/               # Middleware: wraps domain interfaces (logging, telemetry)
   registry/                 # Infrastructure: provider registry
   schema/                   # Infrastructure: JSON Schema builder
-  util/                     # Infrastructure: prompt helpers, tokenizer
+  util/                     # Infrastructure: prompt helpers, tokeniser
   upload/                   # Infrastructure: multipart form parsing
   error/                    # Infrastructure: sentinel errors
   logger/                   # Infrastructure: structured logging abstraction
@@ -352,11 +352,13 @@ pkg/upload/
 ```
 
 **Key functions:**
+
 - `ParseMultipartForm(r *http.Request, maxMemory int64) ([]File, error)`
 - `DetectMediaType(data []byte) string` — PNG, JPEG, GIF, PDF detection
 - `ToBase64(f File) string`
 
 **File type:**
+
 ```go
 type File struct {
     Name      string
@@ -370,7 +372,7 @@ type File struct {
 
 Shared utilities for prompt construction and token estimation.
 
-```
+```tree
 pkg/util/
   doc.go              Package-level documentation
   id.go               ID generation

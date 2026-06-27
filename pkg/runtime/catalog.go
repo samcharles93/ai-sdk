@@ -118,7 +118,7 @@ func NewCatalog(opts CatalogOptions) *Catalog {
 func (c *Catalog) Provider(id string) (CatalogProvider, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	p, ok := c.providers[normalizeProviderID(id)]
+	p, ok := c.providers[normaliseProviderID(id)]
 	return p, ok
 }
 
@@ -257,7 +257,7 @@ func (c *Catalog) MergeProviders(providers map[string]CatalogProvider) {
 		c.providers = make(map[string]CatalogProvider)
 	}
 	for id, p := range providers {
-		key := normalizeProviderID(id)
+		key := normaliseProviderID(id)
 		existing, ok := c.providers[key]
 		if !ok {
 			c.providers[key] = p
@@ -360,7 +360,7 @@ func parseCatalogProviders(data []byte) (map[string]CatalogProvider, error) {
 				return nil, fmt.Errorf("%w: invalid providers section: %v", ErrCatalogUnavailable, err)
 			}
 			for nestedKey, p := range nested {
-				providers[normalizeProviderID(nestedKey)] = p
+				providers[normaliseProviderID(nestedKey)] = p
 			}
 			continue
 		}
@@ -374,7 +374,7 @@ func parseCatalogProviders(data []byte) (map[string]CatalogProvider, error) {
 		if strings.TrimSpace(p.ID) == "" {
 			p.ID = key
 		}
-		providers[normalizeProviderID(key)] = p
+		providers[normaliseProviderID(key)] = p
 	}
 	if len(providers) == 0 {
 		return nil, fmt.Errorf("%w: catalog did not contain any providers", ErrCatalogUnavailable)
@@ -382,7 +382,7 @@ func parseCatalogProviders(data []byte) (map[string]CatalogProvider, error) {
 	return providers, nil
 }
 
-func normalizeProviderID(id string) string {
+func normaliseProviderID(id string) string {
 	return strings.ToLower(strings.TrimSpace(id))
 }
 

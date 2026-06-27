@@ -14,16 +14,16 @@ import (
 	"github.com/samcharles93/ai-sdk/pkg/chat"
 )
 
-// canonicalize re-marshals JSON so map key ordering doesn't affect comparisons.
-func canonicalize(t *testing.T, raw string) string {
+// canonicalise re-marshals JSON so map key ordering doesn't affect comparisons.
+func canonicalise(t *testing.T, raw string) string {
 	t.Helper()
 	var v any
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		t.Fatalf("canonicalize: %v (raw=%q)", err, raw)
+		t.Fatalf("canonicalise: %v (raw=%q)", err, raw)
 	}
 	out, err := json.Marshal(v)
 	if err != nil {
-		t.Fatalf("canonicalize remarshal: %v", err)
+		t.Fatalf("canonicalise remarshal: %v", err)
 	}
 	return string(out)
 }
@@ -57,8 +57,8 @@ func TestChat_ToolCallNonStream(t *testing.T) {
 	if tc.Name != "get_weather" {
 		t.Errorf("Name: got %q", tc.Name)
 	}
-	wantArgs := canonicalize(t, `{"city":"Paris","unit":"c"}`)
-	gotArgs := canonicalize(t, tc.Arguments)
+	wantArgs := canonicalise(t, `{"city":"Paris","unit":"c"}`)
+	gotArgs := canonicalise(t, tc.Arguments)
 	if gotArgs != wantArgs {
 		t.Errorf("Arguments: got %s want %s", gotArgs, wantArgs)
 	}
@@ -389,7 +389,7 @@ func TestChatStream_FunctionCallSingle(t *testing.T) {
 	if allDeltas[0].Index != 0 || allDeltas[0].ID != "call_0" || allDeltas[0].Name != "get_weather" {
 		t.Errorf("delta: %+v", allDeltas[0])
 	}
-	if canonicalize(t, allDeltas[0].ArgsDelta) != canonicalize(t, `{"city":"Paris"}`) {
+	if canonicalise(t, allDeltas[0].ArgsDelta) != canonicalise(t, `{"city":"Paris"}`) {
 		t.Errorf("args: %s", allDeltas[0].ArgsDelta)
 	}
 	if final.FinishReason != "tool_calls" {
