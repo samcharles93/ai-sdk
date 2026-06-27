@@ -22,6 +22,27 @@ func TestNew_RequiresAPIKey(t *testing.T) {
 	}
 }
 
+func TestNormalizeBaseURL(t *testing.T) {
+	cases := map[string]string{
+		// Host-only URLs get the conventional /v1 appended.
+		"https://api.openai.com":  "https://api.openai.com/v1",
+		"https://api.openai.com/": "https://api.openai.com/v1",
+		"http://localhost:11434":  "http://localhost:11434/v1",
+		// URLs that already carry a path are taken as the complete base.
+		"https://api.deepseek.com/v1":                             "https://api.deepseek.com/v1",
+		"https://openrouter.ai/api/v1":                            "https://openrouter.ai/api/v1",
+		"https://api.groq.com/openai/v1":                          "https://api.groq.com/openai/v1",
+		"https://generativelanguage.googleapis.com/v1beta/openai": "https://generativelanguage.googleapis.com/v1beta/openai",
+		// Trailing slashes are trimmed before the decision.
+		"https://api.deepseek.com/v1/": "https://api.deepseek.com/v1",
+	}
+	for in, want := range cases {
+		if got := normalizeBaseURL(in); got != want {
+			t.Errorf("normalizeBaseURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestChat_NonStreaming(t *testing.T) {
 	var gotPath, gotAuth, gotCT string
 	var gotBody map[string]any

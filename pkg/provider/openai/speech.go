@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	speechAPIPath = "/v1/audio/speech"
+	speechAPIPath = "/audio/speech"
 )
 
 // Model IDs supported by OpenAI's TTS API.

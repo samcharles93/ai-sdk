@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	transcriptionAPIPath = "/v1/audio/transcriptions"
+	transcriptionAPIPath = "/audio/transcriptions"
 )
 
 // --- wire types ----------------------------------------------------------

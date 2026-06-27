@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	embeddingsAPIPath = "/v1/embeddings"
+	embeddingsAPIPath = "/embeddings"
 )
 
 // --- wire types ----------------------------------------------------------

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -62,7 +63,7 @@ var _ chat.Provider = (*Provider)(nil)
 // official api.openai.com endpoint, but may be empty for self-hosted
 // or local OpenAI-compatible endpoints (e.g. llama.cpp, Ollama).
 func New(cfg Config) (*Provider, error) {
-	base := cfg.BaseURL
+	base := strings.TrimSpace(cfg.BaseURL)
 	if base == "" {
 		base = defaultBaseURL
 	}
@@ -74,7 +75,32 @@ func New(cfg Config) (*Provider, error) {
 	if hc == nil {
 		hc = &http.Client{Timeout: defaultTimeout}
 	}
-	return &Provider{apiKey: cfg.APIKey, baseURL: base, client: hc}, nil
+	return &Provider{apiKey: cfg.APIKey, baseURL: normalizeBaseURL(base), client: hc}, nil
+}
+
+// normalizeBaseURL canonicalises an OpenAI-compatible base URL to the API root
+// that includes the version segment, so callers may pass either a bare host or
+// a full versioned base and the endpoints below append only their method path.
+//
+// A host-only URL (no path) gets the conventional "/v1" appended, preserving
+// the historical default of https://api.openai.com → .../v1/chat/completions.
+// A URL that already carries a path is taken to be the complete base and is
+// left untouched, which lets non-standard layouts work too:
+//
+//	https://api.openai.com                       → https://api.openai.com/v1
+//	https://api.deepseek.com/v1                   → https://api.deepseek.com/v1
+//	https://openrouter.ai/api/v1                  → https://openrouter.ai/api/v1
+//	https://generativelanguage.googleapis.com/v1beta/openai (unchanged)
+func normalizeBaseURL(base string) string {
+	base = strings.TrimRight(base, "/")
+	u, err := url.Parse(base)
+	if err != nil {
+		return base
+	}
+	if u.Path == "" || u.Path == "/" {
+		return base + "/v1"
+	}
+	return base
 }
 
 // Name returns the provider identifier.
@@ -321,7 +347,7 @@ func (p *Provider) newHTTPRequest(ctx context.Context, body map[string]any) (*ht
 	if err != nil {
 		return nil, fmt.Errorf("openai: marshal request: %w", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/v1/chat/completions", bytes.NewReader(buf))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(buf))
 	if err != nil {
 		return nil, fmt.Errorf("openai: build request: %w", err)
 	}
