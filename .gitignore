@@ -3,3 +3,5 @@ specs/
 
 dist/
 coverage.out
+/ai-sdk
+/ai-sdk.exe
