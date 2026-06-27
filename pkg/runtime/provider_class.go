@@ -91,6 +91,7 @@ type ModelInfo struct {
 	ContextWindow    int
 	MaxOutputTokens  int
 	Reasoning        bool
+	ReasoningOptions []ReasoningOption
 	ToolCall         bool
 	StructuredOutput bool
 	Temperature      bool

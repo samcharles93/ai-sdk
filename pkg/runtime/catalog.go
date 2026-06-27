@@ -57,6 +57,16 @@ type CatalogModel struct {
 		CacheRead  float64 `json:"cache_read,omitzero"`
 		CacheWrite float64 `json:"cache_write,omitzero"`
 	} `json:"cost"`
+	ReasoningOptions []ReasoningOption `json:"reasoning_options,omitzero"`
+}
+
+// ReasoningOption describes one tunable a reasoning model accepts, as published
+// by models.dev. The common shape is {"type":"effort","values":["low",
+// "medium","high"]}, which lets callers offer exactly the effort levels the
+// model supports instead of guessing.
+type ReasoningOption struct {
+	Type   string   `json:"type"`
+	Values []string `json:"values,omitzero"`
 }
 
 // ContextWindow returns the model's context limit if known.

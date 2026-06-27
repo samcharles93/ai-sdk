@@ -373,6 +373,7 @@ func catalogToModelInfo(providerID string, cm CatalogModel) ModelInfo {
 		ProviderID:       providerID,
 		Name:             cm.Name,
 		Reasoning:        cm.Reasoning,
+		ReasoningOptions: cm.ReasoningOptions,
 		ToolCall:         cm.ToolCall,
 		StructuredOutput: cm.Structured,
 		Temperature:      cm.Temperature,
