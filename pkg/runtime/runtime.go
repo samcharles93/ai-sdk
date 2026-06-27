@@ -289,7 +289,7 @@ func (r *Runtime) providerSetFor(ctx context.Context, providerID string, model M
 func (r *Runtime) buildProviderConfig(providerID string) (ProviderConfig, error) {
 	id := normaliseProviderID(providerID)
 	if cfg, ok := r.config.ProviderByID(id); ok {
-		return cfg, nil
+		return r.enrichFromCatalog(cfg), nil
 	}
 
 	if r.catalog == nil {
@@ -317,6 +317,30 @@ func (r *Runtime) buildProviderConfig(providerID string) (ProviderConfig, error)
 		// Auth is left empty; callers using catalog-only providers should
 		// set it via the runtime config.
 	}, nil
+}
+
+// enrichFromCatalog fills fields a configured provider left blank using the
+// models.dev catalog, so callers may register a provider with just an ID and
+// auth and inherit the rest. An empty BaseURL falls back to the provider's
+// published api endpoint; an empty Class falls back to the npm-package mapping.
+// Explicitly set values are never overridden.
+func (r *Runtime) enrichFromCatalog(cfg ProviderConfig) ProviderConfig {
+	if r.catalog == nil {
+		return cfg
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		if api, ok := r.catalog.API(cfg.ID); ok {
+			cfg.BaseURL = api
+		}
+	}
+	if strings.TrimSpace(cfg.Class) == "" {
+		if npm, ok := r.catalog.NPM(cfg.ID); ok {
+			if mapped, ok := NPMClassMapping[npm]; ok {
+				cfg.Class = mapped
+			}
+		}
+	}
+	return cfg
 }
 
 // classForProvider returns the ProviderClass for cfg, using an explicit
