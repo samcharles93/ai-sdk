@@ -5,3 +5,6 @@ dist/
 coverage.out
 /ai-sdk
 /ai-sdk.exe
+
+# pi agent artifacts
+.pi-subagents/
