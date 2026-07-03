@@ -7,7 +7,7 @@ Example programs demonstrating the Go AI SDK.
 | Name | Description | Required Env Vars | Run Command |
 |------|-------------|-------------------|-------------|
 | openai-chat | Interactive chat with OpenAI models via `core.GenerateText` | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/openai-chat/` |
-| anthropic-agent | Agent with tool use, multi-step reasoning, and streaming via `agent.RunAgent` | `ANTHROPIC_API_KEY` | `go run ./ai-sdk-examples/anthropic-agent/ "prompt"` |
+| anthropic-agent | Agent with tool use, multi-step reasoning, streaming, and **extended thinking support** | `ANTHROPIC_API_KEY` | `go run ./ai-sdk-examples/anthropic-agent/ "prompt"` |
 | embedding | Generate embeddings with OpenAI and compute cosine similarity between vectors | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/embedding/` |
 | image-generation | Image generation with TogetherAI Flux (`TOGETHER_API_KEY`) or informational without | `TOGETHER_API_KEY` (optional) | `go run ./ai-sdk-examples/image-generation/` |
 | multi-provider | Register multiple providers via registry, switch between them for chat, embedding, and reranking | `OPENAI_API_KEY`, `COHERE_API_KEY` | `go run ./ai-sdk-examples/multi-provider/` |

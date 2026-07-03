@@ -209,20 +209,22 @@ pkg/
 
 ## Provider Ecosystem
 
-| Provider      | Package                        | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
-|---------------|--------------------------------|------|-------|-------|--------|------------|--------|--------|-------|
-| OpenAI        | `pkg/provider/openai`          | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Anthropic     | `pkg/provider/anthropic`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Azure         | `pkg/provider/azure`           | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| Cohere        | `pkg/provider/cohere`          | ✅   | ✅    | —     | —      | —          | —      | ✅     | —     |
-| DeepSeek      | `pkg/provider/deepseek`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Gemini        | `pkg/provider/gemini`          | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Groq          | `pkg/provider/groq`            | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Mistral       | `pkg/provider/mistral`         | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Ollama        | `pkg/provider/ollama`          | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Perplexity    | `pkg/provider/perplexity`      | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| TogetherAI    | `pkg/provider/togetherai`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| xAI           | `pkg/provider/xai`             | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Provider | Package | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
+|---|---|---|---|---|---|---|---|---|---|
+| OpenAI | `pkg/provider/openai` | ✅ | — | — | — | — | — | — | — |
+| Anthropic | `pkg/provider/anthropic` | ✅ | — | — | — | — | — | — | — |
+| Azure | `pkg/provider/azure` | ✅ | ✅ | ✅ | — | — | — | — | — |
+| Cohere | `pkg/provider/cohere` | ✅ | ✅ | — | — | — | — | ✅ | — |
+| DeepSeek | `pkg/provider/deepseek` | ✅ | — | — | — | — | — | — | — |
+| Gemini | `pkg/provider/gemini` | ✅ | ✅ | — | — | — | — | — | — |
+| Groq | `pkg/provider/groq` | ✅ | — | — | — | — | — | — | — |
+| Mistral | `pkg/provider/mistral` | ✅ | ✅ | — | — | — | — | — | — |
+| Ollama | `pkg/provider/ollama` | ✅ | ✅ | — | — | — | — | — | — |
+| Perplexity | `pkg/provider/perplexity` | ✅ | — | — | — | — | — | — | — |
+| TogetherAI | `pkg/provider/togetherai` | ✅ | ✅ | ✅ | — | — | — | — | — |
+| xAI | `pkg/provider/xai` | ✅ | — | — | — | — | — | — | — |
+
+**Extended Thinking Support:** Anthropic provider supports Claude extended thinking (`reasoning_effort`/`thinking_budget_tokens`) via `chat.Request.ProviderOptions`.
 
 This table reflects currently implemented interfaces in this repository. Additional provider capabilities may be added as packages evolve against domain interface contracts.
 
