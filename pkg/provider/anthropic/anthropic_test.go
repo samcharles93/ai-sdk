@@ -545,5 +545,245 @@ func TestChat_ToolChoiceTool(t *testing.T) {
 	}
 }
 
+// --- thinking tests ----------------------------------------------------------
+
+// testServer creates a test HTTP server that captures the request body into
+// gotBody and returns a minimal valid response.
+func testServer(gotBody *map[string]any) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"msg_test","model":"claude-sonnet-4-20250514","role":"assistant",
+			"content":[{"type":"text","text":"ok"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":5,"output_tokens":1}
+		}`)
+	}))
+}
+
+func TestChat_ThinkingViaReasoningEffort(t *testing.T) {
+	tests := []struct {
+		effort     string
+		wantBudget float64
+	}{
+		{"low", 1024},
+		{"medium", 4096},
+		{"high", 16384},
+		{"xhigh", 32768},
+	}
+	for _, tt := range tests {
+		t.Run(tt.effort, func(t *testing.T) {
+			var gotBody map[string]any
+			srv := testServer(&gotBody)
+			defer srv.Close()
+
+			p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+			_, err := p.Chat(context.Background(), chat.Request{
+				Model:    "claude-sonnet-4-20250514",
+				Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+				MaxTokens: 32769, // large enough for all budgets (xhigh=32768 < 32769)
+				ProviderOptions: map[string]any{
+					"anthropic": anthropicProviderOptions{ReasoningEffort: tt.effort},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			thinking, ok := gotBody["thinking"]
+			if !ok {
+				t.Fatal("thinking key missing from body")
+			}
+			tm := thinking.(map[string]any)
+			if tm["type"] != "enabled" {
+				t.Errorf("thinking.type = %v, want enabled", tm["type"])
+			}
+			if tm["budget_tokens"] != tt.wantBudget {
+				t.Errorf("thinking.budget_tokens = %v, want %v", tm["budget_tokens"], tt.wantBudget)
+			}
+		})
+	}
+}
+
+func TestChat_ThinkingViaBudgetTokens(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		MaxTokens: 8000,
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ThinkingBudgetTokens: 2000},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tm := gotBody["thinking"].(map[string]any)
+	if tm["type"] != "enabled" {
+		t.Errorf("type = %v, want enabled", tm["type"])
+	}
+	if tm["budget_tokens"].(float64) != 2000 {
+		t.Errorf("budget_tokens = %v, want 2000", tm["budget_tokens"])
+	}
+}
+
+func TestChat_ThinkingBudgetTokensPrecedence(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		MaxTokens: 8000,
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{
+				ReasoningEffort:     "high", // maps to 16384
+				ThinkingBudgetTokens: 5000,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tm := gotBody["thinking"].(map[string]any)
+	if tm["budget_tokens"].(float64) != 5000 {
+		t.Errorf("budget_tokens = %v, want 5000 (ThinkingBudgetTokens takes precedence)", tm["budget_tokens"])
+	}
+}
+
+func TestChat_ThinkingDisabled(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ReasoningEffort: "none"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tm := gotBody["thinking"].(map[string]any)
+	if tm["type"] != "disabled" {
+		t.Errorf("type = %v, want disabled", tm["type"])
+	}
+	if _, hasBudget := tm["budget_tokens"]; hasBudget {
+		t.Error("disabled thinking should not have budget_tokens")
+	}
+}
+
+func TestChat_ThinkingBudgetTooLarge(t *testing.T) {
+	p, _ := New(Config{APIKey: "k", BaseURL: "http://example.invalid"})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		MaxTokens: 1000,
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ThinkingBudgetTokens: 2000},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for budget >= max_tokens")
+	}
+	if !errors.Is(err, chat.ErrInvalidRequest) {
+		t.Errorf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestChat_ThinkingBudgetTooLargeViaEffort(t *testing.T) {
+	p, _ := New(Config{APIKey: "k", BaseURL: "http://example.invalid"})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		MaxTokens: 2000,
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ReasoningEffort: "high"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for budget >= max_tokens via effort")
+	}
+	if !errors.Is(err, chat.ErrInvalidRequest) {
+		t.Errorf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestChat_NoThinkingOptions(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, hasThinking := gotBody["thinking"]; hasThinking {
+		t.Error("thinking should not be set when no options provided")
+	}
+}
+
+func TestChat_UnknownReasoningEffort(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ReasoningEffort: "extreme"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, hasThinking := gotBody["thinking"]; hasThinking {
+		t.Error("thinking should be omitted for unknown reasoning_effort")
+	}
+}
+
+func TestChat_ThinkingOnlyOtherProviderOptions(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		ProviderOptions: map[string]any{
+			"openai": map[string]any{"reasoning_effort": "high"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, hasThinking := gotBody["thinking"]; hasThinking {
+		t.Error("thinking should not be set when only other providers have options")
+	}
+}
+
 // guard against accidental import of fmt only
 var _ = fmt.Sprintf

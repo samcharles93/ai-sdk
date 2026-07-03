@@ -23,6 +23,31 @@ const (
 	anthropicVersion = "2023-06-01"
 )
 
+// --- provider-specific options ------------------------------------------
+
+// anthropicProviderOptions holds Anthropic-specific request options
+// extracted via [chat.ProviderOptionsFor] from [chat.Request.ProviderOptions].
+type anthropicProviderOptions struct {
+	// ReasoningEffort controls extended thinking via a symbolic effort level.
+	// Supported values: "none" (disabled), "low" (1024 token budget),
+	// "medium" (4096), "high" (16384), "xhigh" (32768).
+	// Unknown values cause thinking to be omitted from the request.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+
+	// ThinkingBudgetTokens directly sets the thinking token budget.
+	// When > 0 it overrides ReasoningEffort. Must be < max_tokens.
+	// Minimum 1024 (enforced by the Anthropic API).
+	ThinkingBudgetTokens int `json:"thinking_budget_tokens,omitempty"`
+}
+
+// reasoningEffortBudget maps symbolic effort levels to thinking budget tokens.
+var reasoningEffortBudget = map[string]int{
+	"low":    1024,
+	"medium": 4096,
+	"high":   16384,
+	"xhigh":  32768,
+}
+
 // Config configures an Anthropic Provider.
 type Config struct {
 	APIKey     string
@@ -212,6 +237,35 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 		maxTokens = defaultMaxTokens
 	}
 	body["max_tokens"] = maxTokens
+
+	// --- apply thinking options ---
+	opts, _ := chat.ProviderOptionsFor[anthropicProviderOptions](req.ProviderOptions, "anthropic")
+	if opts.ThinkingBudgetTokens > 0 {
+		if opts.ThinkingBudgetTokens >= maxTokens {
+			return nil, nil, fmt.Errorf("anthropic: thinking_budget_tokens (%d) must be less than max_tokens (%d): %w",
+				opts.ThinkingBudgetTokens, maxTokens, chat.ErrInvalidRequest)
+		}
+		body["thinking"] = map[string]any{
+			"type":          "enabled",
+			"budget_tokens": opts.ThinkingBudgetTokens,
+		}
+	} else if opts.ReasoningEffort != "" {
+		if opts.ReasoningEffort == "none" {
+			body["thinking"] = map[string]any{"type": "disabled"}
+		} else if budget, ok := reasoningEffortBudget[opts.ReasoningEffort]; ok {
+			if budget >= maxTokens {
+				return nil, nil, fmt.Errorf("anthropic: reasoning_effort %q maps to budget_tokens %d, must be less than max_tokens (%d): %w",
+					opts.ReasoningEffort, budget, maxTokens, chat.ErrInvalidRequest)
+			}
+			body["thinking"] = map[string]any{
+				"type":          "enabled",
+				"budget_tokens": budget,
+			}
+		}
+		// Unknown ReasoningEffort: silently omit thinking.
+	}
+	// Both zero: omit thinking from body (Anthropic default).
+
 	if len(req.Tools) > 0 {
 		tools := make([]wireToolDef, len(req.Tools))
 		for i, t := range req.Tools {
