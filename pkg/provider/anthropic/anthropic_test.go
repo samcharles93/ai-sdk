@@ -580,8 +580,8 @@ func TestChat_ThinkingViaReasoningEffort(t *testing.T) {
 
 			p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
 			_, err := p.Chat(context.Background(), chat.Request{
-				Model:    "claude-sonnet-4-20250514",
-				Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+				Model:     "claude-sonnet-4-20250514",
+				Messages:  []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
 				MaxTokens: 32769, // large enough for all budgets (xhigh=32768 < 32769)
 				ProviderOptions: map[string]any{
 					"anthropic": anthropicProviderOptions{ReasoningEffort: tt.effort},
@@ -613,8 +613,8 @@ func TestChat_ThinkingViaBudgetTokens(t *testing.T) {
 
 	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
 	_, err := p.Chat(context.Background(), chat.Request{
-		Model:    "claude-sonnet-4-20250514",
-		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Model:     "claude-sonnet-4-20250514",
+		Messages:  []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
 		MaxTokens: 8000,
 		ProviderOptions: map[string]any{
 			"anthropic": anthropicProviderOptions{ThinkingBudgetTokens: 2000},
@@ -640,12 +640,12 @@ func TestChat_ThinkingBudgetTokensPrecedence(t *testing.T) {
 
 	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
 	_, err := p.Chat(context.Background(), chat.Request{
-		Model:    "claude-sonnet-4-20250514",
-		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Model:     "claude-sonnet-4-20250514",
+		Messages:  []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
 		MaxTokens: 8000,
 		ProviderOptions: map[string]any{
 			"anthropic": anthropicProviderOptions{
-				ReasoningEffort:     "high", // maps to 16384
+				ReasoningEffort:      "high", // maps to 16384
 				ThinkingBudgetTokens: 5000,
 			},
 		},
@@ -689,8 +689,8 @@ func TestChat_ThinkingDisabled(t *testing.T) {
 func TestChat_ThinkingBudgetTooLarge(t *testing.T) {
 	p, _ := New(Config{APIKey: "k", BaseURL: "http://example.invalid"})
 	_, err := p.Chat(context.Background(), chat.Request{
-		Model:    "claude-sonnet-4-20250514",
-		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Model:     "claude-sonnet-4-20250514",
+		Messages:  []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
 		MaxTokens: 1000,
 		ProviderOptions: map[string]any{
 			"anthropic": anthropicProviderOptions{ThinkingBudgetTokens: 2000},
@@ -707,8 +707,8 @@ func TestChat_ThinkingBudgetTooLarge(t *testing.T) {
 func TestChat_ThinkingBudgetTooLargeViaEffort(t *testing.T) {
 	p, _ := New(Config{APIKey: "k", BaseURL: "http://example.invalid"})
 	_, err := p.Chat(context.Background(), chat.Request{
-		Model:    "claude-sonnet-4-20250514",
-		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Model:     "claude-sonnet-4-20250514",
+		Messages:  []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
 		MaxTokens: 2000,
 		ProviderOptions: map[string]any{
 			"anthropic": anthropicProviderOptions{ReasoningEffort: "high"},
