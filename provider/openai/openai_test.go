@@ -375,3 +375,180 @@ func TestChat_EmptyMessages(t *testing.T) {
 		t.Fatalf("expected ErrInvalidRequest, got %v", err)
 	}
 }
+
+// TestChat_ReasoningEffortWithTools_UsesResponsesReasoningShape covers a
+// regression: tools + a non-"none" reasoning_effort routes the request to
+// the /responses endpoint, which rejects the flat Chat Completions
+// "reasoning_effort" field and requires it nested as reasoning.effort.
+func TestChat_ReasoningEffortWithTools_UsesResponsesReasoningShape(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"resp-1",
+			"model":"gpt-5.4",
+			"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}],
+			"usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Chat(context.Background(), chat.Request{
+		Model:    "gpt-5.4",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Tools: []chat.Tool{{
+			Name:        "get_weather",
+			Description: "Get weather",
+			Parameters:  json.RawMessage(`{"type":"object"}`),
+		}},
+		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "get_weather"},
+		ProviderOptions: map[string]any{
+			"openai": openaiProviderOptions{ReasoningEffort: "medium"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/responses") {
+		t.Fatalf("path = %q, want suffix /responses", gotPath)
+	}
+	if _, ok := gotBody["reasoning_effort"]; ok {
+		t.Errorf("body still has flat reasoning_effort: %v", gotBody["reasoning_effort"])
+	}
+	reasoning, ok := gotBody["reasoning"].(map[string]any)
+	if !ok {
+		t.Fatalf("body missing nested reasoning object: %v", gotBody)
+	}
+	if reasoning["effort"] != "medium" {
+		t.Errorf("reasoning.effort = %v, want %q", reasoning["effort"], "medium")
+	}
+
+	// The Responses API flattens tool/tool_choice: no nested "function" key.
+	tools, ok := gotBody["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools = %v", gotBody["tools"])
+	}
+	tool, _ := tools[0].(map[string]any)
+	if _, hasNested := tool["function"]; hasNested {
+		t.Errorf("tools[0] still has nested function key: %v", tool)
+	}
+	if tool["name"] != "get_weather" {
+		t.Errorf("tools[0].name = %v, want get_weather", tool["name"])
+	}
+	toolChoice, _ := gotBody["tool_choice"].(map[string]any)
+	if _, hasNested := toolChoice["function"]; hasNested {
+		t.Errorf("tool_choice still has nested function key: %v", toolChoice)
+	}
+	if toolChoice["name"] != "get_weather" {
+		t.Errorf("tool_choice.name = %v, want get_weather", toolChoice["name"])
+	}
+}
+
+// TestChat_ResponsesAPI_TopLevelFunctionCall covers a regression: the
+// Responses API returns a tool call as its own top-level output item
+// (type: "function_call") with call_id/name/arguments set directly on the
+// item, not nested inside a "message" item's content blocks.
+func TestChat_ResponsesAPI_TopLevelFunctionCall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"resp-2",
+			"model":"gpt-5.4",
+			"output":[
+				{"type":"reasoning","summary":"thinking"},
+				{"type":"function_call","call_id":"call_xyz","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}
+			],
+			"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.Chat(context.Background(), chat.Request{
+		Model:    "gpt-5.4",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Tools: []chat.Tool{{
+			Name:        "get_weather",
+			Description: "Get weather",
+			Parameters:  json.RawMessage(`{"type":"object"}`),
+		}},
+		ProviderOptions: map[string]any{
+			"openai": openaiProviderOptions{ReasoningEffort: "low"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if len(resp.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d: %+v", len(resp.ToolCalls), resp.ToolCalls)
+	}
+	tc := resp.ToolCalls[0]
+	if tc.ID != "call_xyz" || tc.Name != "get_weather" || tc.Arguments != `{"city":"Paris"}` {
+		t.Errorf("tool call = %+v", tc)
+	}
+	if resp.FinishReason != "tool_calls" {
+		t.Errorf("finish_reason = %q, want tool_calls", resp.FinishReason)
+	}
+}
+
+// TestChat_ResponsesAPI_RenamesAndDropsUnsupportedFields covers a
+// regression: the Responses API renames max_tokens to max_output_tokens,
+// and rejects stop/temperature/top_p outright on reasoning-effort requests
+// (reasoning models use fixed sampling), so all three must be dropped
+// rather than passed through unchanged from Chat Completions.
+func TestChat_ResponsesAPI_RenamesAndDropsUnsupportedFields(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"resp-3",
+			"model":"gpt-5.4",
+			"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}],
+			"usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Chat(context.Background(), chat.Request{
+		Model:       "gpt-5.4",
+		Messages:    []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Temperature: 0.7,
+		TopP:        0.9,
+		MaxTokens:   64,
+		Stop:        []string{"###"},
+		Tools: []chat.Tool{{
+			Name:        "get_weather",
+			Description: "Get weather",
+			Parameters:  json.RawMessage(`{"type":"object"}`),
+		}},
+		ProviderOptions: map[string]any{
+			"openai": openaiProviderOptions{ReasoningEffort: "low"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	for _, unsupported := range []string{"stop", "temperature", "top_p", "max_tokens"} {
+		if v, ok := gotBody[unsupported]; ok {
+			t.Errorf("body still has %s: %v", unsupported, v)
+		}
+	}
+	if gotBody["max_output_tokens"] != float64(64) {
+		t.Errorf("max_output_tokens = %v, want 64", gotBody["max_output_tokens"])
+	}
+}

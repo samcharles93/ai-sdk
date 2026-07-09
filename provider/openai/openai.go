@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -122,12 +123,26 @@ type wireToolCall struct {
 }
 
 type wireMessage struct {
-	Role             string         `json:"role"`
-	Content          any            `json:"content"`
-	ReasoningContent string         `json:"reasoning_content,omitempty"`
-	Name             string         `json:"name,omitempty"`
-	ToolCalls        []wireToolCall `json:"tool_calls,omitempty"`
-	ToolCallID       string         `json:"tool_call_id,omitempty"`
+	Role       string         `json:"role"`
+	Content    any            `json:"content"`
+	Name       string         `json:"name,omitempty"`
+	ToolCalls  []wireToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string         `json:"tool_call_id,omitempty"`
+
+	// ReasoningContent is DeepSeek's wire field for reasoning/thinking
+	// text; Reasoning is Ollama's OpenAI-compat equivalent. The two are
+	// mutually exclusive in practice (each server sends only one), so
+	// reasoningText() picks whichever is set.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	Reasoning        string `json:"reasoning,omitempty"`
+}
+
+// reasoningText returns whichever reasoning field the server populated.
+func (m wireMessage) reasoningText() string {
+	if m.ReasoningContent != "" {
+		return m.ReasoningContent
+	}
+	return m.Reasoning
 }
 
 type wireUsage struct {
@@ -160,10 +175,21 @@ type wireDeltaToolCall struct {
 }
 
 type wireDelta struct {
-	Role             string              `json:"role,omitempty"`
-	Content          string              `json:"content,omitempty"`
-	ReasoningContent string              `json:"reasoning_content,omitempty"`
-	ToolCalls        []wireDeltaToolCall `json:"tool_calls,omitempty"`
+	Role      string              `json:"role,omitempty"`
+	Content   string              `json:"content,omitempty"`
+	ToolCalls []wireDeltaToolCall `json:"tool_calls,omitempty"`
+
+	// See wireMessage.ReasoningContent / Reasoning for why there are two.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	Reasoning        string `json:"reasoning,omitempty"`
+}
+
+// reasoningText returns whichever reasoning field the server populated.
+func (d wireDelta) reasoningText() string {
+	if d.ReasoningContent != "" {
+		return d.ReasoningContent
+	}
+	return d.Reasoning
 }
 
 type wireStreamChoice struct {
@@ -363,6 +389,45 @@ func (p *Provider) newHTTPRequest(ctx context.Context, body map[string]any) (*ht
 			delete(body, "messages")
 		}
 		delete(body, "stream_options")
+		// The Responses API rejects the flat Chat Completions field and
+		// expects reasoning effort nested under "reasoning" instead.
+		if reasoningEffort != "" {
+			body["reasoning"] = map[string]any{"effort": reasoningEffort}
+			delete(body, "reasoning_effort")
+		}
+		// The Responses API renames max_tokens to max_output_tokens.
+		if maxTokens, ok := body["max_tokens"]; ok {
+			body["max_output_tokens"] = maxTokens
+			delete(body, "max_tokens")
+		}
+		// The Responses API has no equivalent of Chat Completions' "stop"
+		// sequences, and reasoning models reject sampling params
+		// (temperature/top_p) via /responses since reasoning uses fixed
+		// sampling. Unlike max_tokens/reasoning_effort these aren't
+		// renames, they're just unsupported here, so drop rather than
+		// translate.
+		delete(body, "stop")
+		delete(body, "temperature")
+		delete(body, "top_p")
+		// The Responses API flattens tool/tool_choice function shape:
+		// {"type":"function","name":...,"description":...,"parameters":...}
+		// instead of Chat Completions' nested {"type":"function","function":{...}}.
+		if tools, ok := body["tools"].([]map[string]any); ok {
+			for _, t := range tools {
+				fn, ok := t["function"].(map[string]any)
+				if !ok {
+					continue
+				}
+				delete(t, "function")
+				maps.Copy(t, fn)
+			}
+		}
+		if tc, ok := body["tool_choice"].(map[string]any); ok {
+			if fn, ok := tc["function"].(map[string]any); ok {
+				delete(tc, "function")
+				maps.Copy(tc, fn)
+			}
+		}
 	}
 
 	buf, err := json.Marshal(body)
@@ -443,6 +508,13 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 					Arguments string `json:"arguments"`
 				} `json:"content"`
 				Summary string `json:"summary"`
+				// A tool call is its own top-level output item
+				// (type: "function_call") with these fields set directly
+				// on the item, not nested inside Content like a message's
+				// text/tool blocks.
+				CallID    string `json:"call_id"`
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
 			} `json:"output"`
 			Usage struct {
 				InputTokens      int `json:"input_tokens"`
@@ -469,6 +541,14 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 		for _, item := range wr.Output {
 			if item.Type == "reasoning" && item.Summary != "" {
 				out.Parts = append(out.Parts, chat.ReasoningPart{Text: item.Summary})
+			} else if item.Type == "function_call" {
+				// The Responses API emits each tool call as its own
+				// top-level output item, not nested inside a "message".
+				out.ToolCalls = append(out.ToolCalls, chat.ToolCall{
+					ID:        item.CallID,
+					Name:      item.Name,
+					Arguments: item.Arguments,
+				})
 			} else if item.Type == "message" {
 				if item.Role != "" {
 					out.Role = chat.Role(item.Role)
@@ -517,8 +597,8 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 			out.Role = chat.Role(c.Message.Role)
 		}
 		// Populate canonical Parts: ReasoningPart first (if any), then TextPart.
-		if c.Message.ReasoningContent != "" {
-			out.Parts = append(out.Parts, chat.ReasoningPart{Text: c.Message.ReasoningContent})
+		if reasoning := c.Message.reasoningText(); reasoning != "" {
+			out.Parts = append(out.Parts, chat.ReasoningPart{Text: reasoning})
 		}
 		if contentText != "" {
 			out.Parts = append(out.Parts, chat.TextPart{Text: contentText})
@@ -774,10 +854,10 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 			// If this same chunk also carried delta content, reasoning,
 			// or tool-call deltas, emit those now and let the buffered
 			// final go out on the next call.
-			if c.Delta.Content != "" || c.Delta.ReasoningContent != "" || len(tcDeltas) > 0 {
+			if c.Delta.Content != "" || c.Delta.reasoningText() != "" || len(tcDeltas) > 0 {
 				out := chat.Chunk{
 					Delta:          c.Delta.Content,
-					ReasoningDelta: c.Delta.ReasoningContent,
+					ReasoningDelta: c.Delta.reasoningText(),
 					Role:           role,
 					ToolCallDeltas: tcDeltas,
 				}
@@ -791,7 +871,7 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 		}
 		out := chat.Chunk{
 			Delta:          c.Delta.Content,
-			ReasoningDelta: c.Delta.ReasoningContent,
+			ReasoningDelta: c.Delta.reasoningText(),
 			Role:           role,
 			ToolCallDeltas: tcDeltas,
 		}
