@@ -1,6 +1,10 @@
 # AI SDK (Go)
 
-A provider-agnostic AI SDK for Go — a re-interpretation of the [AI SDK](https://ai-sdk.dev) ecosystem for the Go programming language. Chat, embeddings, image generation, speech, transcription, structured object generation, video, and reranking — all through a unified, type-safe, interface-driven API.
+A provider-agnostic AI SDK for Go — a re-interpretation of the
+[AI SDK](https://ai-sdk.dev) ecosystem for the Go programming language. Chat,
+embeddings, image generation, speech, transcription, structured object
+generation, video, and reranking — all through a unified, type-safe,
+interface-driven API.
 
 ```
 go get github.com/samcharles93/ai-sdk
@@ -10,35 +14,44 @@ go get github.com/samcharles93/ai-sdk
 
 ## Overview
 
-This SDK provides a clean, composable way to work with AI providers in Go. Instead of vendor-specific clients scattered through your codebase, you program against domain interfaces in `pkg/chat`, `pkg/embed`, `pkg/image`, etc. Providers are injected at the composition root — your business logic never imports a provider directly.
+This SDK provides a clean, composable way to work with AI providers in Go.
+Instead of vendor-specific clients scattered through your codebase, you program
+against domain interfaces in `pkg/chat`, `pkg/embed`, `pkg/image`, etc.
+Providers are injected at the composition root — your business logic never
+imports a provider directly.
 
 ### Features
 
-- **Unified interface** across 8 domains: chat, embedding, image generation, speech synthesis, transcription, object generation, video generation, reranking
+- **Unified interface** across 8 domains: chat, embedding, image generation,
+  speech synthesis, transcription, object generation, video generation,
+  reranking
 - **Pluggable providers** — swap implementations at the wiring layer
 - **Tool use and streaming** built into the chat domain
-- **Agent loops** built on top of `StreamText` — tool-calling agent with streaming events
-- **Middleware** — compose logging, telemetry, and circuit-breaker layers around providers
-- **Runtime layer** — resolve `provider/model` references dynamically from a models.dev catalog
+- **Agent loops** built on top of `StreamText` — tool-calling agent with
+  streaming events
+- **Middleware** — compose logging, telemetry, and circuit-breaker layers around
+  providers
+- **Runtime layer** — resolve `provider/model` references dynamically from a
+  models.dev catalog
 - **UI layer** — Templ + Datastar components for real-time reactive chat UIs
 - **Strict onion architecture** — domain packages import nothing outside stdlib
 
 ### Supported Providers
 
-| Provider | Package | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
-|----------|---------|------|-------|-------|--------|------------|--------|--------|-------|
-| OpenAI | `pkg/provider/openai` | ✅ | — | — | — | — | — | — | — |
-| Anthropic | `pkg/provider/anthropic` | ✅ | — | — | — | — | — | — | — |
-| Azure | `pkg/provider/azure` | ✅ | ✅ | ✅ | — | — | — | — | — |
-| Cohere | `pkg/provider/cohere` | ✅ | ✅ | — | — | — | ✅ | — | — |
-| DeepSeek | `pkg/provider/deepseek` | ✅ | — | — | — | — | — | — | — |
-| Gemini | `pkg/provider/gemini` | ✅ | ✅ | — | — | — | — | — | — |
-| Groq | `pkg/provider/groq` | ✅ | — | — | — | — | — | — | — |
-| Mistral | `pkg/provider/mistral` | ✅ | ✅ | — | — | — | — | — | — |
-| Ollama | `pkg/provider/ollama` | ✅ | ✅ | — | — | — | — | — | — |
-| Perplexity | `pkg/provider/perplexity` | ✅ | — | — | — | — | — | — | — |
-| TogetherAI | `pkg/provider/togetherai` | ✅ | ✅ | ✅ | — | — | — | — | — |
-| xAI | `pkg/provider/xai` | ✅ | — | — | — | — | — | — | — |
+| Provider   | Package                   | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
+| ---------- | ------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
+| OpenAI     | `pkg/provider/openai`     | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Anthropic  | `pkg/provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Azure      | `pkg/provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| Cohere     | `pkg/provider/cohere`     | ✅   | ✅    | —     | —      | —          | ✅     | —      | —     |
+| DeepSeek   | `pkg/provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Gemini     | `pkg/provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Groq       | `pkg/provider/groq`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Mistral    | `pkg/provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Ollama     | `pkg/provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Perplexity | `pkg/provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| TogetherAI | `pkg/provider/togetherai` | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| xAI        | `pkg/provider/xai`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
 
 ---
 
@@ -52,8 +65,8 @@ import (
     "fmt"
     "log"
 
-    "github.com/samcharles93/ai-sdk/pkg/chat"
-    "github.com/samcharles93/ai-sdk/pkg/provider/openai"
+    "github.com/samcharles93/ai-sdk/chat"
+    "github.com/samcharles93/ai-sdk/provider/openai"
 )
 
 func main() {
@@ -65,7 +78,7 @@ func main() {
     }
 
     resp, err := provider.Chat(context.Background(), chat.Request{
-        Model:    "gpt-4o",
+        Model:    "gpt-5.4",
         Messages: []chat.Message{
             {Role: chat.RoleUser, Content: "Hello!"},
         },
@@ -81,7 +94,7 @@ func main() {
 
 ```go
 stream, err := provider.ChatStream(ctx, chat.Request{
-    Model:    "gpt-4o",
+    Model:    "gpt-5.4",
     Messages: []chat.Message{{Role: chat.RoleUser, Content: "Tell me a story"}},
 })
 defer stream.Close()
@@ -102,7 +115,7 @@ for {
 
 ```go
 resp, err := provider.Chat(ctx, chat.Request{
-    Model:    "gpt-4o",
+    Model:    "gpt-5.4",
     Messages: []chat.Message{{Role: chat.RoleUser, Content: "What's the weather in London?"}},
     Tools: []chat.Tool{{
         Name:        "get_weather",
@@ -117,7 +130,8 @@ resp, err := provider.Chat(ctx, chat.Request{
 
 ## Architecture
 
-The SDK follows a strict **onion architecture** — dependencies flow inward. Outer layers depend on inner layers, never the reverse.
+The SDK follows a strict **onion architecture** — dependencies flow inward.
+Outer layers depend on inner layers, never the reverse.
 
 ```
 ┌──────────────────────────────────────────┐
@@ -138,8 +152,10 @@ The SDK follows a strict **onion architecture** — dependencies flow inward. Ou
 ### Key rules
 
 - **Domain packages** (`pkg/chat`, `pkg/embed`, etc.) import only stdlib
-- **Provider packages** implement domain interfaces; import only domain packages + stdlib + HTTP
-- **Core/Services** orchestrate providers through interfaces — no provider import
+- **Provider packages** implement domain interfaces; import only domain
+  packages + stdlib + HTTP
+- **Core/Services** orchestrate providers through interfaces — no provider
+  import
 - **Runtime** resolves `provider/model` strings into working provider instances
 - No global state, no `init()` wiring, no package-level singletons
 
@@ -185,7 +201,8 @@ gofumpt -w .               # format
 golangci-lint run ./...    # lint
 ```
 
-The project uses `gofumpt` for formatting and `golangci-lint` with `govet`, `staticcheck`, `unused`, `nilerr`, and `misspell` enabled.
+The project uses `gofumpt` for formatting and `golangci-lint` with `govet`,
+`staticcheck`, `unused`, `nilerr`, and `misspell` enabled.
 
 ---
 

@@ -11,8 +11,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/samcharles93/ai-sdk/pkg/embed"
-	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
+	"github.com/samcharles93/ai-sdk/embed"
+	"github.com/samcharles93/ai-sdk/provider/openai"
 )
 
 func main() {

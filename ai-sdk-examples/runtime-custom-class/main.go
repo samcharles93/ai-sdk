@@ -11,9 +11,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/samcharles93/ai-sdk/pkg/chat"
-	"github.com/samcharles93/ai-sdk/pkg/core"
-	"github.com/samcharles93/ai-sdk/pkg/runtime"
+	"github.com/samcharles93/ai-sdk/chat"
+	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/runtime"
 )
 
 // echoProvider is a trivial chat.Provider that echoes the last user

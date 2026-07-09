@@ -13,10 +13,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/samcharles93/ai-sdk/pkg/core"
-	"github.com/samcharles93/ai-sdk/pkg/middleware"
-	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
-	"github.com/samcharles93/ai-sdk/pkg/telemetry"
+	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/middleware"
+	"github.com/samcharles93/ai-sdk/provider/openai"
+	"github.com/samcharles93/ai-sdk/telemetry"
 )
 
 func main() {
@@ -73,7 +73,7 @@ func run() error {
 
 	ctx := context.Background()
 	result, err := core.GenerateText(ctx, finalProvider, core.GenerateOptions{
-		Model:  "gpt-4o",
+		Model:  "gpt-5.4",
 		Prompt: prompt,
 	})
 	if err != nil {

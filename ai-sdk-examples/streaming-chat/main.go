@@ -12,8 +12,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/samcharles93/ai-sdk/pkg/core"
-	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
+	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/provider/openai"
 )
 
 func main() {
@@ -44,7 +44,7 @@ func run() error {
 	// StreamResult with TextStream (text-only channel), FullStream
 	// (rich event stream), and lazy Usage/FinishReason futures.
 	result, err := core.StreamText(ctx, provider, core.GenerateOptions{
-		Model:  "gpt-4o",
+		Model:  "gpt-5.4",
 		Prompt: prompt,
 	})
 	if err != nil {

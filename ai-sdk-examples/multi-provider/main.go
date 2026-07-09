@@ -12,12 +12,12 @@ import (
 	"log"
 	"os"
 
-	"github.com/samcharles93/ai-sdk/pkg/chat"
-	"github.com/samcharles93/ai-sdk/pkg/embed"
-	"github.com/samcharles93/ai-sdk/pkg/provider/cohere"
-	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
-	"github.com/samcharles93/ai-sdk/pkg/registry"
-	"github.com/samcharles93/ai-sdk/pkg/rerank"
+	"github.com/samcharles93/ai-sdk/chat"
+	"github.com/samcharles93/ai-sdk/embed"
+	"github.com/samcharles93/ai-sdk/provider/cohere"
+	"github.com/samcharles93/ai-sdk/provider/openai"
+	"github.com/samcharles93/ai-sdk/registry"
+	"github.com/samcharles93/ai-sdk/rerank"
 )
 
 func main() {
@@ -115,7 +115,7 @@ func run() error {
 		return fmt.Errorf("get openai chat client: %w", err)
 	}
 	chatResp, err := chatClient.Chat(ctx, chat.Request{
-		Model: "gpt-4o",
+		Model: "gpt-5.4",
 		Messages: []chat.Message{
 			{Role: chat.RoleUser, Content: "What is Go best known for? Answer in one sentence."},
 		},

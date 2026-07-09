@@ -20,10 +20,10 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/samcharles93/ai-sdk/pkg/chat"
-	"github.com/samcharles93/ai-sdk/pkg/core"
-	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
-	"github.com/samcharles93/ai-sdk/pkg/uimessage/sse"
+	"github.com/samcharles93/ai-sdk/chat"
+	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/provider/openai"
+	"github.com/samcharles93/ai-sdk/uimessage/sse"
 )
 
 func main() {

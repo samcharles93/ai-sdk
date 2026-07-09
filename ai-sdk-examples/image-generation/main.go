@@ -14,9 +14,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/samcharles93/ai-sdk/pkg/core"
-	"github.com/samcharles93/ai-sdk/pkg/image"
-	"github.com/samcharles93/ai-sdk/pkg/provider/togetherai"
+	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/provider/togetherai"
 )
 
 func main() {

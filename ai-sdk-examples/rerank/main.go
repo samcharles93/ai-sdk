@@ -14,8 +14,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/samcharles93/ai-sdk/pkg/provider/cohere"
-	"github.com/samcharles93/ai-sdk/pkg/rerank"
+	"github.com/samcharles93/ai-sdk/provider/cohere"
+	"github.com/samcharles93/ai-sdk/rerank"
 )
 
 func main() {

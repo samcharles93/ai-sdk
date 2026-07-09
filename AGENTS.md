@@ -4,10 +4,13 @@
 
 ## CORE | STRICT — Onion Model Architecture
 
-This project follows the **onion model** (also known as hexagonal / ports & adapters).  
-Each layer is responsible for a specific concern and **MUST NOT** know about any layer above it.
+This project follows the **onion model** (also known as hexagonal / ports &
+adapters).  
+Each layer is responsible for a specific concern and **MUST NOT** know about any
+layer above it.
 
-Dependency direction: **inward only** — outer layers depend on inner layers, never the reverse.
+Dependency direction: **inward only** — outer layers depend on inner layers,
+never the reverse.
 
 ```tree
 ┌──────────────────────────────────────────────────┐
@@ -76,29 +79,55 @@ Dependency direction: **inward only** — outer layers depend on inner layers, n
 
 ### Dependency Rules (NON-NEGOTIABLE)
 
-1. **Domain packages (`pkg/chat`, `pkg/embed`, etc.)** MUST NOT import any other `pkg/` package. Only stdlib imports are allowed.
-   - The required `client.go` in each domain package is a thin in-package facade over that package's own `Provider` interface and types. It remains domain-layer code and does not import `pkg/core` or any other `pkg/` package.
-2. **Provider packages (`pkg/provider/*`)** MAY import domain packages (`pkg/chat`, `pkg/embed`) to implement their interfaces. They MUST NOT import `pkg/core`, `pkg/ui`, `pkg/registry`, or `pkg/middleware`.
-3. **Core/Services (`pkg/core/`)** MAY import domain packages and their interfaces. It MUST NOT import provider implementations or UI packages. It works strictly against interfaces.
-   - The `client.go` files shown in the Services row (for example, `pkg/chat/client.go`) live in their respective domain packages. `pkg/core/` does not own these files; it imports domain packages.
-4. **Runtime (`pkg/runtime/`)** MAY import domain packages, provider implementations, and core. It is the provider-resolution and model-discovery layer. It MUST NOT be imported by providers, domain packages, or core.
-5. **Middleware (`pkg/middleware/`)** MAY import domain packages and infrastructure packages (`pkg/telemetry/`, `pkg/logger/`, `pkg/error/`). It MUST NOT import `pkg/core/`, provider implementations, `pkg/ui/`, or `pkg/runtime/`.
-6. **Agent (`pkg/agent/`)** MAY import `pkg/core/` and domain packages. It MUST NOT import `pkg/ui/`, `pkg/runtime/`, or provider implementations.
-7. **Infrastructure (`pkg/registry/`, `pkg/schema/`, `pkg/util/`, `pkg/upload/`, `pkg/error/`, `pkg/logger/`, `pkg/telemetry/`, `pkg/prompt/`)**:
-   - `registry` — MAY import all domain interface packages. MUST NOT import providers, core, or UI.
+1. **Domain packages (`pkg/chat`, `pkg/embed`, etc.)** MUST NOT import any other
+   `pkg/` package. Only stdlib imports are allowed.
+   - The required `client.go` in each domain package is a thin in-package facade
+     over that package's own `Provider` interface and types. It remains
+     domain-layer code and does not import `pkg/core` or any other `pkg/`
+     package.
+2. **Provider packages (`pkg/provider/*`)** MAY import domain packages
+   (`pkg/chat`, `pkg/embed`) to implement their interfaces. They MUST NOT import
+   `pkg/core`, `pkg/ui`, `pkg/registry`, or `pkg/middleware`.
+3. **Core/Services (`pkg/core/`)** MAY import domain packages and their
+   interfaces. It MUST NOT import provider implementations or UI packages. It
+   works strictly against interfaces.
+   - The `client.go` files shown in the Services row (for example,
+     `pkg/chat/client.go`) live in their respective domain packages. `pkg/core/`
+     does not own these files; it imports domain packages.
+4. **Runtime (`pkg/runtime/`)** MAY import domain packages, provider
+   implementations, and core. It is the provider-resolution and model-discovery
+   layer. It MUST NOT be imported by providers, domain packages, or core.
+5. **Middleware (`pkg/middleware/`)** MAY import domain packages and
+   infrastructure packages (`pkg/telemetry/`, `pkg/logger/`, `pkg/error/`). It
+   MUST NOT import `pkg/core/`, provider implementations, `pkg/ui/`, or
+   `pkg/runtime/`.
+6. **Agent (`pkg/agent/`)** MAY import `pkg/core/` and domain packages. It MUST
+   NOT import `pkg/ui/`, `pkg/runtime/`, or provider implementations.
+7. **Infrastructure (`pkg/registry/`, `pkg/schema/`, `pkg/util/`, `pkg/upload/`,
+   `pkg/error/`, `pkg/logger/`, `pkg/telemetry/`, `pkg/prompt/`)**:
+   - `registry` — MAY import all domain interface packages. MUST NOT import
+     providers, core, or UI.
    - `schema` — standalone, no pkg/ imports.
    - `util` — standalone, stdlib only.
-   - `upload` — MAY import stdlib and domain types where needed for transport-level file handling. MUST NOT import providers, core, runtime, or UI.
+   - `upload` — MAY import stdlib and domain types where needed for
+     transport-level file handling. MUST NOT import providers, core, runtime, or
+     UI.
    - `error` — standalone sentinel errors; stdlib only.
-   - `logger` — standalone logging abstraction over stdlib logging primitives/interfaces. MUST NOT import providers, core, runtime, or UI.
-   - `telemetry` — standalone tracing interfaces and no-op implementations. MUST NOT import providers, core, runtime, or UI.
-   - `prompt` — standalone prompt management utilities; MUST NOT import providers, core, runtime, or UI.
-8. **UI (`pkg/ui/`)** is the outermost layer. It MAY import core, domain interfaces, registry, and runtime. It MUST NOT import provider implementations directly. It contains:
+   - `logger` — standalone logging abstraction over stdlib logging
+     primitives/interfaces. MUST NOT import providers, core, runtime, or UI.
+   - `telemetry` — standalone tracing interfaces and no-op implementations. MUST
+     NOT import providers, core, runtime, or UI.
+   - `prompt` — standalone prompt management utilities; MUST NOT import
+     providers, core, runtime, or UI.
+8. **UI (`pkg/ui/`)** is the outermost layer. It MAY import core, domain
+   interfaces, registry, and runtime. It MUST NOT import provider
+   implementations directly. It contains:
    - State management structs (Go equivalents of React hooks like `useChat`)
    - Templ components (`.templ` files)
    - HTTP handlers
    - All UI depends on Datastar for streaming reactivity.
-9. **`cmd/`** is the composition root. It wires everything together via dependency injection. It MAY import all packages.
+9. **`cmd/`** is the composition root. It wires everything together via
+   dependency injection. It MAY import all packages.
 
 ### Package Conventions
 
@@ -112,38 +141,43 @@ Every domain package MUST contain:
 
 ### Interface Ownership
 
-Following [Go's interface conventions](https://go.dev/wiki/CodeReviewComments#interfaces):
+Following
+[Go's interface conventions](https://go.dev/wiki/CodeReviewComments#interfaces):
 
 - **Consumers define interfaces they need**, not producers.
-- Domain packages define the `Provider` interface because they are consumed by higher layers.
+- Domain packages define the `Provider` interface because they are consumed by
+  higher layers.
 - HTTP handlers define service interfaces, not the other way around.
 
 ### Dependency Injection
 
 - Every struct has a `New` constructor accepting its dependencies as interfaces.
 - No global state. No package-level singletons. No `init()` for wiring.
-- Changing a `New` signature produces compile-time errors showing all affected call sites.
+- Changing a `New` signature produces compile-time errors showing all affected
+  call sites.
 
 ---
 
 ## UI Layer — Templ + Datastar
 
-The AI SDK UI layer ports the concepts from the JS AI SDK UI libraries (`useChat`, `Chat`, etc.)  
-to server-side Go using [Templ](https://templ.guide) for HTML templating and [Datastar](https://data-star.dev)  
+The AI SDK UI layer ports the concepts from the JS AI SDK UI libraries
+(`useChat`, `Chat`, etc.)  
+to server-side Go using [Templ](https://templ.guide) for HTML templating and
+[Datastar](https://data-star.dev)  
 for real-time streaming reactivity via SSE.
 
 ### Key Concepts (ported from JS)
 
-| JS Concept            | Go Equivalent                            |
-|-----------------------|------------------------------------------|
-| `useChat()` hook      | `chat.Chat` struct with methods          |
-| `UIMessage`           | `chat.UIMessage` struct                  |
-| `ChatTransport`       | `chat.Transport` interface               |
-| `sendMessage()`       | `Chat.Send(ctx, msg)` method             |
-| `status` (reactive)   | Datastar signals on the DOM              |
-| `onToolCall`          | Callback registered on `ChatOptions`     |
-| `addToolOutput()`     | `Chat.AddToolOutput(ctx, opts)` method   |
-| `onFinish`            | Callback registered on `ChatOptions`     |
+| JS Concept          | Go Equivalent                          |
+| ------------------- | -------------------------------------- |
+| `useChat()` hook    | `chat.Chat` struct with methods        |
+| `UIMessage`         | `chat.UIMessage` struct                |
+| `ChatTransport`     | `chat.Transport` interface             |
+| `sendMessage()`     | `Chat.Send(ctx, msg)` method           |
+| `status` (reactive) | Datastar signals on the DOM            |
+| `onToolCall`        | Callback registered on `ChatOptions`   |
+| `addToolOutput()`   | `Chat.AddToolOutput(ctx, opts)` method |
+| `onFinish`          | Callback registered on `ChatOptions`   |
 
 ### Component Strategy
 
@@ -209,32 +243,36 @@ pkg/
 
 ## Provider Ecosystem
 
-| Provider | Package | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
-|---|---|---|---|---|---|---|---|---|---|
-| OpenAI | `pkg/provider/openai` | ✅ | — | — | — | — | — | — | — |
-| Anthropic | `pkg/provider/anthropic` | ✅ | — | — | — | — | — | — | — |
-| Azure | `pkg/provider/azure` | ✅ | ✅ | ✅ | — | — | — | — | — |
-| Cohere | `pkg/provider/cohere` | ✅ | ✅ | — | — | — | — | ✅ | — |
-| DeepSeek | `pkg/provider/deepseek` | ✅ | — | — | — | — | — | — | — |
-| Gemini | `pkg/provider/gemini` | ✅ | ✅ | — | — | — | — | — | — |
-| Groq | `pkg/provider/groq` | ✅ | — | — | — | — | — | — | — |
-| Mistral | `pkg/provider/mistral` | ✅ | ✅ | — | — | — | — | — | — |
-| Ollama | `pkg/provider/ollama` | ✅ | ✅ | — | — | — | — | — | — |
-| Perplexity | `pkg/provider/perplexity` | ✅ | — | — | — | — | — | — | — |
-| TogetherAI | `pkg/provider/togetherai` | ✅ | ✅ | ✅ | — | — | — | — | — |
-| xAI | `pkg/provider/xai` | ✅ | — | — | — | — | — | — | — |
+| Provider   | Package                   | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
+| ---------- | ------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
+| OpenAI     | `pkg/provider/openai`     | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Anthropic  | `pkg/provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Azure      | `pkg/provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| Cohere     | `pkg/provider/cohere`     | ✅   | ✅    | —     | —      | —          | —      | ✅     | —     |
+| DeepSeek   | `pkg/provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Gemini     | `pkg/provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Groq       | `pkg/provider/groq`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Mistral    | `pkg/provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Ollama     | `pkg/provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Perplexity | `pkg/provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| TogetherAI | `pkg/provider/togetherai` | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| xAI        | `pkg/provider/xai`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
 
-**Extended Thinking Support:** Anthropic provider supports Claude extended thinking (`reasoning_effort`/`thinking_budget_tokens`) via `chat.Request.ProviderOptions`.
+**Extended Thinking Support:** Anthropic provider supports Claude extended
+thinking (`reasoning_effort`/`thinking_budget_tokens`) via
+`chat.Request.ProviderOptions`.
 
-This table reflects currently implemented interfaces in this repository. Additional provider capabilities may be added as packages evolve against domain interface contracts.
+This table reflects currently implemented interfaces in this repository.
+Additional provider capabilities may be added as packages evolve against domain
+interface contracts.
 
 ## New Package Documentation
 
 ### `pkg/runtime/` — AI Provider Runtime
 
-The runtime layer resolves model references like `openai/gpt-4o` into working
-provider instances. It is designed for applications (such as `tau`) that
-want to consume AI providers without hardcoding every implementation.
+The runtime layer resolves model references like `openai/gpt-5.4` into working
+provider instances. It is designed for applications (such as `tau`) that want to
+consume AI providers without hardcoding every implementation.
 
 ```tree
 pkg/runtime/
@@ -248,12 +286,12 @@ pkg/runtime/
 
 **Key abstractions:**
 
-- `ProviderClass` — a factory that turns a `ProviderConfig` into a
-  `ProviderSet` of domain providers. Built-in classes include
-  `openai-compatible` (any OpenAI-compatible endpoint) and the known
-  models.dev npm mappings (`openai`, `anthropic`, `groq`, ...).
-- `Catalog` — loads `https://models.dev/api.json`, merges overrides,
-  and exposes provider/model metadata.
+- `ProviderClass` — a factory that turns a `ProviderConfig` into a `ProviderSet`
+  of domain providers. Built-in classes include `openai-compatible` (any
+  OpenAI-compatible endpoint) and the known models.dev npm mappings (`openai`,
+  `anthropic`, `groq`, ...).
+- `Catalog` — loads `https://models.dev/api.json`, merges overrides, and exposes
+  provider/model metadata.
 - `Runtime` — public entry point: `Chat(ctx, "provider/model", opts)` and
   `ChatStream(ctx, "provider/model", opts)`.
 
@@ -263,16 +301,15 @@ pkg/runtime/
 runtime.RegisterClass(myCustomClass{})
 ```
 
-Custom classes can perform arbitrary setup (discovery, auth exchange,
-header injection) before returning domain providers. This is the
-escape hatch for providers like OpenShift MaaS that are not directly
-covered by the built-in classes.
+Custom classes can perform arbitrary setup (discovery, auth exchange, header
+injection) before returning domain providers. This is the escape hatch for
+providers like OpenShift MaaS that are not directly covered by the built-in
+classes.
 
 ### `pkg/object/` — Object Generation Domain
 
-The object generation domain provides types and interfaces for structured
-JSON output from language models. It mirrors the AI SDK's `generateObject`
-function.
+The object generation domain provides types and interfaces for structured JSON
+output from language models. It mirrors the AI SDK's `generateObject` function.
 
 ```tree
 pkg/object/
@@ -330,10 +367,12 @@ pkg/agent/
 
 **Key concepts:**
 
-- `Agent` struct — Provider, Model, System, Tools, MaxSteps, Temperature, MaxTokens
+- `Agent` struct — Provider, Model, System, Tools, MaxSteps, Temperature,
+  MaxTokens
 - `Agent.Run(ctx, prompt)` — returns `<-chan StreamEvent`
 - `RunAgent(ctx, provider, prompt, tools, maxSteps)` — convenience function
-- `StreamEvent` — Type-based event dispatch (TextDelta, ToolCall, ToolResult, etc.)
+- `StreamEvent` — Type-based event dispatch (TextDelta, ToolCall, ToolResult,
+  etc.)
 
 **Event system:**
 
@@ -348,9 +387,9 @@ case agent.EventAbort:       // context cancelled
 }
 ```
 
-The agent does NOT execute tools itself — `core.StreamText` handles the
-full tool loop internally. The agent concentrates on event translation
-and lifecycle management.
+The agent does NOT execute tools itself — `core.StreamText` handles the full
+tool loop internally. The agent concentrates on event translation and lifecycle
+management.
 
 ### `pkg/upload/` — File Upload Utilities
 
@@ -440,7 +479,8 @@ pkg/logger/
 
 **Key types:**
 
-- `Logger` interface — `Info(msg, attrs...), Error(msg, attrs...), Debug(msg, attrs...)`
+- `Logger` interface —
+  `Info(msg, attrs...), Error(msg, attrs...), Debug(msg, attrs...)`
 - `NewSlogLogger(l *slog.Logger) Logger` — adapts stdlib slog
 - `NoopLogger` — no-op implementation for tests
 
@@ -473,8 +513,8 @@ type Tracer interface {
 
 ### `pkg/middleware/` — Provider Middleware
 
-Middleware layer wrapping domain Provider interfaces. Supports composition
-via `Chain()`.
+Middleware layer wrapping domain Provider interfaces. Supports composition via
+`Chain()`.
 
 ```tree
 pkg/middleware/
@@ -506,7 +546,8 @@ pkg/uimessage/sse/
 
 - `Writer` — streams `uimessage.Chunk` values as SSE `data:` events
 - `NewWriter(rw http.ResponseWriter)` — applies headers, flushes automatically
-- `Headers` — canonical AI SDK UI stream headers (`X-Vercel-Ai-Ui-Message-Stream: v1`)
+- `Headers` — canonical AI SDK UI stream headers
+  (`X-Vercel-Ai-Ui-Message-Stream: v1`)
 - `Pipe(ctx, src, w)` — drains chunk channel into SSE writer
 - `FromTextStream` — adapts core text stream into UI message chunks
 
@@ -514,13 +555,13 @@ pkg/uimessage/sse/
 
 Example programs demonstrating SDK usage live in `ai-sdk-examples/`:
 
-| Example                | Description                                        |
-|------------------------|----------------------------------------------------|
-| `openai-chat/`         | Interactive chat CLI using OpenAI provider         |
-| `anthropic-agent/`     | Agent with mock weather tool and streaming output  |
-| `object-generation/`   | Structured object generation API pattern           |
-| `speech-to-text/`      | Audio transcription API pattern                    |
-| `image-generation/`    | Image generation API pattern (Azure, TogetherAI)   |
+| Example              | Description                                       |
+| -------------------- | ------------------------------------------------- |
+| `openai-chat/`       | Interactive chat CLI using OpenAI provider        |
+| `anthropic-agent/`   | Agent with mock weather tool and streaming output |
+| `object-generation/` | Structured object generation API pattern          |
+| `speech-to-text/`    | Audio transcription API pattern                   |
+| `image-generation/`  | Image generation API pattern (Azure, TogetherAI)  |
 
 Run examples from the workspace root:
 

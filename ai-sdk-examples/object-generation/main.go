@@ -16,8 +16,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/samcharles93/ai-sdk/pkg/core"
-	"github.com/samcharles93/ai-sdk/pkg/object"
+	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/object"
 )
 
 func main() {
@@ -56,7 +56,7 @@ func run() error {
 	}`)
 
 	req := object.Request{
-		Model:  "gpt-4o",
+		Model:  "gpt-5.4",
 		Prompt: "Generate a profile for a fictional character named Alice who is a software engineer.",
 	}
 

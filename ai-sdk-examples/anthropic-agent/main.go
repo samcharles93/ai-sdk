@@ -15,9 +15,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/samcharles93/ai-sdk/pkg/agent"
-	"github.com/samcharles93/ai-sdk/pkg/core"
-	"github.com/samcharles93/ai-sdk/pkg/provider/anthropic"
+	"github.com/samcharles93/ai-sdk/agent"
+	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/provider/anthropic"
 )
 
 func main() {

@@ -20,8 +20,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/samcharles93/ai-sdk/pkg/provider/openai"
-	"github.com/samcharles93/ai-sdk/pkg/transcribe"
+	"github.com/samcharles93/ai-sdk/provider/openai"
+	"github.com/samcharles93/ai-sdk/transcribe"
 )
 
 func main() {

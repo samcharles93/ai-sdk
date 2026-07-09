@@ -14,9 +14,9 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	"github.com/samcharles93/ai-sdk/pkg/chat"
-	"github.com/samcharles93/ai-sdk/pkg/core"
-	"github.com/samcharles93/ai-sdk/pkg/runtime"
+	"github.com/samcharles93/ai-sdk/chat"
+	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/runtime"
 )
 
 func main() {
@@ -43,7 +43,7 @@ func main() {
 
 	rt := runtime.NewRuntime(cfg)
 
-	stream, err := rt.ChatStream(context.Background(), "my-gateway/gpt-4o", core.GenerateOptions{
+	stream, err := rt.ChatStream(context.Background(), "my-gateway/gpt-5.4", core.GenerateOptions{
 		Messages: []chat.Message{
 			{Role: chat.RoleSystem, Content: "You are a test assistant."},
 			{Role: chat.RoleUser, Content: "Say hello."},
