@@ -28,15 +28,27 @@ const (
 // anthropicProviderOptions holds Anthropic-specific request options
 // extracted via [chat.ProviderOptionsFor] from [chat.Request.ProviderOptions].
 type anthropicProviderOptions struct {
-	// ReasoningEffort controls extended thinking via a symbolic effort level.
-	// Supported values: "none" (disabled), "low" (1024 token budget),
-	// "medium" (4096), "high" (16384), "xhigh" (32768).
+	// ReasoningEffort controls extended thinking via a symbolic effort
+	// level. "none" always disables thinking (except on Fable 5/Mythos 5/
+	// Mythos Preview, which can't be disabled at all). The rest of the
+	// value's meaning depends on the model (see adaptiveOnlyModelPrefixes):
+	//   - Adaptive-only models (Sonnet 5, Opus 4.8/4.7, Fable 5, Mythos 5,
+	//     Mythos Preview): "low"/"medium"/"high"/"xhigh"/"max" map to
+	//     thinking.type="adaptive" + output_config.effort. budget_tokens
+	//     is not accepted at all on these models.
+	//   - All other models: "low"/"medium"/"high"/"xhigh" map to a
+	//     thinking.type="enabled" budget_tokens value (1024/4096/16384/
+	//     32768). "max" is not a legacy-budget value and is treated the
+	//     same as an unknown value below.
 	// Unknown values cause thinking to be omitted from the request.
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 
-	// ThinkingBudgetTokens directly sets the thinking token budget.
-	// When > 0 it overrides ReasoningEffort. Must be < max_tokens.
-	// Minimum 1024 (enforced by the Anthropic API).
+	// ThinkingBudgetTokens directly sets the thinking token budget on the
+	// legacy thinking.type="enabled" API. When > 0 it overrides
+	// ReasoningEffort. Must be < max_tokens. Minimum 1024 (enforced by
+	// the Anthropic API). Not supported on adaptive-only models (see
+	// adaptiveOnlyModelPrefixes) — set ReasoningEffort instead, which
+	// returns an error explaining the rename.
 	ThinkingBudgetTokens int `json:"thinking_budget_tokens,omitempty"`
 
 	// DisableSystemCache opts out of the default behaviour of marking the
@@ -50,12 +62,56 @@ type anthropicProviderOptions struct {
 	DisableSystemCache bool `json:"disable_system_cache,omitempty"`
 }
 
-// reasoningEffortBudget maps symbolic effort levels to thinking budget tokens.
+// reasoningEffortBudget maps symbolic effort levels to thinking budget
+// tokens, for the legacy thinking.type="enabled" API used by models that
+// don't support adaptive thinking (see adaptiveOnlyModelPrefixes).
 var reasoningEffortBudget = map[string]int{
 	"low":    1024,
 	"medium": 4096,
 	"high":   16384,
 	"xhigh":  32768,
+}
+
+// adaptiveEffortLevels are the valid output_config.effort values for
+// adaptive thinking. "max" only exists here — the legacy budget-based API
+// has no equivalent, since it's expressed as an unbounded thinking budget
+// instead of a symbolic level.
+var adaptiveEffortLevels = map[string]bool{
+	"low":    true,
+	"medium": true,
+	"high":   true,
+	"xhigh":  true,
+	"max":    true,
+}
+
+// adaptiveOnlyModelPrefixes are Claude models where adaptive thinking
+// (thinking.type="adaptive" + top-level output_config.effort) is the only
+// supported thinking API — manual thinking.type="enabled"+budget_tokens is
+// rejected outright with a 400, and temperature/top_p/top_k are rejected
+// on every request regardless of whether thinking is active at all. Older
+// and "deprecated-but-still-functional" models (Opus 4.6, Sonnet 4.6, and
+// everything before) still accept the legacy budget_tokens API and are
+// deliberately not in this list.
+//
+// Matched by prefix rather than exact string since dated snapshot
+// variants (e.g. a future "claude-sonnet-5-20260315") would otherwise
+// silently fall through to the legacy path and 400.
+var adaptiveOnlyModelPrefixes = []string{
+	"claude-sonnet-5",
+	"claude-opus-4-8",
+	"claude-opus-4-7",
+	"claude-fable-5",
+	"claude-mythos-5",
+	"claude-mythos-preview",
+}
+
+func isAdaptiveOnlyModel(model string) bool {
+	for _, prefix := range adaptiveOnlyModelPrefixes {
+		if strings.HasPrefix(model, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Config configures an Anthropic Provider.
@@ -311,8 +367,34 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 	}
 
 	// --- apply thinking options ---
-	var thinkingEnabled bool
-	if opts.ThinkingBudgetTokens > 0 {
+	adaptiveOnly := isAdaptiveOnlyModel(req.Model)
+	// legacyThinkingEnabled tracks the OLD thinking.type="enabled" path
+	// specifically (used only to decide whether budget/max_tokens
+	// reconciliation applies below) — NOT whether thinking is active in
+	// general. See dropSamplingParams for the latter.
+	var legacyThinkingEnabled bool
+	switch {
+	case adaptiveOnly:
+		if opts.ThinkingBudgetTokens > 0 {
+			return nil, nil, fmt.Errorf("anthropic: thinking_budget_tokens is not supported on %s (adaptive-only thinking model); use reasoning_effort instead: %w",
+				req.Model, chat.ErrInvalidRequest)
+		}
+		switch {
+		case opts.ReasoningEffort == "none":
+			body["thinking"] = map[string]any{"type": "disabled"}
+		case opts.ReasoningEffort == "":
+			// Leave thinking unset: on these models that means adaptive
+			// thinking at its own default (Sonnet 5 defaults it on;
+			// Fable 5/Mythos 5/Mythos Preview can't be turned off at
+			// all). No explicit output_config.effort, so Anthropic's
+			// own default ("high") applies.
+		case adaptiveEffortLevels[opts.ReasoningEffort]:
+			body["thinking"] = map[string]any{"type": "adaptive"}
+			body["output_config"] = map[string]any{"effort": opts.ReasoningEffort}
+		}
+		// Unknown ReasoningEffort: silently omit thinking, same as the
+		// legacy branch below.
+	case opts.ThinkingBudgetTokens > 0:
 		if err := ensureBudgetFits(opts.ThinkingBudgetTokens, fmt.Sprintf("thinking_budget_tokens (%d)", opts.ThinkingBudgetTokens)); err != nil {
 			return nil, nil, err
 		}
@@ -320,8 +402,8 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 			"type":          "enabled",
 			"budget_tokens": opts.ThinkingBudgetTokens,
 		}
-		thinkingEnabled = true
-	} else if opts.ReasoningEffort != "" {
+		legacyThinkingEnabled = true
+	case opts.ReasoningEffort != "":
 		if opts.ReasoningEffort == "none" {
 			body["thinking"] = map[string]any{"type": "disabled"}
 		} else if budget, ok := reasoningEffortBudget[opts.ReasoningEffort]; ok {
@@ -332,11 +414,11 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 				"type":          "enabled",
 				"budget_tokens": budget,
 			}
-			thinkingEnabled = true
+			legacyThinkingEnabled = true
 		}
 		// Unknown ReasoningEffort: silently omit thinking.
 	}
-	// Both zero: omit thinking from body (Anthropic default).
+	// All zero/unmatched: omit thinking from body (provider default).
 	body["max_tokens"] = maxTokens
 
 	if len(req.Tools) > 0 {
@@ -386,14 +468,17 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 			body["tool_choice"] = tc
 		}
 	}
-	// Anthropic rejects temperature/top_p entirely when extended thinking
-	// is enabled (temperature is pinned to 1 server-side; the API 400s if
-	// either is sent at all, even temperature=1 explicitly).
-	if thinkingEnabled {
+	// Anthropic rejects temperature/top_p entirely when legacy extended
+	// thinking is enabled (temperature is pinned to 1 server-side).
+	// Adaptive-only models reject them on EVERY request regardless of
+	// whether thinking is active at all — a stricter, model-wide rule,
+	// not a thinking-state-dependent one.
+	dropSamplingParams := adaptiveOnly || legacyThinkingEnabled
+	if dropSamplingParams {
 		if req.Temperature != 0 || req.TopP != 0 {
 			warnings = append(warnings, chat.Warning{
 				Type:    "unsupported-option",
-				Message: "anthropic: temperature/top_p are not supported with extended thinking enabled; both omitted",
+				Message: "anthropic: temperature/top_p are not supported on this model/mode; both omitted",
 			})
 		}
 	} else {

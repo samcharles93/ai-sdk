@@ -1000,5 +1000,83 @@ func TestChat_ThinkingDropsTemperatureAndTopP(t *testing.T) {
 	}
 }
 
+// TestChat_AdaptiveThinking_EffortMapsToOutputConfig covers the adaptive
+// thinking API used by claude-sonnet-5 and similar models: reasoning_effort
+// must map to thinking.type="adaptive" + a top-level output_config.effort,
+// not the legacy thinking.type="enabled"+budget_tokens shape.
+func TestChat_AdaptiveThinking_EffortMapsToOutputConfig(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-5",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ReasoningEffort: "medium"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	thinking, ok := gotBody["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "adaptive" {
+		t.Fatalf("thinking = %v, want type=adaptive", gotBody["thinking"])
+	}
+	if _, hasBudget := thinking["budget_tokens"]; hasBudget {
+		t.Errorf("thinking still has budget_tokens: %v", thinking)
+	}
+	outputConfig, ok := gotBody["output_config"].(map[string]any)
+	if !ok || outputConfig["effort"] != "medium" {
+		t.Errorf("output_config = %v, want effort=medium", gotBody["output_config"])
+	}
+}
+
+// TestChat_AdaptiveThinking_RejectsBudgetTokens covers the regression that
+// motivated this: claude-sonnet-5 rejects manual thinking.type="enabled"
+// with a 400, so a caller-set ThinkingBudgetTokens must fail fast with a
+// clear message instead of sending a request Anthropic will reject anyway.
+func TestChat_AdaptiveThinking_RejectsBudgetTokens(t *testing.T) {
+	p, _ := New(Config{APIKey: "k", BaseURL: "http://example.invalid"})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-5",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ThinkingBudgetTokens: 4000},
+		},
+	})
+	if !errors.Is(err, chat.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+// TestChat_AdaptiveThinking_DropsTemperatureRegardlessOfThinkingState
+// covers the stricter, model-wide rule for adaptive-only models: they
+// reject temperature/top_p on every request, even when ReasoningEffort is
+// empty (thinking left at its own default) — not just while thinking is
+// explicitly active, unlike legacy models.
+func TestChat_AdaptiveThinking_DropsTemperatureRegardlessOfThinkingState(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:       "claude-sonnet-5",
+		Messages:    []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Temperature: 0.7,
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if _, ok := gotBody["temperature"]; ok {
+		t.Errorf("body still has temperature: %v", gotBody["temperature"])
+	}
+	if _, hasThinking := gotBody["thinking"]; hasThinking {
+		t.Errorf("thinking should be left unset (model default), got %v", gotBody["thinking"])
+	}
+}
+
 // guard against accidental import of fmt only
 var _ = fmt.Sprintf
