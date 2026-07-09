@@ -554,10 +554,11 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 					out.Role = chat.Role(item.Role)
 				}
 				for _, block := range item.Content {
-					if block.Type == "output_text" || block.Type == "text" {
+					switch block.Type {
+					case "output_text", "text":
 						out.Content += block.Text
 						out.Parts = append(out.Parts, chat.TextPart{Text: block.Text})
-					} else if block.Type == "function_call" || block.Type == "tool_call" {
+					case "function_call", "tool_call":
 						out.ToolCalls = append(out.ToolCalls, chat.ToolCall{
 							ID:        block.CallID,
 							Name:      block.Name,
