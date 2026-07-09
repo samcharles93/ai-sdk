@@ -552,3 +552,74 @@ func TestChat_ResponsesAPI_RenamesAndDropsUnsupportedFields(t *testing.T) {
 		t.Errorf("max_output_tokens = %v, want 64", gotBody["max_output_tokens"])
 	}
 }
+
+// TestChat_CachedTokens_ChatCompletions covers parsing
+// prompt_tokens_details.cached_tokens from the Chat Completions API.
+func TestChat_CachedTokens_ChatCompletions(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"resp-cached",
+			"model":"gpt-5.4",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":2000,"completion_tokens":10,"total_tokens":2010,"prompt_tokens_details":{"cached_tokens":1920}}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.Chat(context.Background(), chat.Request{
+		Model:    "gpt-5.4",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.Usage.CachedTokens != 1920 {
+		t.Errorf("CachedTokens = %d, want 1920", resp.Usage.CachedTokens)
+	}
+	if resp.Usage.PromptTokens != 2000 {
+		t.Errorf("PromptTokens = %d, want 2000", resp.Usage.PromptTokens)
+	}
+}
+
+// TestChat_CachedTokens_ResponsesAPI covers parsing
+// input_tokens_details.cached_tokens from the Responses API.
+func TestChat_CachedTokens_ResponsesAPI(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"resp-cached-2",
+			"model":"gpt-5.4",
+			"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}],
+			"usage":{"input_tokens":2000,"output_tokens":10,"total_tokens":2010,"input_tokens_details":{"cached_tokens":1920}}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.Chat(context.Background(), chat.Request{
+		Model:    "gpt-5.4",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Tools: []chat.Tool{{
+			Name:        "get_weather",
+			Description: "Get weather",
+			Parameters:  json.RawMessage(`{"type":"object"}`),
+		}},
+		ProviderOptions: map[string]any{
+			"openai": openaiProviderOptions{ReasoningEffort: "low"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.Usage.CachedTokens != 1920 {
+		t.Errorf("CachedTokens = %d, want 1920", resp.Usage.CachedTokens)
+	}
+}

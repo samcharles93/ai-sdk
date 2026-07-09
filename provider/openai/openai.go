@@ -146,9 +146,21 @@ func (m wireMessage) reasoningText() string {
 }
 
 type wireUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	TotalTokens         int `json:"total_tokens"`
+	PromptTokensDetails *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+}
+
+// cachedTokens returns the cached portion of PromptTokens, or 0 if the
+// server didn't report prompt_tokens_details.
+func (u wireUsage) cachedTokens() int {
+	if u.PromptTokensDetails == nil {
+		return 0
+	}
+	return u.PromptTokensDetails.CachedTokens
 }
 
 type wireChoice struct {
@@ -517,15 +529,22 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 				Arguments string `json:"arguments"`
 			} `json:"output"`
 			Usage struct {
-				InputTokens      int `json:"input_tokens"`
-				OutputTokens     int `json:"output_tokens"`
-				TotalTokens      int `json:"total_tokens"`
-				PromptTokens     int `json:"prompt_tokens"`
-				CompletionTokens int `json:"completion_tokens"`
+				InputTokens        int `json:"input_tokens"`
+				OutputTokens       int `json:"output_tokens"`
+				TotalTokens        int `json:"total_tokens"`
+				PromptTokens       int `json:"prompt_tokens"`
+				CompletionTokens   int `json:"completion_tokens"`
+				InputTokensDetails *struct {
+					CachedTokens int `json:"cached_tokens"`
+				} `json:"input_tokens_details,omitempty"`
 			} `json:"usage"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
 			return chat.Response{}, fmt.Errorf("openai: decode responses api response: %w", err)
+		}
+		var cached int
+		if wr.Usage.InputTokensDetails != nil {
+			cached = wr.Usage.InputTokensDetails.CachedTokens
 		}
 		out := chat.Response{
 			ID:       wr.ID,
@@ -536,6 +555,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 				PromptTokens:     firstNonZero(wr.Usage.InputTokens, wr.Usage.PromptTokens),
 				CompletionTokens: firstNonZero(wr.Usage.OutputTokens, wr.Usage.CompletionTokens),
 				TotalTokens:      firstNonZero(wr.Usage.TotalTokens),
+				CachedTokens:     cached,
 			},
 		}
 		for _, item := range wr.Output {
@@ -587,6 +607,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 			PromptTokens:     wr.Usage.PromptTokens,
 			CompletionTokens: wr.Usage.CompletionTokens,
 			TotalTokens:      wr.Usage.TotalTokens,
+			CachedTokens:     wr.Usage.cachedTokens(),
 		},
 	}
 	if len(wr.Choices) > 0 {
@@ -821,6 +842,7 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 				PromptTokens:     ch.Usage.PromptTokens,
 				CompletionTokens: ch.Usage.CompletionTokens,
 				TotalTokens:      ch.Usage.TotalTokens,
+				CachedTokens:     ch.Usage.cachedTokens(),
 			}
 		}
 		if len(ch.Choices) == 0 {
@@ -908,19 +930,25 @@ func parseResponsesSSEChunk(data []byte) (chat.Chunk, bool) {
 		Arguments string `json:"arguments"`
 		Index     int    `json:"output_index"`
 		Usage     *struct {
-			InputTokens      int `json:"input_tokens"`
-			OutputTokens     int `json:"output_tokens"`
-			TotalTokens      int `json:"total_tokens"`
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
+			InputTokens        int `json:"input_tokens"`
+			OutputTokens       int `json:"output_tokens"`
+			TotalTokens        int `json:"total_tokens"`
+			PromptTokens       int `json:"prompt_tokens"`
+			CompletionTokens   int `json:"completion_tokens"`
+			InputTokensDetails *struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"input_tokens_details,omitempty"`
 		} `json:"usage"`
 		Response *struct {
 			Usage *struct {
-				InputTokens      int `json:"input_tokens"`
-				OutputTokens     int `json:"output_tokens"`
-				TotalTokens      int `json:"total_tokens"`
-				PromptTokens     int `json:"prompt_tokens"`
-				CompletionTokens int `json:"completion_tokens"`
+				InputTokens        int `json:"input_tokens"`
+				OutputTokens       int `json:"output_tokens"`
+				TotalTokens        int `json:"total_tokens"`
+				PromptTokens       int `json:"prompt_tokens"`
+				CompletionTokens   int `json:"completion_tokens"`
+				InputTokensDetails *struct {
+					CachedTokens int `json:"cached_tokens"`
+				} `json:"input_tokens_details,omitempty"`
 			} `json:"usage"`
 		} `json:"response"`
 	}
@@ -953,17 +981,27 @@ func parseResponsesSSEChunk(data []byte) (chat.Chunk, bool) {
 		chunk.FinishReason = "stop"
 	}
 	if event.Usage != nil {
+		var cached int
+		if event.Usage.InputTokensDetails != nil {
+			cached = event.Usage.InputTokensDetails.CachedTokens
+		}
 		chunk.Usage = &chat.Usage{
 			PromptTokens:     firstNonZero(event.Usage.InputTokens, event.Usage.PromptTokens),
 			CompletionTokens: firstNonZero(event.Usage.OutputTokens, event.Usage.CompletionTokens),
 			TotalTokens:      firstNonZero(event.Usage.TotalTokens),
+			CachedTokens:     cached,
 		}
 	}
 	if chunk.Usage == nil && event.Response != nil && event.Response.Usage != nil {
+		var cached int
+		if event.Response.Usage.InputTokensDetails != nil {
+			cached = event.Response.Usage.InputTokensDetails.CachedTokens
+		}
 		chunk.Usage = &chat.Usage{
 			PromptTokens:     firstNonZero(event.Response.Usage.InputTokens, event.Response.Usage.PromptTokens),
 			CompletionTokens: firstNonZero(event.Response.Usage.OutputTokens, event.Response.Usage.CompletionTokens),
 			TotalTokens:      firstNonZero(event.Response.Usage.TotalTokens),
+			CachedTokens:     cached,
 		}
 	}
 	return chunk, chunk.Delta != "" || chunk.ReasoningDelta != "" || len(chunk.ToolCallDeltas) > 0 || chunk.Done || chunk.Usage != nil

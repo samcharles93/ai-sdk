@@ -38,6 +38,16 @@ type anthropicProviderOptions struct {
 	// When > 0 it overrides ReasoningEffort. Must be < max_tokens.
 	// Minimum 1024 (enforced by the Anthropic API).
 	ThinkingBudgetTokens int `json:"thinking_budget_tokens,omitempty"`
+
+	// DisableSystemCache opts out of the default behaviour of marking the
+	// system prompt as an ephemeral cache breakpoint. Caching is on by
+	// default because the common case (a caller resending an identical
+	// system prompt across turns of a session, e.g. an agent loop) makes
+	// it a near-strict win: a cache write costs 1.25x normal input price
+	// once, then subsequent reads of that prefix cost ~0.1x. A one-off,
+	// single-turn call pays that 1.25x premium for no benefit, which is
+	// what this flag is for.
+	DisableSystemCache bool `json:"disable_system_cache,omitempty"`
 }
 
 // reasoningEffortBudget maps symbolic effort levels to thinking budget tokens.
@@ -113,8 +123,31 @@ type wireMessage struct {
 }
 
 type wireUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+}
+
+// usageFromWire converts Anthropic's usage accounting into [chat.Usage].
+//
+// Anthropic's input_tokens counts only tokens NOT read from or written to
+// cache (i.e. those after the last cache breakpoint) — cache_read/
+// cache_creation are reported separately and are NOT already included in
+// it. This differs from OpenAI, whose prompt_tokens is a superset that
+// already includes its cached_tokens subset. To keep [chat.Usage.PromptTokens]
+// meaning "total prompt tokens" consistently across providers (what
+// downstream cost/context-window accounting expects), the cache token
+// counts are folded in here rather than left additive.
+func usageFromWire(u wireUsage) chat.Usage {
+	prompt := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+	return chat.Usage{
+		PromptTokens:        prompt,
+		CompletionTokens:    u.OutputTokens,
+		TotalTokens:         prompt + u.OutputTokens,
+		CachedTokens:        u.CacheReadInputTokens,
+		CacheCreationTokens: u.CacheCreationInputTokens,
+	}
 }
 
 type wireResponse struct {
@@ -151,8 +184,10 @@ type wireSSEMsgData struct {
 }
 
 type wireSSEUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
 }
 
 // wireContentDelta is decoded from [wireSSEEvent.Delta] for
@@ -229,42 +264,80 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 		"model":    req.Model,
 		"messages": msgs,
 	}
+	opts, _ := chat.ProviderOptionsFor[anthropicProviderOptions](req.ProviderOptions, "anthropic")
 	if len(systemTexts) > 0 {
-		body["system"] = strings.Join(systemTexts, "\n")
+		joined := strings.Join(systemTexts, "\n")
+		if opts.DisableSystemCache {
+			body["system"] = joined
+		} else {
+			// A content-block array (vs. a plain string) is required to
+			// attach cache_control. See DisableSystemCache's doc comment
+			// for why this is the default.
+			body["system"] = []map[string]any{
+				{
+					"type":          "text",
+					"text":          joined,
+					"cache_control": map[string]any{"type": "ephemeral"},
+				},
+			}
+		}
 	}
+	explicitMaxTokens := req.MaxTokens != 0
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = defaultMaxTokens
 	}
-	body["max_tokens"] = maxTokens
+
+	// ensureBudgetFits reconciles a thinking budget against maxTokens. The
+	// API requires budget_tokens < max_tokens (thinking tokens must leave
+	// room for actual output). When the caller left MaxTokens unset, the
+	// fallback default (4096) coincides with the "medium" effort budget
+	// (also 4096), so a default-max-tokens request with medium effort
+	// always violated that constraint. Rather than surface that as an
+	// error the caller never asked for, grow the implicit max_tokens to
+	// fit the budget plus a normal output allowance. An explicitly-set
+	// MaxTokens that's still too small is a genuine caller conflict and
+	// stays an error.
+	ensureBudgetFits := func(budget int, label string) error {
+		if budget < maxTokens {
+			return nil
+		}
+		if explicitMaxTokens {
+			return fmt.Errorf("anthropic: %s maps to budget_tokens %d, must be less than max_tokens (%d): %w",
+				label, budget, maxTokens, chat.ErrInvalidRequest)
+		}
+		maxTokens = budget + defaultMaxTokens
+		return nil
+	}
 
 	// --- apply thinking options ---
-	opts, _ := chat.ProviderOptionsFor[anthropicProviderOptions](req.ProviderOptions, "anthropic")
+	var thinkingEnabled bool
 	if opts.ThinkingBudgetTokens > 0 {
-		if opts.ThinkingBudgetTokens >= maxTokens {
-			return nil, nil, fmt.Errorf("anthropic: thinking_budget_tokens (%d) must be less than max_tokens (%d): %w",
-				opts.ThinkingBudgetTokens, maxTokens, chat.ErrInvalidRequest)
+		if err := ensureBudgetFits(opts.ThinkingBudgetTokens, fmt.Sprintf("thinking_budget_tokens (%d)", opts.ThinkingBudgetTokens)); err != nil {
+			return nil, nil, err
 		}
 		body["thinking"] = map[string]any{
 			"type":          "enabled",
 			"budget_tokens": opts.ThinkingBudgetTokens,
 		}
+		thinkingEnabled = true
 	} else if opts.ReasoningEffort != "" {
 		if opts.ReasoningEffort == "none" {
 			body["thinking"] = map[string]any{"type": "disabled"}
 		} else if budget, ok := reasoningEffortBudget[opts.ReasoningEffort]; ok {
-			if budget >= maxTokens {
-				return nil, nil, fmt.Errorf("anthropic: reasoning_effort %q maps to budget_tokens %d, must be less than max_tokens (%d): %w",
-					opts.ReasoningEffort, budget, maxTokens, chat.ErrInvalidRequest)
+			if err := ensureBudgetFits(budget, fmt.Sprintf("reasoning_effort %q", opts.ReasoningEffort)); err != nil {
+				return nil, nil, err
 			}
 			body["thinking"] = map[string]any{
 				"type":          "enabled",
 				"budget_tokens": budget,
 			}
+			thinkingEnabled = true
 		}
 		// Unknown ReasoningEffort: silently omit thinking.
 	}
 	// Both zero: omit thinking from body (Anthropic default).
+	body["max_tokens"] = maxTokens
 
 	if len(req.Tools) > 0 {
 		tools := make([]wireToolDef, len(req.Tools))
@@ -313,11 +386,23 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 			body["tool_choice"] = tc
 		}
 	}
-	if req.Temperature != 0 {
-		body["temperature"] = req.Temperature
-	}
-	if req.TopP != 0 {
-		body["top_p"] = req.TopP
+	// Anthropic rejects temperature/top_p entirely when extended thinking
+	// is enabled (temperature is pinned to 1 server-side; the API 400s if
+	// either is sent at all, even temperature=1 explicitly).
+	if thinkingEnabled {
+		if req.Temperature != 0 || req.TopP != 0 {
+			warnings = append(warnings, chat.Warning{
+				Type:    "unsupported-option",
+				Message: "anthropic: temperature/top_p are not supported with extended thinking enabled; both omitted",
+			})
+		}
+	} else {
+		if req.Temperature != 0 {
+			body["temperature"] = req.Temperature
+		}
+		if req.TopP != 0 {
+			body["top_p"] = req.TopP
+		}
 	}
 	if len(req.Stop) > 0 {
 		body["stop_sequences"] = req.Stop
@@ -506,11 +591,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 		Model:    wr.Model,
 		Role:     chat.RoleAssistant,
 		Warnings: warnings,
-		Usage: chat.Usage{
-			PromptTokens:     wr.Usage.InputTokens,
-			CompletionTokens: wr.Usage.OutputTokens,
-			TotalTokens:      wr.Usage.InputTokens + wr.Usage.OutputTokens,
-		},
+		Usage:    usageFromWire(wr.Usage),
 	}
 	var textBuf strings.Builder
 	var calls []chat.ToolCall
@@ -594,19 +675,34 @@ type streamThinkingBlock struct {
 }
 
 type stream struct {
-	resp            *http.Response
-	reader          *bufio.Reader
-	closed          bool
-	doneEmitted     bool
-	msgID           string
-	msgModel        string
-	inputTokens     int
-	outputTokens    int
-	finishReason    string
-	sawToolCall     bool
-	pendingWarnings []chat.Warning
-	toolBlocks      map[int]*streamToolBlock
-	thinkingBlocks  map[int]*streamThinkingBlock
+	resp                *http.Response
+	reader              *bufio.Reader
+	closed              bool
+	doneEmitted         bool
+	msgID               string
+	msgModel            string
+	inputTokens         int
+	outputTokens        int
+	cachedTokens        int
+	cacheCreationTokens int
+	finishReason        string
+	sawToolCall         bool
+	pendingWarnings     []chat.Warning
+	toolBlocks          map[int]*streamToolBlock
+	thinkingBlocks      map[int]*streamThinkingBlock
+}
+
+// usage folds the stream's accumulated token counts into a [chat.Usage],
+// applying the same cache-token-inclusion convention as usageFromWire.
+func (s *stream) usage() chat.Usage {
+	prompt := s.inputTokens + s.cachedTokens + s.cacheCreationTokens
+	return chat.Usage{
+		PromptTokens:        prompt,
+		CompletionTokens:    s.outputTokens,
+		TotalTokens:         prompt + s.outputTokens,
+		CachedTokens:        s.cachedTokens,
+		CacheCreationTokens: s.cacheCreationTokens,
+	}
 }
 
 func (s *stream) Close() error {
@@ -689,14 +785,11 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 			if errors.Is(err, io.EOF) {
 				if !s.doneEmitted {
 					s.doneEmitted = true
+					usage := s.usage()
 					return chat.Chunk{
-						Done: true,
-						Role: chat.RoleAssistant,
-						Usage: &chat.Usage{
-							PromptTokens:     s.inputTokens,
-							CompletionTokens: s.outputTokens,
-							TotalTokens:      s.inputTokens + s.outputTokens,
-						},
+						Done:  true,
+						Role:  chat.RoleAssistant,
+						Usage: &usage,
 					}, nil
 				}
 				return chat.Chunk{}, io.EOF
@@ -710,6 +803,8 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 				s.msgModel = evt.Message.Model
 				if evt.Message.Usage != nil {
 					s.inputTokens = evt.Message.Usage.InputTokens
+					s.cachedTokens = evt.Message.Usage.CacheReadInputTokens
+					s.cacheCreationTokens = evt.Message.Usage.CacheCreationInputTokens
 				}
 			}
 		case "content_block_start":
@@ -793,6 +888,15 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 			s.finishReason = md.StopReason
 			if evt.Usage != nil {
 				s.outputTokens = evt.Usage.OutputTokens
+				// message_delta's usage is an output-side update in
+				// practice, but pick up cache fields defensively in case
+				// a future API revision includes them here too.
+				if evt.Usage.CacheReadInputTokens > 0 {
+					s.cachedTokens = evt.Usage.CacheReadInputTokens
+				}
+				if evt.Usage.CacheCreationInputTokens > 0 {
+					s.cacheCreationTokens = evt.Usage.CacheCreationInputTokens
+				}
 			}
 		case "message_stop":
 			s.doneEmitted = true
@@ -800,15 +904,12 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 			if s.sawToolCall && (fr == "" || fr == "stop") {
 				fr = "tool_calls"
 			}
+			usage := s.usage()
 			out := chat.Chunk{
 				Done:         true,
 				Role:         chat.RoleAssistant,
 				FinishReason: fr,
-				Usage: &chat.Usage{
-					PromptTokens:     s.inputTokens,
-					CompletionTokens: s.outputTokens,
-					TotalTokens:      s.inputTokens + s.outputTokens,
-				},
+				Usage:        &usage,
 			}
 			if len(s.pendingWarnings) > 0 {
 				out.Warnings = s.pendingWarnings

@@ -176,13 +176,58 @@ func TestChat_SystemMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sys, ok := gotBody["system"].(string)
-	if !ok || sys != "be helpful" {
-		t.Errorf("system: %v", gotBody["system"])
+	// System caching is on by default: the system prompt is sent as a
+	// content-block array with an ephemeral cache_control breakpoint,
+	// not a plain string. See DisableSystemCache's doc comment.
+	sysBlocks, ok := gotBody["system"].([]any)
+	if !ok || len(sysBlocks) != 1 {
+		t.Fatalf("system: %v", gotBody["system"])
+	}
+	block, _ := sysBlocks[0].(map[string]any)
+	if block["type"] != "text" || block["text"] != "be helpful" {
+		t.Errorf("system block: %v", block)
+	}
+	cc, _ := block["cache_control"].(map[string]any)
+	if cc["type"] != "ephemeral" {
+		t.Errorf("system block cache_control: %v", block["cache_control"])
 	}
 	msgs, _ := gotBody["messages"].([]any)
 	if len(msgs) != 1 {
 		t.Fatalf("messages len: got %d want 1", len(msgs))
+	}
+}
+
+func TestChat_SystemMessage_CacheDisabled(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"msg_03b","model":"claude-sonnet-4-20250514","role":"assistant",
+			"content":[{"type":"text","text":"ok"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":5,"output_tokens":1}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model: "claude-sonnet-4-20250514",
+		Messages: []chat.Message{
+			{Role: chat.RoleSystem, Content: "be helpful"},
+			{Role: chat.RoleUser, Content: "hi"},
+		},
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{DisableSystemCache: true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys, ok := gotBody["system"].(string)
+	if !ok || sys != "be helpful" {
+		t.Errorf("system: %v", gotBody["system"])
 	}
 }
 
@@ -562,6 +607,38 @@ func testServer(gotBody *map[string]any) *httptest.Server {
 	}))
 }
 
+// TestChat_ThinkingMediumEffortWithDefaultMaxTokens covers a regression:
+// the default max_tokens (4096) coincided exactly with "medium" effort's
+// budget_tokens (also 4096), so any caller that left MaxTokens unset and
+// used medium effort always hit "budget_tokens must be less than
+// max_tokens" — a request the caller never asked to constrain. When
+// MaxTokens is left at its zero value, max_tokens must grow to
+// accommodate the budget instead of erroring.
+func TestChat_ThinkingMediumEffortWithDefaultMaxTokens(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ReasoningEffort: "medium"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if gotBody["max_tokens"].(float64) <= 4096 {
+		t.Errorf("max_tokens = %v, want > 4096 (budget) so budget < max_tokens holds", gotBody["max_tokens"])
+	}
+	thinking, _ := gotBody["thinking"].(map[string]any)
+	if thinking["budget_tokens"] != float64(4096) {
+		t.Errorf("thinking.budget_tokens = %v, want 4096", thinking["budget_tokens"])
+	}
+}
+
 func TestChat_ThinkingViaReasoningEffort(t *testing.T) {
 	tests := []struct {
 		effort     string
@@ -782,6 +859,144 @@ func TestChat_ThinkingOnlyOtherProviderOptions(t *testing.T) {
 
 	if _, hasThinking := gotBody["thinking"]; hasThinking {
 		t.Error("thinking should not be set when only other providers have options")
+	}
+}
+
+// TestChat_CachedTokens covers parsing cache_read_input_tokens and
+// cache_creation_input_tokens from a non-streaming response.
+func TestChat_CachedTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"msg_cache","model":"claude-sonnet-4-20250514","role":"assistant",
+			"content":[{"type":"text","text":"ok"}],
+			"stop_reason":"end_turn",
+			"usage":{"input_tokens":50,"output_tokens":5,"cache_creation_input_tokens":2000,"cache_read_input_tokens":1800}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	resp, err := p.Chat(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleSystem, Content: "be helpful"}, {Role: chat.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Usage.CachedTokens != 1800 {
+		t.Errorf("CachedTokens = %d, want 1800", resp.Usage.CachedTokens)
+	}
+	if resp.Usage.CacheCreationTokens != 2000 {
+		t.Errorf("CacheCreationTokens = %d, want 2000", resp.Usage.CacheCreationTokens)
+	}
+}
+
+// TestChatStream_CachedTokens covers parsing cache token fields from the
+// message_start event of a streamed response.
+func TestChatStream_CachedTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fl, _ := w.(http.Flusher)
+		writes := []string{
+			`event: message_start` + "\n" +
+				`data: {"type":"message_start","message":{"id":"msg_s2","model":"claude-sonnet-4-20250514","role":"assistant","usage":{"input_tokens":50,"cache_creation_input_tokens":2000,"cache_read_input_tokens":1800}}}` + "\n\n",
+			`event: content_block_start` + "\n" +
+				`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n",
+			`event: content_block_delta` + "\n" +
+				`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}` + "\n\n",
+			`event: content_block_stop` + "\n" +
+				`data: {"type":"content_block_stop","index":0}` + "\n\n",
+			`event: message_delta` + "\n" +
+				`data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":2}}` + "\n\n",
+			`event: message_stop` + "\n" +
+				`data: {"type":"message_stop"}` + "\n\n",
+		}
+		for _, s := range writes {
+			_, _ = io.WriteString(w, s)
+			if fl != nil {
+				fl.Flush()
+			}
+		}
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := p.ChatStream(context.Background(), chat.Request{
+		Model:    "claude-sonnet-4-20250514",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	defer st.Close()
+
+	var doneChunk *chat.Chunk
+	ctx := context.Background()
+	for {
+		c, err := st.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		if c.Done {
+			cc := c
+			doneChunk = &cc
+		}
+	}
+	if doneChunk == nil || doneChunk.Usage == nil {
+		t.Fatal("expected a done chunk with usage")
+	}
+	if doneChunk.Usage.CachedTokens != 1800 {
+		t.Errorf("CachedTokens = %d, want 1800", doneChunk.Usage.CachedTokens)
+	}
+	if doneChunk.Usage.CacheCreationTokens != 2000 {
+		t.Errorf("CacheCreationTokens = %d, want 2000", doneChunk.Usage.CacheCreationTokens)
+	}
+}
+
+// TestChat_ThinkingDropsTemperatureAndTopP covers a regression: Anthropic
+// rejects temperature/top_p entirely (400) when extended thinking is
+// enabled, so both must be omitted from the request rather than passed
+// through, with a warning instead of a silent drop.
+func TestChat_ThinkingDropsTemperatureAndTopP(t *testing.T) {
+	var gotBody map[string]any
+	srv := testServer(&gotBody)
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	resp, err := p.Chat(context.Background(), chat.Request{
+		Model:       "claude-sonnet-4-20250514",
+		Messages:    []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Temperature: 0.7,
+		TopP:        0.9,
+		ProviderOptions: map[string]any{
+			"anthropic": anthropicProviderOptions{ReasoningEffort: "low"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := gotBody["temperature"]; ok {
+		t.Errorf("body still has temperature: %v", gotBody["temperature"])
+	}
+	if _, ok := gotBody["top_p"]; ok {
+		t.Errorf("body still has top_p: %v", gotBody["top_p"])
+	}
+	found := false
+	for _, w := range resp.Warnings {
+		if w.Type == "unsupported-option" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected an unsupported-option warning, got %+v", resp.Warnings)
 	}
 }
 

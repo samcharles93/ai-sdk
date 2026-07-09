@@ -157,6 +157,17 @@ type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+
+	// CachedTokens is the portion of PromptTokens served from a cache
+	// (OpenAI's automatic prefix cache, or an Anthropic cache-control
+	// read), billed at a reduced rate. Zero when the provider doesn't
+	// report it or nothing was served from cache.
+	CachedTokens int `json:"cached_tokens,omitempty"`
+	// CacheCreationTokens is Anthropic-specific: the token count written
+	// to the cache on this call (billed at a premium over normal input
+	// tokens, the cost of the cache warming up). Zero for providers with
+	// no separate cache-write charge, e.g. OpenAI's automatic caching.
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
 }
 
 // Response is a non-streaming chat completion result.
