@@ -256,7 +256,7 @@ func (p *Provider) doRequest(ctx context.Context, body ollamaRequest) (*http.Res
 		defer resp.Body.Close()
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		base := classifyStatus(resp.StatusCode)
-		return nil, fmt.Errorf("ollama: http %d: %s: %w", resp.StatusCode, strings.TrimSpace(string(snippet)), base)
+		return nil, fmt.Errorf("ollama: http %d: %s: %w", resp.StatusCode, chat.SanitizeErrorBody(snippet), base)
 	}
 	return resp, nil
 }

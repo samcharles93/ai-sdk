@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
+	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
 )
 
@@ -68,7 +68,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		base := classifyEmbedStatus(resp.StatusCode)
-		return embed.Response{}, fmt.Errorf("ollama: http %d: %s: %w", resp.StatusCode, strings.TrimSpace(string(snippet)), base)
+		return embed.Response{}, fmt.Errorf("ollama: http %d: %s: %w", resp.StatusCode, chat.SanitizeErrorBody(snippet), base)
 	}
 
 	var oer ollamaEmbedResponse

@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
+	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/video"
 )
 
@@ -170,7 +170,7 @@ func (p *Provider) GenerateVideo(ctx context.Context, req video.GenerateVideoReq
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := strings.TrimSpace(string(respBody))
+		snippet := chat.SanitizeErrorBody(respBody)
 		return video.GenerateVideoResponse{}, classifyVideoHTTPError(resp.StatusCode, snippet)
 	}
 
@@ -261,7 +261,7 @@ func (p *Provider) pollVideoStatus(ctx context.Context, requestID string) (*wire
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := strings.TrimSpace(string(respBody))
+		snippet := chat.SanitizeErrorBody(respBody)
 		return nil, classifyVideoHTTPError(resp.StatusCode, snippet)
 	}
 

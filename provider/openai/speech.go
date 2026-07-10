@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
+	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/speech"
 )
 
@@ -116,7 +116,7 @@ func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeech
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := strings.TrimSpace(string(body))
+		snippet := chat.SanitizeErrorBody(body)
 		return speech.GenerateSpeechResponse{}, classifySpeechHTTPError(resp.StatusCode, snippet)
 	}
 

@@ -10,8 +10,8 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"strings"
 
+	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/transcribe"
 	"github.com/samcharles93/ai-sdk/util"
 )
@@ -83,7 +83,7 @@ func (p *Provider) Transcribe(ctx context.Context, req transcribe.TranscribeRequ
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := strings.TrimSpace(string(respBody))
+		snippet := chat.SanitizeErrorBody(respBody)
 		return transcribe.TranscribeResponse{}, classifyTranscriptionHTTPError(resp.StatusCode, snippet)
 	}
 

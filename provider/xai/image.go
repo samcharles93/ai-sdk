@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
+	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/image"
 )
 
@@ -135,7 +135,7 @@ func (p *Provider) GenerateImage(ctx context.Context, req image.GenerateImageReq
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := strings.TrimSpace(string(respBody))
+		snippet := chat.SanitizeErrorBody(respBody)
 		return image.GenerateImageResponse{}, classifyImageHTTPError(resp.StatusCode, snippet)
 	}
 

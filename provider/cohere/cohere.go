@@ -252,7 +252,7 @@ func (p *Provider) doChat(ctx context.Context, body cohereChatRequest) (*http.Re
 
 func classifyHTTPError(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	snippet := strings.TrimSpace(string(body))
+	snippet := chat.SanitizeErrorBody(body)
 	var base error
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:

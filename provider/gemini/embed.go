@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
 )
 
@@ -44,10 +45,7 @@ type embedWireResponse struct {
 // classifyEmbedHTTP maps a non-2xx HTTP response into a sentinel embed error,
 // stripping the API key from any echoed URL in the snippet.
 func classifyEmbedHTTP(code int, body []byte) error {
-	snippet := string(body)
-	if len(snippet) > 512 {
-		snippet = snippet[:512]
-	}
+	snippet := chat.SanitizeErrorBody(body)
 	snippet = scrubKey(snippet)
 
 	var base error

@@ -337,7 +337,7 @@ func (p *Provider) newChatRequest(ctx context.Context, body map[string]any) (*ht
 // classifyChatError maps an HTTP error response to a wrapped sentinel error.
 func (p *Provider) classifyChatError(resp *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	snippet := strings.TrimSpace(string(b))
+	snippet := chat.SanitizeErrorBody(b)
 	var base error
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
@@ -650,7 +650,7 @@ type wireEmbedResponse struct {
 // classifyEmbedError maps an HTTP error response to a wrapped sentinel error.
 func (p *Provider) classifyEmbedError(resp *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	snippet := strings.TrimSpace(string(b))
+	snippet := chat.SanitizeErrorBody(b)
 	var base error
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
@@ -743,7 +743,7 @@ type wireImageResponse struct {
 // classifyImageError maps an HTTP error response to a wrapped sentinel error.
 func (p *Provider) classifyImageError(resp *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	snippet := strings.TrimSpace(string(b))
+	snippet := chat.SanitizeErrorBody(b)
 	var base error
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:

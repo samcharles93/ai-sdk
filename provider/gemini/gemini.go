@@ -359,10 +359,7 @@ func (p *Provider) buildURL(model, action string) string {
 // classifyHTTP maps a non-2xx HTTP response into a sentinel chat error,
 // stripping the API key from any echoed URL in the snippet.
 func classifyHTTP(code int, body []byte) error {
-	snippet := string(body)
-	if len(snippet) > 512 {
-		snippet = snippet[:512]
-	}
+	snippet := chat.SanitizeErrorBody(body)
 	// Defensive: scrub anything that looks like an api key echo.
 	snippet = scrubKey(snippet)
 

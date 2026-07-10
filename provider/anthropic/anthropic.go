@@ -607,7 +607,7 @@ func (p *Provider) newHTTPRequest(ctx context.Context, body map[string]any) (*ht
 // classifyHTTPError maps an HTTP error response to a wrapped sentinel error.
 func classifyHTTPError(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	snippet := strings.TrimSpace(string(body))
+	snippet := chat.SanitizeErrorBody(body)
 	var base error
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
