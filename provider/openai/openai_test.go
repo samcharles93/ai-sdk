@@ -652,14 +652,14 @@ func TestResponsesBuildBodyUsesNativeToolHistoryItems(t *testing.T) {
 	}
 }
 
-func TestResponsesAssistantHistoryUsesInputText(t *testing.T) {
+func TestResponsesAssistantHistoryUsesOutputText(t *testing.T) {
 	content, warnings := buildResponsesContent(chat.Message{
 		Role: chat.RoleAssistant, Content: "prior answer",
 	})
 	if len(warnings) != 0 {
 		t.Fatalf("warnings = %#v", warnings)
 	}
-	if len(content) != 1 || content[0]["type"] != "input_text" || content[0]["text"] != "prior answer" {
+	if len(content) != 1 || content[0]["type"] != "output_text" || content[0]["text"] != "prior answer" {
 		t.Fatalf("content = %#v", content)
 	}
 }

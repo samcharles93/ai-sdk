@@ -137,6 +137,9 @@ func buildResponsesContent(message chat.Message) ([]map[string]any, []chat.Warni
 	var content []map[string]any
 	var warnings []chat.Warning
 	textType := "input_text"
+	if message.Role == chat.RoleAssistant {
+		textType = "output_text"
+	}
 	imageType := "input_image"
 	for _, part := range message.GetParts() {
 		switch part := part.(type) {
