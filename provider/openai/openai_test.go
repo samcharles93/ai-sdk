@@ -501,6 +501,182 @@ func TestChat_ResponsesAPI_TopLevelFunctionCall(t *testing.T) {
 	}
 }
 
+func TestResponsesDecodeReasoningSummaryBlocks(t *testing.T) {
+	response, err := (responsesAPI{}).decodeResponse(strings.NewReader(`{
+		"id":"resp-summary",
+		"model":"gpt-5.4",
+		"output":[{"type":"reasoning","summary":[
+			{"type":"summary_text","text":"first "},
+			{"type":"summary_text","text":"second"}
+		]}],
+		"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}
+	}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Parts) != 1 {
+		t.Fatalf("parts = %#v", response.Parts)
+	}
+	reasoning, ok := response.Parts[0].(chat.ReasoningPart)
+	if !ok || reasoning.Text != "first second" {
+		t.Fatalf("reasoning = %#v", response.Parts[0])
+	}
+}
+
+func TestParseResponsesSSEChunkBackfillsFunctionNameWhenArgumentsDone(t *testing.T) {
+	chunk, ok, err := (responsesAPI{}).parseStreamEvent([]byte(`{
+		"type":"response.function_call_arguments.done",
+		"output_index":0,
+		"item_id":"fc_123",
+		"name":"spawn_agent",
+		"arguments":"{\"task_name\":\"investigate\"}"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || len(chunk.ToolCallDeltas) != 1 {
+		t.Fatalf("chunk = %#v, ok = %v", chunk, ok)
+	}
+	delta := chunk.ToolCallDeltas[0]
+	if delta.ID != "fc_123" || delta.Name != "spawn_agent" || delta.Index != 0 {
+		t.Fatalf("delta = %#v", delta)
+	}
+	if delta.ArgsDelta != "" {
+		t.Fatalf("ArgsDelta = %q, want empty to avoid duplicating streamed arguments", delta.ArgsDelta)
+	}
+}
+
+func TestParseResponsesSSEChunkReadsNestedOutputItem(t *testing.T) {
+	chunk, ok, err := (responsesAPI{}).parseStreamEvent([]byte(`{
+		"type":"response.output_item.added",
+		"output_index":1,
+		"item":{"id":"fc_item","call_id":"call_native","name":"read","type":"function_call"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || len(chunk.ToolCallDeltas) != 1 {
+		t.Fatalf("chunk = %#v, ok = %v", chunk, ok)
+	}
+	delta := chunk.ToolCallDeltas[0]
+	if delta.ID != "call_native" || delta.Name != "read" || delta.Index != 1 {
+		t.Fatalf("delta = %#v", delta)
+	}
+}
+
+func TestChatCompletionsFinishChunkPreservesDelta(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"final\"},\"finish_reason\":\"stop\"}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	provider, err := New(Config{APIKey: "k", BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := provider.ChatStream(context.Background(), chat.Request{
+		Model: "gpt-4o", Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	payload, err := stream.Next(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Delta != "final" || payload.Done {
+		t.Fatalf("payload = %#v", payload)
+	}
+	terminal, err := stream.Next(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !terminal.Done || terminal.FinishReason != "stop" || terminal.Delta != "" {
+		t.Fatalf("terminal = %#v", terminal)
+	}
+}
+
+func TestResponsesBuildBodyUsesNativeToolHistoryItems(t *testing.T) {
+	body, _, err := (responsesAPI{}).buildBody(chat.Request{
+		Model: "gpt-5.4",
+		Messages: []chat.Message{
+			{Role: chat.RoleUser, Content: "inspect this"},
+			{Role: chat.RoleAssistant, ToolCalls: []chat.ToolCall{{
+				ID: "fc_123", Name: "read", Arguments: `{"path":"README.md"}`,
+			}}},
+			{Role: chat.RoleTool, ToolCallID: "fc_123", Parts: chat.Parts{chat.TextPart{Text: "contents"}}},
+		},
+		Tools:      []chat.Tool{{Name: "read", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "read"},
+		ProviderOptions: map[string]any{
+			"openai": openaiProviderOptions{ReasoningEffort: "medium", ReasoningSummary: "auto"},
+		},
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := body["messages"]; exists {
+		t.Fatal("Responses body must not contain Chat Completions messages")
+	}
+	input, ok := body["input"].([]map[string]any)
+	if !ok || len(input) != 3 {
+		t.Fatalf("input = %#v", body["input"])
+	}
+	if input[1]["type"] != "function_call" || input[1]["call_id"] != "fc_123" || input[1]["name"] != "read" {
+		t.Fatalf("function call item = %#v", input[1])
+	}
+	if input[2]["type"] != "function_call_output" || input[2]["call_id"] != "fc_123" {
+		t.Fatalf("function output item = %#v", input[2])
+	}
+	if input[2]["output"] != "contents" {
+		t.Fatalf("function output text = %#v", input[2]["output"])
+	}
+	tools, ok := body["tools"].([]map[string]any)
+	if !ok || len(tools) != 1 || tools[0]["name"] != "read" {
+		t.Fatalf("tools = %#v", body["tools"])
+	}
+	if _, nested := tools[0]["function"]; nested {
+		t.Fatalf("Responses tool uses Chat Completions nesting: %#v", tools[0])
+	}
+	choice, ok := body["tool_choice"].(map[string]any)
+	if !ok || choice["name"] != "read" {
+		t.Fatalf("tool_choice = %#v", body["tool_choice"])
+	}
+	reasoning, ok := body["reasoning"].(map[string]any)
+	if !ok || reasoning["effort"] != "medium" || reasoning["summary"] != "auto" {
+		t.Fatalf("reasoning = %#v", body["reasoning"])
+	}
+}
+
+func TestResponsesAssistantHistoryUsesInputText(t *testing.T) {
+	content, warnings := buildResponsesContent(chat.Message{
+		Role: chat.RoleAssistant, Content: "prior answer",
+	})
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v", warnings)
+	}
+	if len(content) != 1 || content[0]["type"] != "input_text" || content[0]["text"] != "prior answer" {
+		t.Fatalf("content = %#v", content)
+	}
+}
+
+func TestSelectWireAPI(t *testing.T) {
+	request := chat.Request{Tools: []chat.Tool{{Name: "read"}}}
+	if _, ok := selectWireAPI(request).(chatCompletionsAPI); !ok {
+		t.Fatal("tools without reasoning should use Chat Completions")
+	}
+	request.ProviderOptions = map[string]any{
+		"openai": openaiProviderOptions{ReasoningEffort: "medium"},
+	}
+	if _, ok := selectWireAPI(request).(responsesAPI); !ok {
+		t.Fatal("tools with reasoning should use Responses")
+	}
+}
+
 // TestChat_ResponsesAPI_RenamesAndDropsUnsupportedFields covers a
 // regression: the Responses API renames max_tokens to max_output_tokens,
 // and rejects stop/temperature/top_p outright on reasoning-effort requests

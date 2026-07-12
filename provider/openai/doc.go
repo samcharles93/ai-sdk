@@ -1,7 +1,7 @@
-// Package openai implements the chat.Provider interface for the OpenAI
-// chat completion API.
+// Package openai implements the chat.Provider interface for OpenAI's Chat
+// Completions and Responses APIs.
 //
-// OpenAI exposes a Chat Completions endpoint at
-// https://api.openai.com/v1/chat/completions. This package speaks that
-// wire format directly using only the Go standard library.
+// The provider selects the wire protocol from the canonical chat request.
+// Chat Completions and Responses have independent request builders, response
+// decoders, and streaming event parsers.
 package openai
