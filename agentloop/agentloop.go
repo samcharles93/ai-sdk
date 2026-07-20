@@ -121,6 +121,11 @@ type Config struct {
 
 	// ReadOnly registers only read/grep/find (planner/analysis missions).
 	ReadOnly bool
+	// ProtectPaths, when non-nil, blocks write/edit on matching paths
+	// (relative, as the model supplies them) with an in-band refusal —
+	// an environmental constraint where a prompt rule would be advisory
+	// (e.g. a TDD fix stage protecting the committed repro tests).
+	ProtectPaths func(path string) bool
 	// Extra tools are merged into the toolset after the built-ins.
 	Extra core.ToolSet
 
@@ -270,6 +275,7 @@ func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, 
 		}
 	}
 
+	set = protectedToolSet(set, cfg.ProtectPaths)
 	set = changeTrackedToolSet(set, state)
 	set = gatedToolSet(set, &state.gate, cfg.Gate, cfg.WorkDir, log)
 	set = loopBrokenToolSet(set, &state.loop)

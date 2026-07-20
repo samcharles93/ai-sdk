@@ -285,6 +285,26 @@ func TestWriteNoteRequiresVerifiedBy(t *testing.T) {
 	}
 }
 
+func TestProtectPathsBlocksWrites(t *testing.T) {
+	dir := t.TempDir()
+	res := runScript(
+		t, dir,
+		Config{ProtectPaths: func(p string) bool { return strings.HasSuffix(p, "_test.go") }},
+		toolStep("write", `{"path":"x_test.go","content":"nope"}`),
+		toolStep("write", `{"path":"x.go","content":"package x"}`),
+		toolStep("finish", `{"status":"passed","summary":"done"}`),
+	)
+	if _, err := os.Stat(filepath.Join(dir, "x_test.go")); err == nil {
+		t.Fatal("protected path must not be written")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "x.go")); err != nil {
+		t.Fatal("unprotected path must be written")
+	}
+	if len(res.Changes) != 1 || res.Changes[0] != "x.go" {
+		t.Fatalf("changes = %v", res.Changes)
+	}
+}
+
 func TestReadOnlyStripsWriteTools(t *testing.T) {
 	dir := t.TempDir()
 	res := runScript(
