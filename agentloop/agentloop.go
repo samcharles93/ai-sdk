@@ -275,9 +275,12 @@ func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, 
 		}
 	}
 
-	set = protectedToolSet(set, cfg.ProtectPaths)
+	// Wrap order matters: a call blocked by path protection must reach
+	// neither the gate nor change tracking, and the loop breaker sees
+	// everything (including repeated blocked calls).
 	set = changeTrackedToolSet(set, state)
 	set = gatedToolSet(set, &state.gate, cfg.Gate, cfg.WorkDir, log)
+	set = protectedToolSet(set, cfg.ProtectPaths)
 	set = loopBrokenToolSet(set, &state.loop)
 
 	for name, tool := range cfg.Extra {
