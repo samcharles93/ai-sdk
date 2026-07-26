@@ -74,10 +74,11 @@ func executeToolCalls(ctx context.Context, calls []ToolCall, set ToolSet) ([]Too
 // signatures, OpenAI o1 reasoning) to be sent back unchanged.
 func assistantMessageFromResponse(resp chat.Response) chat.Message {
 	return chat.Message{
-		Role:      chat.RoleAssistant,
-		Content:   resp.Content,
-		Parts:     resp.Parts,
-		ToolCalls: resp.ToolCalls,
+		Role:            chat.RoleAssistant,
+		Content:         resp.Content,
+		Parts:           resp.Parts,
+		ToolCalls:       resp.ToolCalls,
+		ProviderOptions: resp.ProviderMetadata,
 	}
 }
 
@@ -87,11 +88,17 @@ func assistantMessageFromResponse(resp chat.Response) chat.Message {
 // reasoning, when non-empty, is preserved as a leading [chat.ReasoningPart]
 // so providers like Anthropic can replay thinking blocks on subsequent
 // turns.
-func assistantMessageFromCalls(text string, reasoning string, calls []chat.ToolCall) chat.Message {
+func assistantMessageFromCalls(
+	text string,
+	reasoning string,
+	calls []chat.ToolCall,
+	providerMetadata map[string]any,
+) chat.Message {
 	m := chat.Message{
-		Role:      chat.RoleAssistant,
-		Content:   text,
-		ToolCalls: calls,
+		Role:            chat.RoleAssistant,
+		Content:         text,
+		ToolCalls:       calls,
+		ProviderOptions: providerMetadata,
 	}
 	if reasoning != "" {
 		// Build canonical Parts: reasoning first, then text.

@@ -50,6 +50,9 @@ type Agent struct {
 	MaxSteps    int           `json:"max_steps,omitempty"`
 	Temperature float32       `json:"temperature,omitempty"`
 	MaxTokens   int           `json:"max_tokens,omitempty"`
+	// ProviderOptions carries provider-specific request options through to
+	// core.StreamText.
+	ProviderOptions map[string]any `json:"provider_options,omitempty"`
 }
 
 // Run starts the agent with the given prompt and returns a channel of
@@ -68,13 +71,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (<-chan StreamEvent, err
 	maxSteps := max(a.MaxSteps, 1)
 
 	result, err := core.StreamText(ctx, a.Provider, core.GenerateOptions{
-		Model:       a.Model,
-		System:      a.System,
-		Prompt:      prompt,
-		Tools:       a.Tools,
-		MaxSteps:    maxSteps,
-		Temperature: a.Temperature,
-		MaxTokens:   a.MaxTokens,
+		Model:           a.Model,
+		System:          a.System,
+		Prompt:          prompt,
+		Tools:           a.Tools,
+		MaxSteps:        maxSteps,
+		Temperature:     a.Temperature,
+		MaxTokens:       a.MaxTokens,
+		ProviderOptions: a.ProviderOptions,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("agent: start stream: %w", err)

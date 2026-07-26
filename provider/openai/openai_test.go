@@ -523,6 +523,91 @@ func TestResponsesDecodeReasoningSummaryBlocks(t *testing.T) {
 	}
 }
 
+func TestResponsesOutputItemsRoundTripForToolContinuation(t *testing.T) {
+	response, err := (responsesAPI{}).decodeResponse(strings.NewReader(`{
+		"id":"resp-replay",
+		"model":"gpt-5.6-terra",
+		"output":[
+			{
+				"id":"rs_123",
+				"type":"reasoning",
+				"encrypted_content":"opaque",
+				"summary":[],
+				"phase":"analysis"
+			},
+			{
+				"id":"fc_123",
+				"type":"function_call",
+				"call_id":"call_123",
+				"name":"run_shell",
+				"arguments":"{\"command\":\"pwd\"}",
+				"phase":"analysis"
+			}
+		],
+		"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}
+	}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body, _, err := (responsesAPI{}).buildBody(chat.Request{
+		Model: "gpt-5.6-terra",
+		Messages: []chat.Message{
+			{Role: chat.RoleUser, Content: "inspect"},
+			{
+				Role:            chat.RoleAssistant,
+				ToolCalls:       response.ToolCalls,
+				ProviderOptions: response.ProviderMetadata,
+			},
+			{Role: chat.RoleTool, ToolCallID: "call_123", Content: "ok"},
+		},
+		Tools: []chat.Tool{{Name: "run_shell", Parameters: json.RawMessage(`{"type":"object"}`)}},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	input, ok := body["input"].([]map[string]any)
+	if !ok || len(input) != 4 {
+		t.Fatalf("input = %#v", body["input"])
+	}
+	if input[1]["type"] != "reasoning" || input[1]["encrypted_content"] != "opaque" || input[1]["phase"] != "analysis" {
+		t.Fatalf("reasoning item = %#v", input[1])
+	}
+	if input[2]["type"] != "function_call" || input[2]["id"] != "fc_123" || input[2]["call_id"] != "call_123" {
+		t.Fatalf("function call item = %#v", input[2])
+	}
+	if input[3]["type"] != "function_call_output" || input[3]["call_id"] != "call_123" {
+		t.Fatalf("function output item = %#v", input[3])
+	}
+}
+
+func TestParseResponsesCompletedPreservesOutputForReplay(t *testing.T) {
+	chunk, ok, err := (responsesAPI{}).parseStreamEvent([]byte(`{
+		"type":"response.completed",
+		"response":{
+			"output":[
+				{"id":"rs_123","type":"reasoning","encrypted_content":"opaque","summary":[]},
+				{"id":"fc_123","type":"function_call","call_id":"call_123","name":"run_shell","arguments":"{}"}
+			],
+			"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || !chunk.Done {
+		t.Fatalf("chunk = %#v, ok = %v", chunk, ok)
+	}
+	openaiMetadata, ok := chunk.ProviderMetadata["openai"].(openaiMessageOptions)
+	if !ok {
+		t.Fatalf("openai metadata = %#v", chunk.ProviderMetadata["openai"])
+	}
+	if len(openaiMetadata.ResponseOutput) != 2 {
+		t.Fatalf("response output = %#v", openaiMetadata.ResponseOutput)
+	}
+}
+
 func TestParseResponsesSSEChunkBackfillsFunctionNameWhenArgumentsDone(t *testing.T) {
 	chunk, ok, err := (responsesAPI{}).parseStreamEvent([]byte(`{
 		"type":"response.function_call_arguments.done",
@@ -665,15 +750,42 @@ func TestResponsesAssistantHistoryUsesOutputText(t *testing.T) {
 }
 
 func TestSelectWireAPI(t *testing.T) {
-	request := chat.Request{Tools: []chat.Tool{{Name: "read"}}}
-	if _, ok := selectWireAPI(request).(chatCompletionsAPI); !ok {
-		t.Fatal("tools without reasoning should use Chat Completions")
+	tests := []struct {
+		name      string
+		model     string
+		effort    string
+		withTools bool
+		responses bool
+	}{
+		{name: "gpt 5.4 keeps legacy default", model: "gpt-5.4", withTools: true},
+		{name: "gpt 5.5 default", model: "gpt-5.5", withTools: true, responses: true},
+		{name: "gpt 5.6 alias default", model: "gpt-5.6", withTools: true, responses: true},
+		{name: "gpt 5.6 sol default", model: "gpt-5.6-sol", withTools: true, responses: true},
+		{name: "gpt 5.6 terra default", model: "gpt-5.6-terra", withTools: true, responses: true},
+		{name: "gpt 5.6 luna default", model: "gpt-5.6-luna", withTools: true, responses: true},
+		{name: "dated gpt 5.6 model default", model: "gpt-5.6-terra-2026-07-27", withTools: true, responses: true},
+		{name: "explicit reasoning", model: "gpt-5.4", effort: "medium", withTools: true, responses: true},
+		{name: "explicit none stays chat completions", model: "gpt-5.6-terra", effort: "none", withTools: true},
+		{name: "no tools stays chat completions", model: "gpt-5.6-terra"},
 	}
-	request.ProviderOptions = map[string]any{
-		"openai": openaiProviderOptions{ReasoningEffort: "medium"},
-	}
-	if _, ok := selectWireAPI(request).(responsesAPI); !ok {
-		t.Fatal("tools with reasoning should use Responses")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := chat.Request{Model: tt.model}
+			if tt.withTools {
+				request.Tools = []chat.Tool{{Name: "read"}}
+			}
+			if tt.effort != "" {
+				request.ProviderOptions = map[string]any{
+					"openai": openaiProviderOptions{ReasoningEffort: tt.effort},
+				}
+			}
+			_, gotResponses := selectWireAPI(request).(responsesAPI)
+			if gotResponses != tt.responses {
+				t.Fatalf("selectWireAPI(%q, effort %q, tools %v) responses = %v, want %v",
+					tt.model, tt.effort, tt.withTools, gotResponses, tt.responses)
+			}
+		})
 	}
 }
 

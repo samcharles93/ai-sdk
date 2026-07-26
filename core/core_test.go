@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -202,6 +203,43 @@ func TestGenerateText_ToolLoop(t *testing.T) {
 	}
 	if !sawAssistant || !sawTool {
 		t.Fatalf("loop messages missing: %+v", second)
+	}
+}
+
+func TestGenerateText_ToolLoopPreservesProviderMetadata(t *testing.T) {
+	const metadataKey = "response_output"
+	tool := NewTool("read", "", nil, func(context.Context, string) (string, error) {
+		return "contents", nil
+	})
+	metadata := map[string]any{
+		"openai": map[string]any{metadataKey: []json.RawMessage{json.RawMessage(`{"type":"reasoning","id":"rs_1"}`)}},
+	}
+	p := &fakeProvider{
+		chatScript: []chat.Response{
+			{
+				ToolCalls:        []chat.ToolCall{{ID: "call_1", Name: "read", Arguments: `{}`}},
+				FinishReason:     "tool_calls",
+				ProviderMetadata: metadata,
+			},
+			{Content: "done", FinishReason: "stop"},
+		},
+	}
+
+	_, err := GenerateText(context.Background(), p, GenerateOptions{
+		Model: "m", Prompt: "inspect", Tools: ToolSet{"read": tool}, MaxSteps: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.chatCalls) != 2 {
+		t.Fatalf("calls = %d", len(p.chatCalls))
+	}
+	assistant := p.chatCalls[1].Messages[1]
+	if assistant.Role != chat.RoleAssistant {
+		t.Fatalf("assistant message = %#v", assistant)
+	}
+	if !reflect.DeepEqual(assistant.ProviderOptions, metadata) {
+		t.Fatalf("provider options = %#v, want %#v", assistant.ProviderOptions, metadata)
 	}
 }
 
@@ -442,6 +480,48 @@ func TestStreamText_ToolLoop(t *testing.T) {
 	}
 	if !assistant || !tool {
 		t.Fatalf("loop messages: %+v", second)
+	}
+}
+
+func TestStreamText_ToolLoopPreservesProviderMetadata(t *testing.T) {
+	tool := NewTool("read", "", nil, func(context.Context, string) (string, error) {
+		return "contents", nil
+	})
+	finalChunk := chat.Chunk{
+		FinishReason: "tool_calls",
+		Done:         true,
+		ProviderMetadata: map[string]any{
+			"openai": map[string]any{
+				"response_output": []json.RawMessage{json.RawMessage(`{"type":"reasoning","id":"rs_1"}`)},
+			},
+		},
+	}
+	p := &fakeProvider{
+		streamScript: [][]chat.Chunk{
+			{
+				{ToolCallDeltas: []chat.ToolCallDelta{{Index: 0, ID: "call_1", Name: "read", ArgsDelta: `{}`}}},
+				finalChunk,
+			},
+			{{Delta: "done"}, {FinishReason: "stop", Done: true}},
+		},
+	}
+
+	result, err := StreamText(context.Background(), p, GenerateOptions{
+		Model: "m", Prompt: "inspect", Tools: ToolSet{"read": tool}, MaxSteps: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collectFull(result)
+	if len(p.streamCalls) != 2 {
+		t.Fatalf("calls = %d", len(p.streamCalls))
+	}
+	assistant := p.streamCalls[1].Messages[1]
+	if assistant.Role != chat.RoleAssistant {
+		t.Fatalf("assistant message = %#v", assistant)
+	}
+	if assistant.ProviderOptions == nil {
+		t.Fatal("assistant provider options were not preserved")
 	}
 }
 

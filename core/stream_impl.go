@@ -133,12 +133,13 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 			}
 
 			var (
-				stepText      string
-				stepReasoning string
-				toolDeltas    []chat.ToolCallDelta
-				stepUsage     chat.Usage
-				stepReason    string
-				stepWarnings  []chat.Warning
+				stepText             string
+				stepReasoning        string
+				toolDeltas           []chat.ToolCallDelta
+				stepUsage            chat.Usage
+				stepReason           string
+				stepWarnings         []chat.Warning
+				stepProviderMetadata map[string]any
 			)
 
 			for {
@@ -189,6 +190,9 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				if chunk.Usage != nil {
 					stepUsage = *chunk.Usage
 				}
+				if chunk.ProviderMetadata != nil {
+					stepProviderMetadata = chunk.ProviderMetadata
+				}
 				if chunk.FinishReason != "" {
 					stepReason = chunk.FinishReason
 				}
@@ -214,7 +218,12 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				}
 			}
 
-			messages = append(messages, assistantMessageFromCalls(stepText, stepReasoning, assembled))
+			messages = append(messages, assistantMessageFromCalls(
+				stepText,
+				stepReasoning,
+				assembled,
+				stepProviderMetadata,
+			))
 
 			// Build canonical Parts for this step: reasoning first, then text.
 			var stepParts chat.Parts

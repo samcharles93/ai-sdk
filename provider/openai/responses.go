@@ -57,10 +57,10 @@ type responsesOutputItem struct {
 }
 
 type responsesResponse struct {
-	ID     string                `json:"id"`
-	Model  string                `json:"model"`
-	Output []responsesOutputItem `json:"output"`
-	Usage  responsesUsage        `json:"usage"`
+	ID     string            `json:"id"`
+	Model  string            `json:"model"`
+	Output []json.RawMessage `json:"output"`
+	Usage  responsesUsage    `json:"usage"`
 }
 
 func (responsesAPI) buildBody(req chat.Request, stream bool) (map[string]any, []chat.Warning, error) {
@@ -114,6 +114,17 @@ func buildResponsesInput(messages []chat.Message) ([]map[string]any, []chat.Warn
 			continue
 		}
 
+		if message.Role == chat.RoleAssistant {
+			replayItems, err := responsesReplayItems(message)
+			if err != nil {
+				return nil, nil, fmt.Errorf("openai: assistant message at index %d: %w", i, err)
+			}
+			if len(replayItems) > 0 {
+				input = append(input, replayItems...)
+				continue
+			}
+		}
+
 		content, messageWarnings := buildResponsesContent(message)
 		warnings = append(warnings, messageWarnings...)
 		if len(content) > 0 {
@@ -132,6 +143,25 @@ func buildResponsesInput(messages []chat.Message) ([]map[string]any, []chat.Warn
 		}
 	}
 	return input, warnings, nil
+}
+
+func responsesReplayItems(message chat.Message) ([]map[string]any, error) {
+	options, err := chat.ProviderOptionsFor[openaiMessageOptions](message.ProviderOptions, "openai")
+	if err != nil {
+		return nil, err
+	}
+	if len(options.ResponseOutput) == 0 {
+		return nil, nil
+	}
+	items := make([]map[string]any, 0, len(options.ResponseOutput))
+	for i, raw := range options.ResponseOutput {
+		var item map[string]any
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return nil, fmt.Errorf("decode response output item %d: %w", i, err)
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 func buildResponsesContent(message chat.Message) ([]map[string]any, []chat.Warning) {
@@ -203,7 +233,18 @@ func (responsesAPI) decodeResponse(reader io.Reader, warnings []chat.Warning) (c
 		ID: wireResponse.ID, Model: wireResponse.Model, Role: chat.RoleAssistant,
 		Warnings: warnings, Usage: wireResponse.Usage.toUsage(),
 	}
-	for _, item := range wireResponse.Output {
+	if len(wireResponse.Output) > 0 {
+		response.ProviderMetadata = map[string]any{
+			"openai": openaiMessageOptions{
+				ResponseOutput: append([]json.RawMessage(nil), wireResponse.Output...),
+			},
+		}
+	}
+	for i, rawItem := range wireResponse.Output {
+		var item responsesOutputItem
+		if err := json.Unmarshal(rawItem, &item); err != nil {
+			return chat.Response{}, fmt.Errorf("openai: decode responses output item %d: %w", i, err)
+		}
 		switch item.Type {
 		case "reasoning":
 			if summary := decodeResponsesSummary(item.Summary); summary != "" {
@@ -277,7 +318,8 @@ func (responsesAPI) parseStreamEvent(data []byte) (chat.Chunk, bool, error) {
 		} `json:"item"`
 		Usage    *responsesUsage `json:"usage"`
 		Response *struct {
-			Usage *responsesUsage `json:"usage"`
+			Output []json.RawMessage `json:"output"`
+			Usage  *responsesUsage   `json:"usage"`
 		} `json:"response"`
 	}
 	if err := json.Unmarshal(data, &event); err != nil {
@@ -313,6 +355,13 @@ func (responsesAPI) parseStreamEvent(data []byte) (chat.Chunk, bool, error) {
 	case "response.completed":
 		chunk.Done = true
 		chunk.FinishReason = "stop"
+		if event.Response != nil && len(event.Response.Output) > 0 {
+			chunk.ProviderMetadata = map[string]any{
+				"openai": openaiMessageOptions{
+					ResponseOutput: append([]json.RawMessage(nil), event.Response.Output...),
+				},
+			}
+		}
 	}
 	if event.Usage != nil {
 		usage := event.Usage.toUsage()

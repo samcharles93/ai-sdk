@@ -79,17 +79,36 @@ func normaliseBaseURL(base string) string {
 // Name returns the provider identifier.
 func (p *Provider) Name() string { return "openai" }
 
-type openaiProviderOptions struct {
+// Options configures OpenAI-specific request behaviour. Supply it under the
+// "openai" key of a request's provider options.
+type Options struct {
 	ReasoningEffort  string `json:"reasoning_effort,omitempty"`
 	ReasoningSummary string `json:"reasoning_summary,omitempty"`
 }
 
+type openaiProviderOptions = Options
+
+type openaiMessageOptions struct {
+	ResponseOutput []json.RawMessage `json:"response_output,omitempty"`
+}
+
 func selectWireAPI(req chat.Request) wireAPI {
 	options, _ := chat.ProviderOptionsFor[openaiProviderOptions](req.ProviderOptions, "openai")
-	if len(req.Tools) > 0 && options.ReasoningEffort != "" && options.ReasoningEffort != "none" {
+	if len(req.Tools) == 0 || options.ReasoningEffort == "none" {
+		return chatCompletionsAPI{}
+	}
+	if options.ReasoningEffort != "" || modelDefaultsToReasoning(req.Model) {
 		return responsesAPI{}
 	}
 	return chatCompletionsAPI{}
+}
+
+func modelDefaultsToReasoning(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return model == "gpt-5.5" ||
+		strings.HasPrefix(model, "gpt-5.5-") ||
+		model == "gpt-5.6" ||
+		strings.HasPrefix(model, "gpt-5.6-")
 }
 
 func validateRequest(req chat.Request) error {

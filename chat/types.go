@@ -232,13 +232,17 @@ type ToolCallDelta struct {
 // ReasoningDelta carries incremental reasoning/thinking text emitted by
 // providers that support it (Anthropic thinking, Gemini thinking, OpenAI
 // o1). Providers that do not produce reasoning leave it empty.
+//
+// ProviderMetadata carries opaque provider response data that must be
+// preserved when a streamed assistant turn is sent back to that provider.
 type Chunk struct {
-	Delta          string          `json:"delta,omitempty"`
-	ReasoningDelta string          `json:"reasoning_delta,omitempty"`
-	Role           Role            `json:"role,omitempty"`
-	ToolCallDeltas []ToolCallDelta `json:"tool_call_deltas,omitempty"`
-	FinishReason   string          `json:"finish_reason,omitempty"`
-	Usage          *Usage          `json:"usage,omitempty"`
-	Warnings       []Warning       `json:"warnings,omitempty"`
-	Done           bool            `json:"done,omitempty"`
+	Delta            string          `json:"delta,omitempty"`
+	ReasoningDelta   string          `json:"reasoning_delta,omitempty"`
+	Role             Role            `json:"role,omitempty"`
+	ToolCallDeltas   []ToolCallDelta `json:"tool_call_deltas,omitempty"`
+	FinishReason     string          `json:"finish_reason,omitempty"`
+	Usage            *Usage          `json:"usage,omitempty"`
+	Warnings         []Warning       `json:"warnings,omitempty"`
+	ProviderMetadata map[string]any  `json:"provider_metadata,omitempty"`
+	Done             bool            `json:"done,omitempty"`
 }
