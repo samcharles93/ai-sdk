@@ -244,6 +244,46 @@ func TestRuntimeGoogleSDKNameCompatibility(t *testing.T) {
 	}
 }
 
+func TestRuntimeTogetherAIProviderResolution(t *testing.T) {
+	RegisterBuiltinClasses()
+
+	catalog := NewCatalog(CatalogOptions{})
+	if err := catalog.LoadFromJSON([]byte(`{
+		"togetherai": {
+			"id": "togetherai",
+			"npm": "@ai-sdk/togetherai",
+			"api": "https://api.together.xyz/v1",
+			"env": ["TOGETHER_API_KEY"],
+			"models": {
+				"meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": {"id": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"}
+			}
+		}
+	}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := NewRuntimeWithCatalog(Config{}, catalog)
+
+	cfg, err := rt.buildProviderConfig("togetherai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Class != "togetherai" {
+		t.Fatalf("class = %q, want togetherai", cfg.Class)
+	}
+	if cfg.BaseURL != "https://api.together.xyz/v1" {
+		t.Fatalf("base_url = %q, want https://api.together.xyz/v1", cfg.BaseURL)
+	}
+
+	class, err := rt.classForProvider(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if class.Name() != "togetherai" {
+		t.Fatalf("class.Name() = %q, want togetherai", class.Name())
+	}
+}
+
 func TestRuntimeMissingProvider(t *testing.T) {
 	RegisterBuiltinClasses()
 	rt := NewRuntime(Config{})

@@ -40,6 +40,7 @@ func RegisterBuiltinClasses() {
 	MustRegisterClass(ollamaClass())
 	MustRegisterClass(openaiClass())
 	MustRegisterClass(perplexityClass())
+	MustRegisterClass(togetheraiClass())
 	MustRegisterClass(xaiClass())
 }
 
@@ -63,6 +64,7 @@ var NPMClassMapping = map[string]string{
 	"@ai-sdk/mistral":           "mistral",
 	"@ai-sdk/ollama":            "ollama",
 	"@ai-sdk/perplexity":        "perplexity",
+	"@ai-sdk/togetherai":        "togetherai",
 	"@ai-sdk/xai":               "xai",
 	"@ai-sdk/openai-compatible": "openai-compatible",
 }
@@ -264,6 +266,16 @@ func xaiClass() ProviderClass {
 		caps: []Capability{CapabilityChat},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
 			return xai.New(xai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+	}
+}
+
+func togetheraiClass() ProviderClass {
+	return simpleClass{
+		name: "togetherai",
+		caps: []Capability{CapabilityChat},
+		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
+			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 	}
 }
