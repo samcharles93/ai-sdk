@@ -31,6 +31,46 @@ func TestAssembleToolCalls_SingleStreamed(t *testing.T) {
 	}
 }
 
+// TestAssembleToolCalls_FirstIDWins covers the OpenAI Responses API delta
+// sequence: response.output_item.added carries the authoritative call_id,
+// while the function_call_arguments.delta/.done events that follow carry
+// only the item id. The later item id must not clobber the call_id, or the
+// tool result is encoded against the wrong identifier and the next request
+// fails with "No tool output found for function call call_...".
+func TestAssembleToolCalls_FirstIDWins(t *testing.T) {
+	deltas := []ToolCallDelta{
+		{Index: 0, ID: "call_native", Name: "run_shell"},
+		{Index: 0, ID: "fc_item", ArgsDelta: `{"command":`},
+		{Index: 0, ID: "fc_item", ArgsDelta: `"ls"}`},
+		{Index: 0, ID: "fc_item", Name: "run_shell"},
+	}
+	got := AssembleToolCalls(deltas)
+	if len(got) != 1 {
+		t.Fatalf("want 1, got %d: %+v", len(got), got)
+	}
+	want := ToolCall{ID: "call_native", Name: "run_shell", Arguments: `{"command":"ls"}`}
+	if got[0] != want {
+		t.Fatalf("want %+v, got %+v", want, got[0])
+	}
+}
+
+// TestAssembleToolCalls_LateIDBackfills covers providers that never announce
+// the call up front: the first delta carrying an ID still sets it.
+func TestAssembleToolCalls_LateIDBackfills(t *testing.T) {
+	deltas := []ToolCallDelta{
+		{Index: 0, ArgsDelta: `{"a":1}`},
+		{Index: 0, ID: "fc_123", Name: "spawn_agent"},
+	}
+	got := AssembleToolCalls(deltas)
+	if len(got) != 1 {
+		t.Fatalf("want 1, got %d: %+v", len(got), got)
+	}
+	want := ToolCall{ID: "fc_123", Name: "spawn_agent", Arguments: `{"a":1}`}
+	if got[0] != want {
+		t.Fatalf("want %+v, got %+v", want, got[0])
+	}
+}
+
 func TestAssembleToolCalls_ParallelOrdered(t *testing.T) {
 	// Two parallel tool calls (indices 0 and 1) interleaved in delta order.
 	deltas := []ToolCallDelta{

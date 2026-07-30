@@ -34,10 +34,19 @@ func AssembleToolCalls(deltas []ToolCallDelta) []ToolCall {
 			byIdx[d.Index] = a
 			order = append(order, d.Index)
 		}
-		if d.ID != "" {
+		// First writer wins for ID and Name. Providers may correlate later
+		// deltas by a different identifier than the one tool results must
+		// reference: OpenAI's Responses API announces a function call via
+		// response.output_item.added carrying the authoritative call_id
+		// ("call_..."), but the response.function_call_arguments.delta and
+		// .done events that follow carry only item_id ("fc_..."). Letting
+		// those overwrite would encode the tool result against the item id
+		// and the API would reject the next turn with "No tool output found
+		// for function call call_...".
+		if a.id == "" && d.ID != "" {
 			a.id = d.ID
 		}
-		if d.Name != "" {
+		if a.name == "" && d.Name != "" {
 			a.name = d.Name
 		}
 		if d.ArgsDelta != "" {
