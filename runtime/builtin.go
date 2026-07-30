@@ -31,7 +31,6 @@ func RegisterBuiltinClasses() {
 
 	MustRegisterClass(openAICompatibleClass{})
 	MustRegisterClass(anthropicClass())
-	MustRegisterClass(anthropicClass())
 	MustRegisterClass(azureClass())
 	MustRegisterClass(cohereClass())
 	MustRegisterClass(deepseekClass())
@@ -47,6 +46,11 @@ func RegisterBuiltinClasses() {
 // NPMClassMapping maps models.dev npm package identifiers to the
 // provider class names registered by RegisterBuiltinClasses. This lets
 // the Runtime select a class automatically for known providers.
+//
+// Compatibility rules:
+//   - "@ai-sdk/google" maps to "gemini" because models.dev publishes Google as
+//     provider "google" with npm package "@ai-sdk/google", while the native
+//     class in this SDK is registered as "gemini".
 var NPMClassMapping = map[string]string{
 	"@ai-sdk/openai":            "openai",
 	"@ai-sdk/anthropic":         "anthropic",
@@ -54,6 +58,7 @@ var NPMClassMapping = map[string]string{
 	"@ai-sdk/cohere":            "cohere",
 	"@ai-sdk/deepseek":          "deepseek",
 	"@ai-sdk/gemini":            "gemini",
+	"@ai-sdk/google":            "gemini",
 	"@ai-sdk/groq":              "groq",
 	"@ai-sdk/mistral":           "mistral",
 	"@ai-sdk/ollama":            "ollama",

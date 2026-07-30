@@ -204,6 +204,46 @@ func TestRuntimeCatalogProviderResolution(t *testing.T) {
 	}
 }
 
+func TestRuntimeGoogleSDKNameCompatibility(t *testing.T) {
+	RegisterBuiltinClasses()
+
+	catalog := NewCatalog(CatalogOptions{})
+	if err := catalog.LoadFromJSON([]byte(`{
+		"google": {
+			"id": "google",
+			"npm": "@ai-sdk/google",
+			"api": "https://generativelanguage.googleapis.com/v1beta",
+			"env": ["GEMINI_API_KEY"],
+			"models": {
+				"gemini-2.0-flash": {"id": "gemini-2.0-flash"}
+			}
+		}
+	}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := NewRuntimeWithCatalog(Config{}, catalog)
+
+	cfg, err := rt.buildProviderConfig("google")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Class != "gemini" {
+		t.Fatalf("class = %q, want gemini", cfg.Class)
+	}
+	if cfg.BaseURL != "https://generativelanguage.googleapis.com/v1beta" {
+		t.Fatalf("base_url = %q, want https://generativelanguage.googleapis.com/v1beta", cfg.BaseURL)
+	}
+
+	class, err := rt.classForProvider(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if class.Name() != "gemini" {
+		t.Fatalf("class.Name() = %q, want gemini", class.Name())
+	}
+}
+
 func TestRuntimeMissingProvider(t *testing.T) {
 	RegisterBuiltinClasses()
 	rt := NewRuntime(Config{})
