@@ -44,6 +44,10 @@ func FromTextStream(ctx context.Context, stream *core.StreamResult, messageID st
 			stepIdx       int
 			stepOpen      bool
 		)
+		// Tool call IDs that have had a tool-input-start emitted, so the
+		// fragments of parallel calls each open exactly once. Keyed by call
+		// ID rather than reset per step: IDs are unique across the run.
+		toolInputOpen := make(map[string]bool)
 		closeText := func() bool {
 			if !textOpen {
 				return true
@@ -125,6 +129,37 @@ func FromTextStream(ctx context.Context, stream *core.StreamResult, messageID st
 					if !send(uimessage.ReasoningDeltaChunk{ID: reasoningID, Delta: part.ReasoningDelta}) {
 						return
 					}
+				case core.StreamPartToolInputDelta:
+					if part.ToolCallID == "" {
+						continue
+					}
+					if !openStep() {
+						return
+					}
+					// The tool call has begun, so the step's text is over —
+					// closed here rather than at the assembled call, which is
+					// the whole point of streaming the input.
+					if !closeText() {
+						return
+					}
+					if !toolInputOpen[part.ToolCallID] {
+						toolInputOpen[part.ToolCallID] = true
+						// ToolName may still be empty if the provider has not
+						// announced it yet; the later tool-input-available
+						// always carries the authoritative name.
+						if !send(uimessage.ToolInputStartChunk{
+							ToolCallID: part.ToolCallID,
+							ToolName:   part.ToolName,
+						}) {
+							return
+						}
+					}
+					if !send(uimessage.ToolInputDeltaChunk{
+						ToolCallID:     part.ToolCallID,
+						InputTextDelta: part.ToolInputDelta,
+					}) {
+						return
+					}
 				case core.StreamPartToolCall:
 					if part.ToolCall == nil {
 						continue
@@ -135,6 +170,7 @@ func FromTextStream(ctx context.Context, stream *core.StreamResult, messageID st
 					if !closeText() {
 						return
 					}
+					delete(toolInputOpen, part.ToolCall.ToolCallID)
 					var input any
 					if part.ToolCall.Input != "" {
 						if err := json.Unmarshal([]byte(part.ToolCall.Input), &input); err != nil {
