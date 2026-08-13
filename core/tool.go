@@ -15,8 +15,8 @@ type Tool struct {
 	// Parameters is a JSON Schema describing the tool's input.
 	Parameters json.RawMessage `json:"parameters,omitempty"`
 	// Execute is called when the model requests this tool.
-	// It receives the JSON-encoded input arguments and returns the
-	// JSON-encoded output or an error.
+	// It receives the JSON-encoded input arguments and returns the tool's
+	// output verbatim, or an error.
 	Execute func(ctx context.Context, input string) (output string, err error) `json:"-"`
 }
 

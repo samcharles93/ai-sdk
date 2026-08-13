@@ -36,9 +36,12 @@ type ToolResult struct {
 	ToolCallID string `json:"tool_call_id"`
 	// ToolName matches the originating tool call.
 	ToolName string `json:"tool_name"`
-	// Output is the JSON-encoded result returned by the tool.
+	// Output is the tool's returned result, verbatim. The SDK neither
+	// encodes nor validates it: any structure (JSON, plain text, ...) is
+	// the tool author's convention, not something the SDK imposes.
 	Output string `json:"output"`
-	// Error is non-empty when tool execution failed.
+	// Error is the tool's returned error string when execution failed,
+	// recorded verbatim (not encoded). Empty when the call succeeded.
 	Error string `json:"error,omitempty"`
 }
 
