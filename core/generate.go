@@ -31,6 +31,14 @@ type GenerateOptions struct {
 	// provider name (e.g. "openai", "anthropic"). These are passed
 	// directly to chat.Request.ProviderOptions.
 	ProviderOptions map[string]any
+	// OnStep, when non-nil, runs before every model call after the first.
+	// It receives the full message history about to be sent (including the
+	// system message, when opts.System is set) and may return a replacement
+	// history for this and subsequent calls — for example, a compacted one
+	// once the conversation approaches the context window. Returning nil
+	// keeps the current history unchanged. A non-nil error aborts the
+	// generation. The hook is not called before the first call.
+	OnStep func(ctx context.Context, messages []chat.Message) ([]chat.Message, error)
 }
 
 // GenerateText performs a non-streaming text generation with optional
@@ -57,6 +65,20 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 	for stepNum := 0; ; stepNum++ {
 		if err := ctx.Err(); err != nil {
 			return GenerateResult{}, fmt.Errorf("%w: %w", ErrAborted, err)
+		}
+
+		// Between steps, let the caller transform the history before the
+		// next model call. Runs only when the loop actually continues, so a
+		// caller can compact a history that would otherwise overflow the
+		// context window.
+		if stepNum > 0 && opts.OnStep != nil {
+			next, err := opts.OnStep(ctx, messages)
+			if err != nil {
+				return GenerateResult{}, err
+			}
+			if next != nil {
+				messages = next
+			}
 		}
 
 		req := chat.Request{

@@ -119,6 +119,11 @@ type Config struct {
 
 	Budget Budget
 
+	// Compact enables automatic history compaction. When enabled, a run
+	// whose history approaches the model's context window summarises older
+	// turns into a continuation summary instead of exhausting the budget.
+	Compact CompactionConfig
+
 	// ReadOnly registers only read/grep/find (planner/analysis missions).
 	ReadOnly bool
 	// ProtectPaths, when non-nil, blocks write/edit on matching paths
@@ -181,6 +186,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 			TokenBudgetIs(cfg.Budget.MaxTokens),
 			state.stopRequested,
 		),
+		OnStep: compactorFor(cfg, provider, model, tools, log),
 	})
 
 	result := classify(ctx, cfg, state, res, genErr, maxSteps)
