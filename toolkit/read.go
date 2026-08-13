@@ -85,6 +85,9 @@ func makeReadExecutor(cwd string, rt *ReadTracker) Executor {
 		if strings.TrimSpace(p.Path) == "" {
 			return Result{Content: "path is required (file is accepted as an alias)", IsError: true, ErrorKind: "invalid_arguments"}, nil
 		}
+		// Captured before Limit is defaulted below, so a defaulted budget is
+		// not mistaken for the caller asking for a specific range.
+		rangeRequested := p.Offset > 0 || p.Limit > 0
 		if p.Limit == 0 && !p.Full {
 			p.Limit = DefaultReadLines
 		}
@@ -128,6 +131,14 @@ func makeReadExecutor(cwd string, rt *ReadTracker) Executor {
 		content := string(data)
 		lines := strings.Split(content, "\n")
 		totalLines := len(lines)
+
+		// For a large source file with no explicit range requested, an index of
+		// the whole file beats its first page.
+		if !rangeRequested && !p.Full {
+			if outline := outlineFor(path, lines); outline != "" {
+				return Result{Content: outline, Truncated: true, ResultBytes: len(data)}, nil
+			}
+		}
 
 		// Apply offset (1-based).
 		startLine := 1
