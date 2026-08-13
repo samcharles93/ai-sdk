@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/samcharles93/ai-sdk/chat"
@@ -22,6 +21,14 @@ import (
 // A missing tool yields a ToolResult with Error set to a wrapped
 // [ErrToolNotFound]; the conversation continues so the model can
 // recover.
+//
+// The batch is truncated early only when ctx itself has ended — checked
+// directly, not inferred from a tool's returned error. A tool that owns an
+// inner deadline, or that wraps a cancelled downstream call, can return
+// context.Canceled or context.DeadlineExceeded while ctx is still live;
+// treating that as "the caller gave up" would drop the remaining calls and
+// their tool result messages, leaving the next provider request naming tool
+// calls with no matching response.
 func executeToolCalls(ctx context.Context, calls []ToolCall, set ToolSet) ([]ToolResult, []chat.Message) {
 	if len(calls) == 0 {
 		return nil, nil
@@ -29,6 +36,9 @@ func executeToolCalls(ctx context.Context, calls []ToolCall, set ToolSet) ([]Too
 	results := make([]ToolResult, len(calls))
 	msgs := make([]chat.Message, len(calls))
 	for i, call := range calls {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return results[:i], msgs[:i]
+		}
 		res := ToolResult{ToolCallID: call.ToolCallID, ToolName: call.ToolName}
 		tool, ok := set[call.ToolName]
 		switch {
@@ -39,9 +49,6 @@ func executeToolCalls(ctx context.Context, calls []ToolCall, set ToolSet) ([]Too
 		default:
 			out, err := tool.Execute(ctx, call.Input)
 			if err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return results[:i], msgs[:i]
-				}
 				res.Error = err.Error()
 			} else {
 				res.Output = out
