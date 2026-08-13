@@ -21,6 +21,12 @@ type GenerateOptions struct {
 	Tools ToolSet
 	// MaxSteps limits the number of tool-calling loops. Defaults to 1.
 	MaxSteps int
+	// MaxParallelToolCalls bounds how many of a step's tool calls execute
+	// concurrently. The default (0 or 1) preserves the strictly sequential
+	// behaviour: tools are arbitrary user code and some are not safe to run
+	// in parallel. Results and tool messages are always returned in call
+	// order regardless of completion order.
+	MaxParallelToolCalls int
 	// Temperature controls sampling randomness.
 	Temperature float32
 	// MaxTokens limits the total output tokens.
@@ -120,7 +126,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 		messages = append(messages, assistantMessageFromResponse(resp))
 
 		if len(coreCalls) > 0 {
-			results, toolMsgs := executeToolCalls(ctx, coreCalls, opts.Tools)
+			results, toolMsgs := executeToolCalls(ctx, coreCalls, opts.Tools, opts.MaxParallelToolCalls)
 			step.ToolResults = results
 			messages = append(messages, toolMsgs...)
 		}

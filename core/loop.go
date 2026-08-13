@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/samcharles93/ai-sdk/chat"
 )
@@ -22,6 +23,11 @@ import (
 // [ErrToolNotFound]; the conversation continues so the model can
 // recover.
 //
+// maxParallel bounds how many calls run concurrently. One (or less)
+// preserves the strictly sequential behaviour; a higher value runs
+// independent calls in parallel, filling results[i]/msgs[i] by index so
+// the returned slice order is unaffected by completion order.
+//
 // The batch is truncated early only when ctx itself has ended — checked
 // directly, not inferred from a tool's returned error. A tool that owns an
 // inner deadline, or that wraps a cancelled downstream call, can return
@@ -29,48 +35,98 @@ import (
 // treating that as "the caller gave up" would drop the remaining calls and
 // their tool result messages, leaving the next provider request naming tool
 // calls with no matching response.
-func executeToolCalls(ctx context.Context, calls []ToolCall, set ToolSet) ([]ToolResult, []chat.Message) {
+func executeToolCalls(ctx context.Context, calls []ToolCall, set ToolSet, maxParallel int) ([]ToolResult, []chat.Message) {
 	if len(calls) == 0 {
 		return nil, nil
 	}
+	if maxParallel <= 1 {
+		return executeToolCallsSequential(ctx, calls, set)
+	}
+
+	results := make([]ToolResult, len(calls))
+	msgs := make([]chat.Message, len(calls))
+
+	sem := make(chan struct{}, maxParallel)
+	var wg sync.WaitGroup
+	spawned := 0
+
+spawnLoop:
+	for i, call := range calls {
+		// Check before acquiring the slot: when ctx is already cancelled,
+		// both the send and the receive below are ready and select would
+		// pick either, letting a call spawn after cancellation.
+		if ctx.Err() != nil {
+			break spawnLoop
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			// Cancellation stops further spawning; calls already in flight
+			// finish (they observe ctx) and are included below.
+			break spawnLoop
+		}
+		wg.Add(1)
+		go func(i int, call ToolCall) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			results[i], msgs[i] = runToolCall(ctx, call, set)
+		}(i, call)
+		spawned++
+	}
+
+	wg.Wait()
+	return results[:spawned], msgs[:spawned]
+}
+
+// executeToolCallsSequential runs calls one at a time, checking ctx between
+// calls so a cancelled caller truncates the batch at the first unstarted
+// call.
+func executeToolCallsSequential(ctx context.Context, calls []ToolCall, set ToolSet) ([]ToolResult, []chat.Message) {
 	results := make([]ToolResult, len(calls))
 	msgs := make([]chat.Message, len(calls))
 	for i, call := range calls {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return results[:i], msgs[:i]
 		}
-		res := ToolResult{ToolCallID: call.ToolCallID, ToolName: call.ToolName}
-		tool, ok := set[call.ToolName]
-		switch {
-		case !ok || tool == nil:
-			res.Error = fmt.Errorf("%w: %q", ErrToolNotFound, call.ToolName).Error()
-		case tool.Execute == nil:
-			res.Error = fmt.Errorf("%w: tool %q has no Execute function", ErrToolExecutionFailed, call.ToolName).Error()
-		default:
-			out, err := tool.Execute(ctx, call.Input)
-			if err != nil {
-				res.Error = err.Error()
-			} else {
-				res.Output = out
-			}
-		}
-		results[i] = res
-
-		// Feed the tool's output (or error string) back to the model as
-		// the message content. Per-provider mapping (Gemini's role:"user"
-		// quirk, Ollama's positional matching) lives inside the provider.
-		content := res.Output
-		if res.Error != "" {
-			content = res.Error
-		}
-		msgs[i] = chat.Message{
-			Role:       chat.RoleTool,
-			Content:    content,
-			Name:       call.ToolName,
-			ToolCallID: call.ToolCallID,
-		}
+		results[i], msgs[i] = runToolCall(ctx, call, set)
 	}
 	return results, msgs
+}
+
+// runToolCall executes a single tool call and builds its ToolResult and the
+// tool message fed back to the model. It is shared by the sequential and
+// parallel paths so they behave identically per call.
+func runToolCall(ctx context.Context, call ToolCall, set ToolSet) (ToolResult, chat.Message) {
+	res := ToolResult{ToolCallID: call.ToolCallID, ToolName: call.ToolName}
+	tool, ok := set[call.ToolName]
+	switch {
+	case !ok || tool == nil:
+		res.Error = fmt.Errorf("%w: %q", ErrToolNotFound, call.ToolName).Error()
+	case tool.Execute == nil:
+		res.Error = fmt.Errorf("%w: tool %q has no Execute function", ErrToolExecutionFailed, call.ToolName).Error()
+	default:
+		out, err := tool.Execute(ctx, call.Input)
+		if err != nil {
+			res.Error = err.Error()
+		} else {
+			res.Output = out
+		}
+	}
+
+	// Feed the tool's output (or error string) back to the model as the
+	// message content. Per-provider mapping (Gemini's role:"user" quirk,
+	// Ollama's positional matching) lives inside the provider.
+	content := res.Output
+	if res.Error != "" {
+		content = res.Error
+	}
+	msg := chat.Message{
+		Role:       chat.RoleTool,
+		Content:    content,
+		Name:       call.ToolName,
+		ToolCallID: call.ToolCallID,
+	}
+	return res, msg
 }
 
 // assistantMessageFromResponse builds the [chat.Message] to append to the

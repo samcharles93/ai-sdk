@@ -284,7 +284,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 			}
 
 			if len(coreCalls) > 0 {
-				results, toolMsgs := executeToolCalls(ctx, coreCalls, opts.Tools)
+				results, toolMsgs := executeToolCalls(ctx, coreCalls, opts.Tools, opts.MaxParallelToolCalls)
 				step.ToolResults = results
 				for i := range results {
 					r := results[i]
