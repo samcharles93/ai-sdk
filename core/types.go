@@ -123,6 +123,10 @@ type StreamPartType string
 const (
 	StreamPartTextDelta      StreamPartType = "text-delta"
 	StreamPartReasoningDelta StreamPartType = "reasoning-delta"
+	// StreamPartToolInputDelta carries an incremental fragment of a tool
+	// call's JSON arguments, emitted as the provider streams them. Zero or
+	// more of these precede the StreamPartToolCall for the same call.
+	StreamPartToolInputDelta StreamPartType = "tool-input-delta"
 	StreamPartToolCall       StreamPartType = "tool-call"
 	StreamPartToolResult     StreamPartType = "tool-result"
 	StreamPartStartStep      StreamPartType = "start-step"
@@ -144,6 +148,18 @@ type StreamPart struct {
 	// these between StartStep and the first ToolCall/FinishStep so
 	// downstream UI can render thinking blocks before the answer.
 	ReasoningDelta string `json:"reasoning_delta,omitempty"`
+	// ToolCallID identifies which tool call a fragment belongs to
+	// (Type == "tool-input-delta"). It matches the ToolCallID of the
+	// StreamPartToolCall that later carries the assembled call.
+	ToolCallID string `json:"tool_call_id,omitempty"`
+	// ToolName is the tool being called (Type == "tool-input-delta").
+	// Providers may not announce the name until after the first argument
+	// fragment, so early deltas can carry an empty ToolName.
+	ToolName string `json:"tool_name,omitempty"`
+	// ToolInputDelta holds an incremental fragment of a tool call's
+	// JSON arguments (Type == "tool-input-delta"). Concatenating the
+	// fragments for one ToolCallID reproduces the assembled call's Input.
+	ToolInputDelta string `json:"tool_input_delta,omitempty"`
 	// ToolCall holds a new tool call (Type == "tool-call").
 	ToolCall *ToolCall `json:"tool_call,omitempty"`
 	// ToolResult holds a tool execution outcome (Type == "tool-result").

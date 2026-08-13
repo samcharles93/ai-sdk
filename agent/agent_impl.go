@@ -62,7 +62,10 @@ func runAgentLoop(ctx context.Context, full <-chan core.StreamPart, out chan<- S
 			if !ok {
 				return
 			}
-			ev := translate(part)
+			ev, surfaced := translate(part)
+			if !surfaced {
+				continue
+			}
 			select {
 			case out <- ev:
 			case <-ctx.Done():

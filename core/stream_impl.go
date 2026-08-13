@@ -142,6 +142,12 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				stepProviderMetadata map[string]any
 			)
 
+			// Identity resolved incrementally per delta index, mirroring
+			// chat.AssembleToolCalls: first writer wins, so a fragment is
+			// tagged with the same ID the assembled call will carry.
+			callIDs := make(map[int]string)
+			callNames := make(map[int]string)
+
 			for {
 				chunk, cerr := stream.Next(ctx)
 				if errors.Is(cerr, io.EOF) {
@@ -185,6 +191,38 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 					}
 				}
 				if len(chunk.ToolCallDeltas) > 0 {
+					for _, d := range chunk.ToolCallDeltas {
+						if callIDs[d.Index] == "" && d.ID != "" {
+							callIDs[d.Index] = d.ID
+						}
+						if callNames[d.Index] == "" && d.Name != "" {
+							callNames[d.Index] = d.Name
+						}
+						// An announce-only delta (identity, no arguments yet)
+						// contributes nothing to Input, so it emits nothing —
+						// keeping the fragments a faithful decomposition of
+						// the assembled call.
+						if d.ArgsDelta == "" {
+							continue
+						}
+						id := callIDs[d.Index]
+						if id == "" {
+							// Same synthetic fallback AssembleToolCalls applies
+							// when a provider never supplies an ID.
+							id = fmt.Sprintf("call_%d", d.Index)
+						}
+						if !emit(StreamPart{
+							Type:           StreamPartToolInputDelta,
+							ToolCallID:     id,
+							ToolName:       callNames[d.Index],
+							ToolInputDelta: d.ArgsDelta,
+						}) {
+							_ = stream.Close()
+							runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
+							finalReason = FinishReasonError
+							return
+						}
+					}
 					toolDeltas = append(toolDeltas, chunk.ToolCallDeltas...)
 				}
 				if chunk.Usage != nil {

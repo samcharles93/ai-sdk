@@ -107,7 +107,10 @@ func (a *Agent) run(ctx context.Context, full <-chan core.StreamPart, out chan<-
 			if !ok {
 				return
 			}
-			ev := translate(part)
+			ev, surfaced := translate(part)
+			if !surfaced {
+				continue
+			}
 			select {
 			case out <- ev:
 			case <-ctx.Done():
@@ -121,32 +124,39 @@ func (a *Agent) run(ctx context.Context, full <-chan core.StreamPart, out chan<-
 	}
 }
 
-// translate maps a single [core.StreamPart] to a [StreamEvent].
-func translate(p core.StreamPart) StreamEvent {
+// translate maps a single [core.StreamPart] to a [StreamEvent]. The second
+// result is false for parts the agent does not surface, which the caller
+// drops rather than forwarding.
+//
+// Parts outside this vocabulary are skipped rather than coerced into an
+// event: core may add part types (tool input deltas, warnings) that predate
+// no agent equivalent, and translating them into a finish would truncate the
+// run for any consumer that stops on EventFinish.
+func translate(p core.StreamPart) (StreamEvent, bool) {
 	switch p.Type {
 	case core.StreamPartTextDelta:
-		return StreamEvent{Type: EventTextDelta, TextDelta: p.TextDelta}
+		return StreamEvent{Type: EventTextDelta, TextDelta: p.TextDelta}, true
 	case core.StreamPartReasoningDelta:
-		return StreamEvent{Type: EventReasoningDelta, ReasoningDelta: p.ReasoningDelta}
+		return StreamEvent{Type: EventReasoningDelta, ReasoningDelta: p.ReasoningDelta}, true
 	case core.StreamPartToolCall:
-		return StreamEvent{Type: EventToolCall, ToolCall: p.ToolCall}
+		return StreamEvent{Type: EventToolCall, ToolCall: p.ToolCall}, true
 	case core.StreamPartToolResult:
-		return StreamEvent{Type: EventToolResult, ToolResult: p.ToolResult}
+		return StreamEvent{Type: EventToolResult, ToolResult: p.ToolResult}, true
 	case core.StreamPartStartStep:
-		return StreamEvent{Type: EventStartStep}
+		return StreamEvent{Type: EventStartStep}, true
 	case core.StreamPartFinishStep:
-		return StreamEvent{Type: EventFinishStep, StepResult: p.StepResult}
+		return StreamEvent{Type: EventFinishStep, StepResult: p.StepResult}, true
 	case core.StreamPartFinish:
 		return StreamEvent{
 			Type:         EventFinish,
 			FinishReason: p.FinishReason,
 			TotalUsage:   p.TotalUsage,
-		}
+		}, true
 	case core.StreamPartError:
-		return StreamEvent{Type: EventError, Error: p.Error}
+		return StreamEvent{Type: EventError, Error: p.Error}, true
 	case core.StreamPartAbort:
-		return StreamEvent{Type: EventAbort, Error: p.Error}
+		return StreamEvent{Type: EventAbort, Error: p.Error}, true
 	default:
-		return StreamEvent{Type: EventFinish}
+		return StreamEvent{}, false
 	}
 }
