@@ -17,7 +17,7 @@ func GenerateVideo(ctx context.Context, provider video.Provider, req video.Gener
 	}
 
 	if err := ctx.Err(); err != nil {
-		return video.GenerateVideoResponse{}, fmt.Errorf("%w: %v", ErrAborted, err)
+		return video.GenerateVideoResponse{}, fmt.Errorf("%w: %w", ErrAborted, err)
 	}
 
 	resp, err := provider.GenerateVideo(ctx, req)

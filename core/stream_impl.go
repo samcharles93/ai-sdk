@@ -103,14 +103,14 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 
 		for stepNum := 0; ; stepNum++ {
 			if err := ctx.Err(); err != nil {
-				runErr = fmt.Errorf("%w: %v", ErrAborted, err)
+				runErr = fmt.Errorf("%w: %w", ErrAborted, err)
 				finalReason = FinishReasonError
 				_ = emit(StreamPart{Type: StreamPartAbort, Error: runErr})
 				return
 			}
 
 			if !emit(StreamPart{Type: StreamPartStartStep}) {
-				runErr = fmt.Errorf("%w: %v", ErrAborted, ctx.Err())
+				runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 				finalReason = FinishReasonError
 				return
 			}
@@ -158,7 +158,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 					stepText += chunk.Delta
 					if !emit(StreamPart{Type: StreamPartTextDelta, TextDelta: chunk.Delta}) {
 						_ = stream.Close()
-						runErr = fmt.Errorf("%w: %v", ErrAborted, ctx.Err())
+						runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 						finalReason = FinishReasonError
 						return
 					}
@@ -167,7 +167,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 					stepReasoning += chunk.ReasoningDelta
 					if !emit(StreamPart{Type: StreamPartReasoningDelta, ReasoningDelta: chunk.ReasoningDelta}) {
 						_ = stream.Close()
-						runErr = fmt.Errorf("%w: %v", ErrAborted, ctx.Err())
+						runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 						finalReason = FinishReasonError
 						return
 					}
@@ -178,7 +178,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 						w := chunk.Warnings[i]
 						if !emit(StreamPart{Type: StreamPartWarning, Warning: &w}) {
 							_ = stream.Close()
-							runErr = fmt.Errorf("%w: %v", ErrAborted, ctx.Err())
+							runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 							finalReason = FinishReasonError
 							return
 						}
@@ -212,7 +212,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 			for i := range coreCalls {
 				tc := coreCalls[i]
 				if !emit(StreamPart{Type: StreamPartToolCall, ToolCall: &tc}) {
-					runErr = fmt.Errorf("%w: %v", ErrAborted, ctx.Err())
+					runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 					finalReason = FinishReasonError
 					return
 				}
@@ -251,7 +251,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				for i := range results {
 					r := results[i]
 					if !emit(StreamPart{Type: StreamPartToolResult, ToolResult: &r}) {
-						runErr = fmt.Errorf("%w: %v", ErrAborted, ctx.Err())
+						runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 						finalReason = FinishReasonError
 						return
 					}
@@ -265,7 +265,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 
 			sCopy := step
 			if !emit(StreamPart{Type: StreamPartFinishStep, StepResult: &sCopy}) {
-				runErr = fmt.Errorf("%w: %v", ErrAborted, ctx.Err())
+				runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 				finalReason = FinishReasonError
 				return
 			}

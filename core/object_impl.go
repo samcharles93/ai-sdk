@@ -17,7 +17,7 @@ func GenerateObject(ctx context.Context, provider object.Provider, req object.Re
 	}
 
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrAborted, err)
+		return nil, fmt.Errorf("%w: %w", ErrAborted, err)
 	}
 
 	resp, err := provider.GenerateObject(ctx, req)
@@ -38,7 +38,7 @@ func StreamObject(ctx context.Context, provider object.Provider, req object.Requ
 	}
 
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrAborted, err)
+		return nil, fmt.Errorf("%w: %w", ErrAborted, err)
 	}
 
 	return provider.StreamObject(ctx, req)

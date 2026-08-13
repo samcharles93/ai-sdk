@@ -17,7 +17,7 @@ func GenerateSpeech(ctx context.Context, provider speech.Provider, req speech.Ge
 	}
 
 	if err := ctx.Err(); err != nil {
-		return speech.GenerateSpeechResponse{}, fmt.Errorf("%w: %v", ErrAborted, err)
+		return speech.GenerateSpeechResponse{}, fmt.Errorf("%w: %w", ErrAborted, err)
 	}
 
 	resp, err := provider.GenerateSpeech(ctx, req)

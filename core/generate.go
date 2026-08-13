@@ -56,7 +56,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 
 	for stepNum := 0; ; stepNum++ {
 		if err := ctx.Err(); err != nil {
-			return GenerateResult{}, fmt.Errorf("%w: %v", ErrAborted, err)
+			return GenerateResult{}, fmt.Errorf("%w: %w", ErrAborted, err)
 		}
 
 		req := chat.Request{

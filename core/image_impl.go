@@ -17,7 +17,7 @@ func GenerateImage(ctx context.Context, provider image.Provider, req image.Gener
 	}
 
 	if err := ctx.Err(); err != nil {
-		return image.GenerateImageResponse{}, fmt.Errorf("%w: %v", ErrAborted, err)
+		return image.GenerateImageResponse{}, fmt.Errorf("%w: %w", ErrAborted, err)
 	}
 
 	resp, err := provider.GenerateImage(ctx, req)

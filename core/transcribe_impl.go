@@ -16,7 +16,7 @@ func Transcribe(ctx context.Context, provider transcribe.Provider, req transcrib
 	}
 
 	if err := ctx.Err(); err != nil {
-		return transcribe.TranscribeResponse{}, fmt.Errorf("%w: %v", ErrAborted, err)
+		return transcribe.TranscribeResponse{}, fmt.Errorf("%w: %w", ErrAborted, err)
 	}
 
 	resp, err := provider.Transcribe(ctx, req)
