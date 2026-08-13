@@ -18,6 +18,15 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+      # stderr_redact.go implements the child-process stderr contract
+      # (redaction, rate limiting, capture cap) from the agent spawning
+      # spec. The child-process supervisor that calls it does not exist
+      # yet, so every symbol reads as unused. Kept rather than deleted so
+      # the contract is not reimplemented from scratch later; see the
+      # tracking issue before wiring it up or removing it.
+      - path: toolkit/stderr_redact\.go
+        linters:
+          - unused
 
 formatters:
   enable:

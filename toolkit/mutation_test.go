@@ -8,7 +8,7 @@ import (
 	"github.com/samcharles93/ai-sdk/toolkit"
 )
 
-func TestMutationQueue_Serializes(t *testing.T) {
+func TestMutationQueue_Serialises(t *testing.T) {
 	q := toolkit.NewMutationQueue()
 	path := "/tmp/test.txt"
 

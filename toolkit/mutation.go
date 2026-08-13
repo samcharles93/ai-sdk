@@ -4,7 +4,7 @@ import (
 	"sync"
 )
 
-// MutationQueue serializes write operations to the same file path,
+// MutationQueue serialises write operations to the same file path,
 // preventing concurrent edits from clobbering each other during
 // parallel tool execution.
 //

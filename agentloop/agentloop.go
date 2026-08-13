@@ -297,10 +297,6 @@ func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, 
 // readOnlyTools are the built-ins available to ReadOnly (planner) runs.
 var readOnlyTools = map[string]bool{"read": true, "grep": true, "find": true}
 
-// mutatingTools are the built-ins whose success can change files and
-// therefore trigger the gate. Shell is included: any command may mutate.
-var mutatingTools = map[string]bool{"write": true, "edit": true, "shell": true}
-
 // finishTool lets the model end the run deliberately and supply the
 // summary that becomes the PR body / notes write-back.
 func finishTool(state *runState) *core.Tool {
@@ -321,6 +317,7 @@ func finishTool(state *runState) *core.Tool {
 				Summary string `json:"summary"`
 			}
 			if err := json.Unmarshal([]byte(input), &args); err != nil {
+				//nolint:nilerr // Malformed arguments are reported back to the model in-band so it can retry; a Go error would abort the run.
 				return "finish rejected: invalid arguments: " + err.Error(), nil
 			}
 			if args.Summary == "" {
@@ -352,12 +349,14 @@ func writeNoteTool(notes NotesStore) *core.Tool {
 				VerifiedBy string `json:"verified_by"`
 			}
 			if err := json.Unmarshal([]byte(input), &args); err != nil {
+				//nolint:nilerr // Malformed arguments are reported back to the model in-band so it can retry; a Go error would abort the run.
 				return "note rejected: invalid arguments: " + err.Error(), nil
 			}
 			if args.Note == "" || args.VerifiedBy == "" {
 				return "note rejected: note and verified_by are both required", nil
 			}
 			if err := notes.Append(ctx, args.Note+" (verified_by: "+args.VerifiedBy+")"); err != nil {
+				//nolint:nilerr // A failed note write is reported to the model in-band; it must not abort the run.
 				return "note rejected: " + err.Error(), nil
 			}
 			return "note saved", nil

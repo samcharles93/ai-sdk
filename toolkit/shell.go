@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -88,7 +89,7 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 			}
 		}
 
-		// Serialize with file-mutation tools: shell commands may modify
+		// Serialise with file-mutation tools: shell commands may modify
 		// files that write/edit are working on.
 		if mq != nil {
 			mq.GlobalLock()
@@ -103,6 +104,14 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 		if cwd != "" {
 			cmd.Dir = cwd
 		}
+
+		// Run the shell as its own process-group leader and, on timeout or
+		// cancellation, signal the whole group. CommandContext's default
+		// Cancel kills only the shell itself, which leaves whatever it
+		// spawned — build steps, servers, grandchild agents — orphaned and
+		// still holding the output pipe.
+		setProcessGroup(cmd)
+		cmd.Cancel = func() error { return signalProcessGroup(cmd, syscall.SIGKILL) }
 
 		var stdout, stderr bytes.Buffer
 		bw := &bridgeWriter{bridge: bridge}

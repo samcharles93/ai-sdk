@@ -302,7 +302,7 @@ func grepFallback(ctx context.Context, p GrepParams, searchPath, cwd string, tar
 	} else {
 		err = filepath.WalkDir(searchPath, func(walkPath string, d os.DirEntry, err error) error {
 			if err != nil {
-				return nil // skip inaccessible
+				return nil //nolint:nilerr // Returning the walk error would abort the whole search; skipping the entry is intended.
 			}
 
 			select {
@@ -333,7 +333,7 @@ func grepFallback(ctx context.Context, p GrepParams, searchPath, cwd string, tar
 
 			res, err := grepFile(ctx, walkPath, matcher, p.ContextBefore, p.ContextAfter)
 			if err != nil {
-				return nil // skip files we can't read
+				return nil //nolint:nilerr // An unreadable file (binary, permissions) is skipped rather than failing the search.
 			}
 			for i := range res {
 				res[i].relPath, _ = filepath.Rel(cwd, walkPath)
@@ -472,6 +472,7 @@ func grepFile(ctx context.Context, path string, matcher func(string) bool, ctxBe
 }
 
 func buildGrepArgs(p GrepParams) []string {
+	//nolint:misspell // "--color" is ripgrep's flag spelling; the UK locale must not rewrite it.
 	args := []string{"--line-number", "--with-filename", "--no-heading", "--color=never"}
 
 	if p.Literal {

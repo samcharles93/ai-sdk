@@ -69,10 +69,10 @@ func gatedToolSet(set core.ToolSet, g *gateState, cfg GateConfig, workdir string
 	}
 	out := make(core.ToolSet, len(set))
 	for name, tool := range set {
-		switch {
-		case name == "write" || name == "edit":
+		switch name {
+		case "write", "edit":
 			out[name] = wrapMutating(tool, g, cfg, workdir, log)
-		case name == "find" || name == "grep":
+		case "find", "grep":
 			out[name] = wrapBlockedWhileDirty(tool, g)
 		default:
 			out[name] = tool

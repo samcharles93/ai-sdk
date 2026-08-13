@@ -98,9 +98,9 @@ func parseToolCallKey(name, argsJSON string) (key string, justification string) 
 	s, _ := m["repeat_justification"].(string)
 	justification = strings.TrimSpace(s)
 	delete(m, "repeat_justification")
-	normalized, err := json.Marshal(m)
+	normalised, err := json.Marshal(m)
 	if err != nil {
 		return name + "\x00" + argsJSON, justification
 	}
-	return name + "\x00" + string(normalized), justification
+	return name + "\x00" + string(normalised), justification
 }
