@@ -2,7 +2,7 @@ package chat
 
 // ---------------------------------------------------------------------------
 // Backward-compatible types for modules written against the older
-// pkg/ui/chat API surface (e.g., ai-sdk-nats).
+// ui/chat API surface (e.g., ai-sdk-nats).
 //
 // These types are thin wrappers / aliases that map to the current
 // internal types. They SHOULD NOT be used by new code.

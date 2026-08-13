@@ -56,7 +56,7 @@ func printDocs() {
 	fmt.Println("  XAI_API_KEY=... go run ./ai-sdk-examples/video-generation/")
 	fmt.Println()
 	fmt.Println("Providers implementing video.Provider:")
-	fmt.Println("  - pkg/provider/xai/ — xAI grok-video")
+	fmt.Println("  - provider/xai/ — xAI grok-video")
 	fmt.Println()
 	fmt.Println("API pattern:")
 	fmt.Println("  resp, err := core.GenerateVideo(ctx, provider, video.GenerateVideoRequest{")

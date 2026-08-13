@@ -14,100 +14,99 @@ never the reverse.
 
 ```tree
 ┌──────────────────────────────────────────────────┐
-│  UI Layer        pkg/ui/                         │  Templ + Datastar components & handlers
+│  UI Layer        ui/                         │  Templ + Datastar components & handlers
 │  ─────────────────────────────────────────────── │  Knows: services, domain interfaces
-│                  pkg/uimessage/                   │  UI message protocol (SSE, chunks)
-│                  pkg/uimessage/sse/               │  SSE writer, stream processor
+│                  uimessage/                   │  UI message protocol (SSE, chunks)
+│                  uimessage/sse/               │  SSE writer, stream processor
 ├──────────────────────────────────────────────────┤
-│  Runtime         pkg/runtime/                     │  Provider-agnostic model resolution:
+│  Runtime         runtime/                     │  Provider-agnostic model resolution:
 │  ─────────────────────────────────────────────── │    models.dev catalog, pluggable
 │                                                   │    ProviderClass registry, Chat/Embed
 │                                                   │    entry points.
 │                                                   │  Knows: catalog, classes, core, domains
 ├──────────────────────────────────────────────────┤
-│  Agent           pkg/agent/                       │  Tool-loop agent over StreamText
+│  Agent           agent/                       │  Tool-loop agent over StreamText
 │  ─────────────────────────────────────────────── │  Knows: core, domain interfaces
 ├──────────────────────────────────────────────────┤
-│  Services        pkg/core/                       │  Orchestration: GenerateText, StreamText,
+│  Services        core/                       │  Orchestration: GenerateText, StreamText,
 │  ─────────────────────────────────────────────── │    GenerateObject, GenerateImage,
-│                  pkg/chat/client.go               │    GenerateSpeech
-│                  pkg/embed/client.go              │  Knows: domain interfaces (Provider)
-│                  pkg/image/client.go              │  Thin facades over providers
-│                  pkg/speech/client.go             │
-│                  pkg/transcribe/client.go         │
-│                  pkg/object/client.go             │
-│                  pkg/video/client.go              │
-│                  pkg/rerank/client.go             │
+│                  chat/client.go               │    GenerateSpeech
+│                  embed/client.go              │  Knows: domain interfaces (Provider)
+│                  image/client.go              │  Thin facades over providers
+│                  speech/client.go             │
+│                  transcribe/client.go         │
+│                  object/client.go             │
+│                  video/client.go              │
+│                  rerank/client.go             │
 ├──────────────────────────────────────────────────┤
-│  Middleware      pkg/middleware/                  │  Wraps domain interfaces
+│  Middleware      middleware/                  │  Wraps domain interfaces
 │  ─────────────────────────────────────────────── │  Knows: domain, telemetry interfaces
 ├──────────────────────────────────────────────────┤
-│  Infrastructure  pkg/registry/                    │  Provider registry
+│  Infrastructure  registry/                    │  Provider registry
 │  ─────────────────────────────────────────────── │  Knows: domain interfaces
-│                  pkg/schema/                      │  JSON Schema builder (standalone)
-│                  pkg/util/                        │  Prompt helpers, tokenizer (stdlib only)
-│                  pkg/upload/                      │  Multipart form parsing
-│                  pkg/error/                       │  Sentinel errors (stdlib only)
-│                  pkg/logger/                      │  Structured logging abstraction
-│                  pkg/telemetry/                   │  OTel-compatible tracing interfaces
-│                  pkg/prompt/                      │  Prompt manager (standalone)
+│                  schema/                      │  JSON Schema builder (standalone)
+│                  util/                        │  Prompt helpers, tokenizer (stdlib only)
+│                  upload/                      │  Multipart form parsing
+│                  error/                       │  Sentinel errors (stdlib only)
+│                  logger/                      │  Structured logging abstraction
+│                  telemetry/                   │  OTel-compatible tracing interfaces
+│                  prompt/                      │  Prompt manager (standalone)
 ├──────────────────────────────────────────────────┤
-│  Domain          pkg/chat/                        │  Chat types + Provider interface
-│  Interfaces      pkg/embed/                       │  Embedding types + Provider
-│  ─────────────── pkg/image/                       │  Image gen types + Provider
-│  (INNERMOST)     pkg/speech/                      │  Speech synthesis types + Provider
-│                  pkg/transcribe/                   │  Transcription types + Provider
-│                  pkg/object/                      │  Object gen types + Provider
-│                  pkg/video/                       │  Video gen types + Provider
-│                  pkg/rerank/                      │  Reranking types + Provider
+│  Domain          chat/                        │  Chat types + Provider interface
+│  Interfaces      embed/                       │  Embedding types + Provider
+│  ─────────────── image/                       │  Image gen types + Provider
+│  (INNERMOST)     speech/                      │  Speech synthesis types + Provider
+│                  transcribe/                   │  Transcription types + Provider
+│                  object/                      │  Object gen types + Provider
+│                  video/                       │  Video gen types + Provider
+│                  rerank/                      │  Reranking types + Provider
 │                                                  │  Knows: NOTHING (stdlib only)
 ├──────────────────────────────────────────────────┤
-│  Providers       pkg/provider/anthropic/          │  Implements domain interfaces
-│  ─────────────── pkg/provider/azure/              │  Knows: domain interfaces + HTTP APIs
-│                  pkg/provider/cohere/              │
-│                  pkg/provider/deepseek/            │
-│                  pkg/provider/gemini/              │
-│                  pkg/provider/groq/                │
-│                  pkg/provider/mistral/             │
-│                  pkg/provider/ollama/              │
-│                  pkg/provider/openai/              │
-│                  pkg/provider/perplexity/          │
-│                  pkg/provider/togetherai/          │
-│                  pkg/provider/xai/                 │
+│  Providers       provider/anthropic/          │  Implements domain interfaces
+│  ─────────────── provider/azure/              │  Knows: domain interfaces + HTTP APIs
+│                  provider/cohere/              │
+│                  provider/deepseek/            │
+│                  provider/gemini/              │
+│                  provider/groq/                │
+│                  provider/mistral/             │
+│                  provider/ollama/              │
+│                  provider/openai/              │
+│                  provider/perplexity/          │
+│                  provider/togetherai/          │
+│                  provider/xai/                 │
 └──────────────────────────────────────────────────┘
 ```
 
 ### Dependency Rules (NON-NEGOTIABLE)
 
-1. **Domain packages (`pkg/chat`, `pkg/embed`, etc.)** MUST NOT import any other
-   `pkg/` package. Only stdlib imports are allowed.
+1. **Domain packages (`chat`, `embed`, etc.)** MUST NOT import any other
+   package. Only stdlib imports are allowed.
    - The required `client.go` in each domain package is a thin in-package facade
      over that package's own `Provider` interface and types. It remains
-     domain-layer code and does not import `pkg/core` or any other `pkg/`
-     package.
-2. **Provider packages (`pkg/provider/*`)** MAY import domain packages
-   (`pkg/chat`, `pkg/embed`) to implement their interfaces. They MUST NOT import
-   `pkg/core`, `pkg/ui`, `pkg/registry`, or `pkg/middleware`.
-3. **Core/Services (`pkg/core/`)** MAY import domain packages and their
+     domain-layer code and does not import `core` or any other package.
+2. **Provider packages (`provider/*`)** MAY import domain packages
+   (`chat`, `embed`) to implement their interfaces. They MUST NOT import
+   `core`, `ui`, `registry`, or `middleware`.
+3. **Core/Services (`core/`)** MAY import domain packages and their
    interfaces. It MUST NOT import provider implementations or UI packages. It
    works strictly against interfaces.
    - The `client.go` files shown in the Services row (for example,
-     `pkg/chat/client.go`) live in their respective domain packages. `pkg/core/`
+     `chat/client.go`) live in their respective domain packages. `core/`
      does not own these files; it imports domain packages.
-4. **Runtime (`pkg/runtime/`)** MAY import domain packages, provider
+4. **Runtime (`runtime/`)** MAY import domain packages, provider
    implementations, and core. It is the provider-resolution and model-discovery
    layer. It MUST NOT be imported by providers, domain packages, or core.
-5. **Middleware (`pkg/middleware/`)** MAY import domain packages and
-   infrastructure packages (`pkg/telemetry/`, `pkg/logger/`, `pkg/error/`). It
-   MUST NOT import `pkg/core/`, provider implementations, `pkg/ui/`, or
-   `pkg/runtime/`.
-6. **Agent (`pkg/agent/`)** MAY import `pkg/core/` and domain packages. It MUST
-   NOT import `pkg/ui/`, `pkg/runtime/`, or provider implementations.
-7. **Infrastructure (`pkg/registry/`, `pkg/schema/`, `pkg/util/`, `pkg/upload/`,
-   `pkg/error/`, `pkg/logger/`, `pkg/telemetry/`, `pkg/prompt/`)**:
+5. **Middleware (`middleware/`)** MAY import domain packages and
+   infrastructure packages (`telemetry/`, `logger/`, `error/`). It
+   MUST NOT import `core/`, provider implementations, `ui/`, or
+   `runtime/`.
+6. **Agent (`agent/`)** MAY import `core/` and domain packages. It MUST
+   NOT import `ui/`, `runtime/`, or provider implementations.
+7. **Infrastructure (`registry/`, `schema/`, `util/`, `upload/`,
+   `error/`, `logger/`, `telemetry/`, `prompt/`)**:
    - `registry` — MAY import all domain interface packages. MUST NOT import
      providers, core, or UI.
-   - `schema` — standalone, no pkg/ imports.
+   - `schema` — standalone, no package imports.
    - `util` — standalone, stdlib only.
    - `upload` — MAY import stdlib and domain types where needed for
      transport-level file handling. MUST NOT import providers, core, runtime, or
@@ -119,7 +118,7 @@ never the reverse.
      NOT import providers, core, runtime, or UI.
    - `prompt` — standalone prompt management utilities; MUST NOT import
      providers, core, runtime, or UI.
-8. **UI (`pkg/ui/`)** is the outermost layer. It MAY import core, domain
+8. **UI (`ui/`)** is the outermost layer. It MAY import core, domain
    interfaces, registry, and runtime. It MUST NOT import provider
    implementations directly. It contains:
    - State management structs (Go equivalents of React hooks like `useChat`)
@@ -200,63 +199,62 @@ ai-sdk-examples/            # Example programs demonstrating SDK usage
   speech-to-text/           #   Audio transcription example
   image-generation/         #   Image generation example
 cmd/ai-sdk/                 # Entrypoint — wires dependencies, starts server
-pkg/
-  chat/                     # Domain: chat types & interface
-  embed/                    # Domain: embedding types & interface
-  image/                    # Domain: image generation types & interface
-  speech/                   # Domain: speech synthesis types & interface
-  transcribe/               # Domain: transcription types & interface
-  object/                   # Domain: structured object generation types & interface
-  video/                    # Domain: video generation types & interface
-  rerank/                   # Domain: reranking types & interface
-  core/                     # Services: GenerateText, StreamText orchestration
-  agent/                    # Agent: tool-loop agent over StreamText
-  middleware/               # Middleware: wraps domain interfaces (logging, telemetry)
-  registry/                 # Infrastructure: provider registry
-  schema/                   # Infrastructure: JSON Schema builder
-  util/                     # Infrastructure: prompt helpers, tokeniser
-  upload/                   # Infrastructure: multipart form parsing
-  error/                    # Infrastructure: sentinel errors
-  logger/                   # Infrastructure: structured logging abstraction
-  telemetry/                # Infrastructure: OTel-compatible tracing interfaces
-  prompt/                   # Infrastructure: prompt manager
-  uimessage/                # UI: message protocol (chunks, SSE encoding)
-    sse/                    #   SSE writer and stream processing
-  provider/                 # Providers: concrete implementations
-    anthropic/
-    azure/
-    cohere/
-    deepseek/
-    gemini/
-    groq/
-    mistral/
-    ollama/
-    openai/
-    perplexity/
-    togetherai/
-    xai/
-  ui/                       # UI: Templ components & HTTP handlers
-    chat/                   #   Chat state management
-    components/             #   Templ component files (.templ)
-    handlers/               #   HTTP handler implementations
+chat/                     # Domain: chat types & interface
+embed/                    # Domain: embedding types & interface
+image/                    # Domain: image generation types & interface
+speech/                   # Domain: speech synthesis types & interface
+transcribe/               # Domain: transcription types & interface
+object/                   # Domain: structured object generation types & interface
+video/                    # Domain: video generation types & interface
+rerank/                   # Domain: reranking types & interface
+core/                     # Services: GenerateText, StreamText orchestration
+agent/                    # Agent: tool-loop agent over StreamText
+middleware/               # Middleware: wraps domain interfaces (logging, telemetry)
+registry/                 # Infrastructure: provider registry
+schema/                   # Infrastructure: JSON Schema builder
+util/                     # Infrastructure: prompt helpers, tokeniser
+upload/                   # Infrastructure: multipart form parsing
+error/                    # Infrastructure: sentinel errors
+logger/                   # Infrastructure: structured logging abstraction
+telemetry/                # Infrastructure: OTel-compatible tracing interfaces
+prompt/                   # Infrastructure: prompt manager
+uimessage/                # UI: message protocol (chunks, SSE encoding)
+  sse/                    #   SSE writer and stream processing
+provider/                 # Providers: concrete implementations
+  anthropic/
+  azure/
+  cohere/
+  deepseek/
+  gemini/
+  groq/
+  mistral/
+  ollama/
+  openai/
+  perplexity/
+  togetherai/
+  xai/
+ui/                       # UI: Templ components & HTTP handlers
+  chat/                   #   Chat state management
+  components/             #   Templ component files (.templ)
+  handlers/               #   HTTP handler implementations
 ```
 
 ## Provider Ecosystem
 
 | Provider   | Package                   | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
 | ---------- | ------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
-| OpenAI     | `pkg/provider/openai`     | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Anthropic  | `pkg/provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Azure      | `pkg/provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| Cohere     | `pkg/provider/cohere`     | ✅   | ✅    | —     | —      | —          | —      | ✅     | —     |
-| DeepSeek   | `pkg/provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Gemini     | `pkg/provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Groq       | `pkg/provider/groq`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Mistral    | `pkg/provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Ollama     | `pkg/provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Perplexity | `pkg/provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| TogetherAI | `pkg/provider/togetherai` | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| xAI        | `pkg/provider/xai`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| OpenAI     | `provider/openai`     | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Anthropic  | `provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Azure      | `provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| Cohere     | `provider/cohere`     | ✅   | ✅    | —     | —      | —          | —      | ✅     | —     |
+| DeepSeek   | `provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Gemini     | `provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Groq       | `provider/groq`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Mistral    | `provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Ollama     | `provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Perplexity | `provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| TogetherAI | `provider/togetherai` | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| xAI        | `provider/xai`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via
@@ -268,14 +266,14 @@ interface contracts.
 
 ## New Package Documentation
 
-### `pkg/runtime/` — AI Provider Runtime
+### `runtime/` — AI Provider Runtime
 
 The runtime layer resolves model references like `openai/gpt-5.4` into working
 provider instances. It is designed for applications (such as `tau`) that want to
 consume AI providers without hardcoding every implementation.
 
 ```tree
-pkg/runtime/
+runtime/
   doc.go            Package-level documentation
   provider_class.go ProviderClass interface + class registry
   catalog.go        models.dev catalog loader + merge/overrides
@@ -306,13 +304,13 @@ injection) before returning domain providers. This is the escape hatch for
 providers like OpenShift MaaS that are not directly covered by the built-in
 classes.
 
-### `pkg/object/` — Object Generation Domain
+### `object/` — Object Generation Domain
 
 The object generation domain provides types and interfaces for structured JSON
 output from language models. It mirrors the AI SDK's `generateObject` function.
 
 ```tree
-pkg/object/
+object/
   client.go           Thin Client facade with nil-guard
   doc.go              Package-level documentation
   errors.go           Sentinel errors (ErrNoProvider, ErrInvalidRequest)
@@ -334,12 +332,12 @@ pkg/object/
 result, err := core.GenerateObject(ctx, provider, objRequest)
 ```
 
-### `pkg/video/` — Video Generation Domain
+### `video/` — Video Generation Domain
 
 Types and interfaces for video generation from text prompts.
 
 ```tree
-pkg/video/
+video/
   client.go           Thin Client facade with nil-guard
   doc.go              Package-level documentation
   errors.go           Sentinel errors
@@ -353,13 +351,13 @@ pkg/video/
 - `GenerateVideoResponse` — Videos ([]VideoResult), Warnings
 - `VideoResult` — Data, URL, MediaType
 
-### `pkg/agent/` — Agent Orchestration
+### `agent/` — Agent Orchestration
 
 The agent package provides a tool-loop agent that orchestrates multi-step
 reasoning and tool execution over `core.StreamText`.
 
 ```tree
-pkg/agent/
+agent/
   agent.go            Agent struct, StreamEvent types, translate()
   agent_impl.go       RunAgent function (convenience API)
   doc.go              Package documentation with usage examples
@@ -391,12 +389,12 @@ The agent does NOT execute tools itself — `core.StreamText` handles the full
 tool loop internally. The agent concentrates on event translation and lifecycle
 management.
 
-### `pkg/upload/` — File Upload Utilities
+### `upload/` — File Upload Utilities
 
 Parses multipart form data and provides file type detection.
 
 ```tree
-pkg/upload/
+upload/
   doc.go              Package-level documentation
   skill.go            Skill-specific upload helpers
   upload.go           ParseMultipartForm, DetectMediaType, ToBase64
@@ -420,12 +418,12 @@ type File struct {
 }
 ```
 
-### `pkg/util/` — Prompt Helpers and Token Counting
+### `util/` — Prompt Helpers and Token Counting
 
 Shared utilities for prompt construction and token estimation.
 
 ```tree
-pkg/util/
+util/
   doc.go              Package-level documentation
   id.go               ID generation
   prompt.go           FormatMessages, SystemPrompt, UserPrompt, etc.
@@ -445,12 +443,12 @@ util.ToolResultMessage(callID, result)
 util.FormatMessages(messages) // human-readable formatting
 ```
 
-### `pkg/error/` — Sentinel Errors
+### `error/` — Sentinel Errors
 
 Package-level sentinel error values for use across the project.
 
 ```tree
-pkg/error/
+error/
   errors.go           Sentinel error variables
   errors_test.go      Tests
 ```
@@ -467,12 +465,12 @@ ErrModelNotFound     = errors.New("model not found")
 ErrQuotaExceeded     = errors.New("quota exceeded")
 ```
 
-### `pkg/logger/` — Structured Logging
+### `logger/` — Structured Logging
 
 Minimal structured logging abstraction. Adaptable to `log/slog`.
 
 ```tree
-pkg/logger/
+logger/
   logger.go           Logger interface, slogLogger adapter, NoopLogger
   logger_test.go      Tests
 ```
@@ -484,12 +482,12 @@ pkg/logger/
 - `NewSlogLogger(l *slog.Logger) Logger` — adapts stdlib slog
 - `NoopLogger` — no-op implementation for tests
 
-### `pkg/telemetry/` — OpenTelemetry-Compatible Tracing
+### `telemetry/` — OpenTelemetry-Compatible Tracing
 
 Minimal tracing interfaces compatible with OpenTelemetry conventions.
 
 ```tree
-pkg/telemetry/
+telemetry/
   doc.go              Package-level documentation
   telemetry.go        Span, Tracer interfaces, NoopSpan, NoopTracer
 ```
@@ -511,13 +509,13 @@ type Tracer interface {
 - `NoopSpan` / `NoopTracer` — zero-cost no-op implementations
 - `DefaultTracer` — package-level `NoopTracer{}` fallback
 
-### `pkg/middleware/` — Provider Middleware
+### `middleware/` — Provider Middleware
 
 Middleware layer wrapping domain Provider interfaces. Supports composition via
 `Chain()`.
 
 ```tree
-pkg/middleware/
+middleware/
   doc.go              Package-level documentation
   middleware.go       ChatMiddleware type, ChatRequestHook, ChatResponseHook, Chain()
   telemetry.go        TelemetryMiddleware (spans Chat/ChatStream calls)
@@ -531,12 +529,12 @@ pkg/middleware/
 - `TelemetryMiddleware` — wraps provider with OTel spans for Chat and ChatStream
 - `ChatRequestHook` / `ChatResponseHook` — interception points
 
-### `pkg/uimessage/sse/` — SSE Streaming
+### `uimessage/sse/` — SSE Streaming
 
 Server-Sent Events wire format for the AI SDK UI message stream protocol.
 
 ```tree
-pkg/uimessage/sse/
+uimessage/sse/
   sse_test.go         Tests
   transform.go        Core text-stream to chunk channel adaptation
   writer.go           SSE Writer, Headers, Pipe

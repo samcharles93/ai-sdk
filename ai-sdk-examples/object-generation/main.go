@@ -87,7 +87,7 @@ func run() error {
 	fmt.Println("  2. Call core.GenerateObject(ctx, provider, req)")
 	fmt.Println("  3. The result is an object.ObjectResult (alias for any)")
 	fmt.Println()
-	fmt.Println("The object package (pkg/object/) provides:")
+	fmt.Println("The object package (object/) provides:")
 	fmt.Println("  - Provider interface with GenerateObject method")
 	fmt.Println("  - Request / Response types")
 	fmt.Println("  - A thin Client facade with nil-guard")

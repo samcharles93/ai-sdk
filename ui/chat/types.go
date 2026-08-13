@@ -14,7 +14,7 @@ const (
 	StatusError     Status = "error"
 )
 
-// Re-exports from pkg/uimessage so that callers of pkg/ui/chat can
+// Re-exports from uimessage so that callers of ui/chat can
 // build messages without importing two packages. The protocol types
 // live in [uimessage]; this package owns the chat-state behaviour.
 type (

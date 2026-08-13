@@ -5,7 +5,7 @@
 // resolve a model reference such as "openai/gpt-5.4" into a working chat
 // provider without hardcoding every provider themselves.
 //
-// The runtime is intentionally layered above pkg/core: it imports domain
+// The runtime is intentionally layered above core: it imports domain
 // interfaces and provider implementations, then delegates the actual
 // chat/embed orchestration to core.GenerateText / core.StreamText.
 //
@@ -13,7 +13,7 @@
 //
 //   - ProviderClass: a pluggable factory that turns a ProviderConfig into
 //     a ProviderSet of domain implementations. Built-in classes include
-//     "openai-compatible", which uses pkg/provider/openai with arbitrary
+//     "openai-compatible", which uses provider/openai with arbitrary
 //     base URLs.
 //   - Catalog: the in-memory view of the models.dev provider/model
 //     metadata, loaded from a network snapshot, an embedded fallback, or

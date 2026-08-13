@@ -16,7 +16,7 @@ go get github.com/samcharles93/ai-sdk
 
 This SDK provides a clean, composable way to work with AI providers in Go.
 Instead of vendor-specific clients scattered through your codebase, you program
-against domain interfaces in `pkg/chat`, `pkg/embed`, `pkg/image`, etc.
+against domain interfaces in `chat`, `embed`, `image`, etc.
 Providers are injected at the composition root — your business logic never
 imports a provider directly.
 
@@ -40,18 +40,18 @@ imports a provider directly.
 
 | Provider   | Package                   | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
 | ---------- | ------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
-| OpenAI     | `pkg/provider/openai`     | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Anthropic  | `pkg/provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Azure      | `pkg/provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| Cohere     | `pkg/provider/cohere`     | ✅   | ✅    | —     | —      | —          | ✅     | —      | —     |
-| DeepSeek   | `pkg/provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Gemini     | `pkg/provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Groq       | `pkg/provider/groq`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Mistral    | `pkg/provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Ollama     | `pkg/provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Perplexity | `pkg/provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| TogetherAI | `pkg/provider/togetherai` | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| xAI        | `pkg/provider/xai`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| OpenAI     | `provider/openai`     | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Anthropic  | `provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Azure      | `provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| Cohere     | `provider/cohere`     | ✅   | ✅    | —     | —      | —          | ✅     | —      | —     |
+| DeepSeek   | `provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Gemini     | `provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Groq       | `provider/groq`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Mistral    | `provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Ollama     | `provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Perplexity | `provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| TogetherAI | `provider/togetherai` | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| xAI        | `provider/xai`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
 
 ---
 
@@ -135,23 +135,23 @@ Outer layers depend on inner layers, never the reverse.
 
 ```
 ┌──────────────────────────────────────────┐
-│  UI Layer        pkg/ui/                 │  Templ + Datastar
-│  Runtime         pkg/runtime/            │  Provider resolution
-│  Agent           pkg/agent/              │  Tool-loop agent
-│  Core/Services   pkg/core/               │  Orchestration facades
-│  Middleware      pkg/middleware/          │  Provider wrappers
-│  Infrastructure  pkg/registry/, schema/, │
+│  UI Layer        ui/                 │  Templ + Datastar
+│  Runtime         runtime/            │  Provider resolution
+│  Agent           agent/              │  Tool-loop agent
+│  Core/Services   core/               │  Orchestration facades
+│  Middleware      middleware/          │  Provider wrappers
+│  Infrastructure  registry/, schema/, │
 │                  util/, upload/, error/,  │
 │                  logger/, telemetry/,     │
 │                  prompt/                  │
-│  Domain          pkg/chat/, embed/,       │  Interfaces + types (stdlib only)
-│  Providers       pkg/provider/*/          │  Wire implementations
+│  Domain          chat/, embed/,       │  Interfaces + types (stdlib only)
+│  Providers       provider/*/          │  Wire implementations
 └──────────────────────────────────────────┘
 ```
 
 ### Key rules
 
-- **Domain packages** (`pkg/chat`, `pkg/embed`, etc.) import only stdlib
+- **Domain packages** (`chat`, `embed`, etc.) import only stdlib
 - **Provider packages** implement domain interfaces; import only domain
   packages + stdlib + HTTP
 - **Core/Services** orchestrate providers through interfaces — no provider

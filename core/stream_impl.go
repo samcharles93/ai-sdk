@@ -38,7 +38,7 @@ const streamBufferSize = 64
 //     completes; they return any terminal error from the run.
 //
 // This shape integrates directly with goroutine + channel transports
-// such as DirectTransport in pkg/ui/chat — adapters can range over
+// such as DirectTransport in ui/chat — adapters can range over
 // FullStream and translate [StreamPart]s into their wire vocabulary.
 //
 // Cancellation: the producer respects ctx — when ctx is cancelled an

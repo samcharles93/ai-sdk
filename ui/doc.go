@@ -3,7 +3,7 @@
 // Templ components and Datastar for streaming reactivity.
 //
 // The UI layer is the outermost layer in the onion model. It depends on
-// domain interfaces (pkg/chat) and services (pkg/core) but no provider
+// domain interfaces (chat) and services (core) but no provider
 // implementations.
 //
 // Sub-packages:
