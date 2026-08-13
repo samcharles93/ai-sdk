@@ -76,3 +76,45 @@ func TestShellTimeoutKillsGrandchildren(t *testing.T) {
 		t.Fatalf("grandchild pid %d survived the shell timeout — the process group was not signalled", pid)
 	}
 }
+
+// TestShellTimeoutSendsSigtermBeforeSigkill pins the escalation order: a
+// timed-out command must be offered SIGTERM — which it can trap to flush
+// output and clean up temp files — before the SIGKILL backstop. A process
+// that is SIGKILLed outright never runs its TERM trap, so the marker's
+// presence proves TERM came first and the grace period was honoured.
+func TestShellTimeoutSendsSigtermBeforeSigkill(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "term-handled")
+
+	script := `trap 'echo handled > "` + marker + `"; exit 0' TERM; sleep 60`
+
+	exec := makeShellExecutor(dir, nil)
+	params, err := json.Marshal(ShellParams{Command: script, Timeout: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	res, err := exec(context.Background(), params, NonInteractiveBridge{})
+	if err != nil {
+		t.Fatalf("executor returned a Go error: %v", err)
+	}
+	if !res.IsError {
+		t.Errorf("expected a timeout to report IsError, got: %q", res.Content)
+	}
+	if time.Since(start) > 30*time.Second {
+		t.Fatalf("shell blocked for %v after a 1s timeout", time.Since(start))
+	}
+
+	// The trap runs asynchronously once the group is signalled.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("command was killed without a chance to handle SIGTERM (no marker %q)", marker)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

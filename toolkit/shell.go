@@ -17,6 +17,14 @@ import (
 const (
 	defaultShellTimeout = 120 * time.Second
 	maxShellTimeout     = 10 * time.Minute
+
+	// shellCancelGrace is how long a timed-out command is given to finish
+	// on its own before the tool starts signalling it.
+	shellCancelGrace = 1 * time.Second
+
+	// shellKillGrace is how long the tool waits after SIGTERM before
+	// escalating to the SIGKILL backstop.
+	shellKillGrace = 5 * time.Second
 )
 
 // ShellParams are the parameters for the shell tool.
@@ -100,25 +108,37 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 		defer cancel()
 
 		shell, args := shellCommand(p.Command)
-		cmd := exec.CommandContext(ctx, shell, args...)
+		cmd := exec.Command(shell, args...)
 		if cwd != "" {
 			cmd.Dir = cwd
 		}
 
-		// Run the shell as its own process-group leader and, on timeout or
-		// cancellation, signal the whole group. CommandContext's default
-		// Cancel kills only the shell itself, which leaves whatever it
-		// spawned — build steps, servers, grandchild agents — orphaned and
-		// still holding the output pipe.
+		// Run the shell as its own process-group leader so the timeout
+		// escalation can signal the whole tree — build steps, servers,
+		// grandchild agents — rather than just the shell itself.
 		setProcessGroup(cmd)
-		cmd.Cancel = func() error { return signalProcessGroup(cmd, syscall.SIGKILL) }
 
 		var stdout, stderr bytes.Buffer
 		bw := &bridgeWriter{bridge: bridge}
 		cmd.Stdout = io.MultiWriter(&stdout, bw)
 		cmd.Stderr = io.MultiWriter(&stderr, bw)
 
-		err := cmd.Run()
+		if err := cmd.Start(); err != nil {
+			return Result{Content: fmt.Sprintf("error starting command: %v", err), IsError: true}, nil
+		}
+
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+
+		var err error
+		timedOut := false
+		select {
+		case err = <-done:
+			// Completed within budget.
+		case <-ctx.Done():
+			timedOut = true
+			err = signalGracefulShutdown(cmd, done)
+		}
 
 		var b strings.Builder
 		if stdout.Len() > 0 {
@@ -147,17 +167,17 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 			}
 		}
 
-		if err != nil {
-			// Check context cancellation first - a process may exit with
-			// a non-zero code after the deadline, and we want to report
-			// timeout rather than a misleading exit code.
-			if ctx.Err() != nil {
-				return Result{
-					Content: fmt.Sprintf("[timeout after: %s]\n%s", timeout, content), IsError: true,
-					ErrorKind: "timeout", Truncated: tr.Truncated, ResultBytes: len(output),
-				}, nil
-			}
+		if timedOut {
+			// A timeout is reported as such even when the command exited
+			// cleanly during the SIGTERM grace period: it still overran its
+			// budget, and exit 0 is not a success it earned.
+			return Result{
+				Content: fmt.Sprintf("[timeout after: %s]\n%s", timeout, content), IsError: true,
+				ErrorKind: "timeout", Truncated: tr.Truncated, ResultBytes: len(output),
+			}, nil
+		}
 
+		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				return Result{
 					Content: fmt.Sprintf("[exit code: %d]\n%s", exitErr.ExitCode(), content), IsError: true,
@@ -170,6 +190,40 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 
 		return Result{Content: content, Truncated: tr.Truncated, ResultBytes: len(output)}, nil
 	}
+}
+
+// signalGracefulShutdown walks a timed-out shell command through the
+// escalation the OS needs before resorting to SIGKILL, mirroring the
+// child-agent supervisor's three phases:
+//
+//  1. give the command a grace period to finish on its own,
+//  2. SIGTERM the process group so a well-behaved command can flush output
+//     and clean up temp files before it dies,
+//  3. SIGKILL the group — the backstop only the OS guarantees.
+//
+// It blocks until the command has exited. done delivers the result of
+// cmd.Wait; the channel is buffered so the waiter goroutine never leaks.
+func signalGracefulShutdown(cmd *exec.Cmd, done <-chan error) error {
+	// Phase 1: the command may be a moment from finishing on its own.
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(shellCancelGrace):
+	}
+
+	// Phase 2: SIGTERM the group so a command can trap it and clean up.
+	// Signal errors are best-effort here — the SIGKILL backstop covers
+	// them — so they are not surfaced.
+	_ = signalProcessGroup(cmd, syscall.SIGTERM)
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(shellKillGrace):
+	}
+
+	// Phase 3: SIGKILL cannot be trapped; the OS guarantees it terminates.
+	_ = signalProcessGroup(cmd, syscall.SIGKILL)
+	return <-done
 }
 
 // saveFullOutput writes the complete, untruncated command output to a temp
