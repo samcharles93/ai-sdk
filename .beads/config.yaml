@@ -72,5 +72,3 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 sync.remote: "git+https://github.com/samcharles93/ai-sdk.git"
-dolt:
-    shared-server: true
