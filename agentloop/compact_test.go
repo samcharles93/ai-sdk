@@ -14,12 +14,16 @@ import (
 // stands in for the model during compaction tests.
 type summariseProvider struct {
 	calls []chat.Request
+	err   error
 }
 
 func (p *summariseProvider) Name() string { return "summarise" }
 func (p *summariseProvider) Chat(_ context.Context, req chat.Request) (chat.Response, error) {
 	p.calls = append(p.calls, req)
-	return chat.Response{Role: chat.RoleAssistant, Content: "a faithful summary"}, nil
+	if p.err != nil {
+		return chat.Response{}, p.err
+	}
+	return chat.Response{Role: chat.RoleAssistant, Content: "a faithful summary", Usage: chat.Usage{PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10}}, nil
 }
 
 func (p *summariseProvider) ChatStream(context.Context, chat.Request) (chat.Stream, error) {
@@ -107,6 +111,32 @@ func TestCompactorOverThresholdSummarizes(t *testing.T) {
 	}
 	if !strings.Contains(got[1].Content, "a faithful summary") {
 		t.Errorf("summary not included: %q", got[1].Content)
+	}
+	if c.usage.TotalTokens != 10 {
+		t.Fatalf("compaction usage = %+v, want 10 total tokens", c.usage)
+	}
+}
+
+func TestCompactorFailureKeepsOriginalHistory(t *testing.T) {
+	p := &summariseProvider{err: errors.New("temporary provider failure")}
+	c := &compactor{
+		provider: p,
+		model:    "m",
+		cfg:      CompactionConfig{Enabled: true, ContextWindow: 200}.normalised(),
+	}
+	msgs := []chat.Message{
+		{Role: chat.RoleSystem, Content: "system"},
+		{Role: chat.RoleUser, Content: strings.Repeat("x", 4000)},
+		{Role: chat.RoleAssistant, Content: "working"},
+		{Role: chat.RoleTool, Content: "result"},
+	}
+
+	got, err := c.onStep(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("onStep() error = %v, want fail-open compaction", err)
+	}
+	if got != nil {
+		t.Fatalf("onStep() = %+v, want nil to preserve original history", got)
 	}
 }
 

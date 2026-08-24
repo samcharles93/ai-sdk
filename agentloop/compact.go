@@ -134,11 +134,12 @@ type compactor struct {
 	tools    core.ToolSet
 	cfg      CompactionConfig
 	log      *slog.Logger
+	usage    chat.Usage
 }
 
 // compactorFor returns an OnStep hook for cfg, or nil when compaction is
 // disabled. A nil hook avoids the per-step overhead when unused.
-func compactorFor(cfg Config, provider chat.Provider, model string, tools core.ToolSet, log *slog.Logger) func(context.Context, []chat.Message) ([]chat.Message, error) {
+func compactorFor(cfg Config, provider chat.Provider, model string, tools core.ToolSet, log *slog.Logger) *compactor {
 	if !cfg.Compact.Enabled {
 		return nil
 	}
@@ -149,7 +150,7 @@ func compactorFor(cfg Config, provider chat.Provider, model string, tools core.T
 		cfg:      cfg.Compact.normalised(),
 		log:      log,
 	}
-	return c.onStep
+	return c
 }
 
 func (c *compactor) onStep(ctx context.Context, messages []chat.Message) ([]chat.Message, error) {
@@ -171,7 +172,10 @@ func (c *compactor) onStep(ctx context.Context, messages []chat.Message) ([]chat
 
 	summary, err := c.summarise(ctx, history, int(float64(c.cfg.ContextWindow)*c.cfg.TargetRatio))
 	if err != nil {
-		return nil, err
+		if c.log != nil {
+			c.log.Warn("agentloop history compaction failed; preserving original history", "err", err)
+		}
+		return nil, nil
 	}
 
 	replacement := make([]chat.Message, 0, len(system)+2)
@@ -217,6 +221,7 @@ func (c *compactor) summarise(ctx context.Context, history []chat.Message, targe
 	if err != nil {
 		return "", fmt.Errorf("agentloop: compact history: %w", err)
 	}
+	c.usage = addUsage(c.usage, resp.Usage)
 	summary := strings.TrimSpace(resp.Content)
 	if summary == "" {
 		return "", errors.New("agentloop: compact history: empty summary")

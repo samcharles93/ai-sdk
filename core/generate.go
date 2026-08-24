@@ -73,7 +73,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 
 	for stepNum := 0; ; stepNum++ {
 		if err := ctx.Err(); err != nil {
-			return GenerateResult{}, fmt.Errorf("%w: %w", ErrAborted, err)
+			return generateResult(steps, totalUsage, lastReason), fmt.Errorf("%w: %w", ErrAborted, err)
 		}
 
 		// Between steps, let the caller transform the history before the
@@ -83,7 +83,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 		if stepNum > 0 && opts.OnStep != nil {
 			next, err := opts.OnStep(ctx, messages)
 			if err != nil {
-				return GenerateResult{}, err
+				return generateResult(steps, totalUsage, lastReason), err
 			}
 			if next != nil {
 				messages = next
@@ -102,7 +102,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 
 		resp, err := provider.Chat(ctx, req)
 		if err != nil {
-			return GenerateResult{}, err
+			return generateResult(steps, totalUsage, lastReason), err
 		}
 
 		coreCalls := toCoreToolCalls(resp.ToolCalls)
@@ -146,6 +146,12 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 		}
 	}
 
+	return generateResult(steps, totalUsage, lastReason), nil
+}
+
+// generateResult assembles the work completed so far. Error paths use the
+// same builder so callers retain already-billed usage and completed steps.
+func generateResult(steps []StepResult, totalUsage chat.Usage, lastReason FinishReason) GenerateResult {
 	// Aggregate tool calls/results from all steps for the convenience
 	// fields on the result.
 	var allCalls []ToolCall
@@ -178,5 +184,5 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 		Steps:        steps,
 		TotalUsage:   totalUsage,
 		Warnings:     allWarnings,
-	}, nil
+	}
 }

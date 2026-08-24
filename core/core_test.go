@@ -209,6 +209,30 @@ func TestGenerateText_ToolLoop(t *testing.T) {
 	}
 }
 
+func TestGenerateText_ReturnsPartialResultWhenOnStepFails(t *testing.T) {
+	p := &fakeProvider{chatScript: []chat.Response{{
+		ToolCalls:    []chat.ToolCall{{ID: "call_1", Name: "noop", Arguments: `{}`}},
+		FinishReason: "tool_calls",
+		Usage:        chat.Usage{PromptTokens: 8, CompletionTokens: 2, TotalTokens: 10},
+	}}}
+	tool := NewTool("noop", "does nothing", json.RawMessage(`{}`), func(context.Context, string) (string, error) {
+		return "ok", nil
+	})
+
+	got, err := GenerateText(context.Background(), p, GenerateOptions{
+		Model: "m", Prompt: "work", Tools: ToolSet{"noop": tool}, MaxSteps: 2,
+		OnStep: func(context.Context, []chat.Message) ([]chat.Message, error) {
+			return nil, errors.New("hook failed")
+		},
+	})
+	if err == nil || err.Error() != "hook failed" {
+		t.Fatalf("error = %v, want hook failed", err)
+	}
+	if len(got.Steps) != 1 || got.TotalUsage.TotalTokens != 10 {
+		t.Fatalf("partial result = %+v, want first step and its usage", got)
+	}
+}
+
 func TestGenerateText_PropagatesToolChoice(t *testing.T) {
 	p := &fakeProvider{chatScript: []chat.Response{{Content: "done", FinishReason: "stop"}}}
 	choice := &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "finish"}

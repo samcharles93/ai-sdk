@@ -199,7 +199,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		next := messages
 		if compact != nil {
 			var err error
-			next, err = compact(ctx, messages)
+			next, err = compact.onStep(ctx, messages)
 			if err != nil {
 				return nil, err
 			}
@@ -224,6 +224,9 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		),
 		OnStep: onStep,
 	})
+	if compact != nil {
+		res.TotalUsage = addUsage(res.TotalUsage, compact.usage)
+	}
 	if shouldForceFinish(cfg, state, res, genErr, maxSteps) {
 		recovery, err := forceFinish(ctx, provider, model, system, first, recoveryMessages, res, tools)
 		res = combineResults(res, recovery)
