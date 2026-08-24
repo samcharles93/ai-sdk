@@ -150,12 +150,12 @@ func TestGenerateText_ToolLoop(t *testing.T) {
 					{ID: "call_1", Name: "calc", Arguments: `{"a":2,"b":3}`},
 				},
 				FinishReason: "tool_calls",
-				Usage:        chat.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+				Usage:        chat.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15, CachedTokens: 7, CacheCreationTokens: 2},
 			},
 			{
 				Content:      "the sum is 5",
 				FinishReason: "stop",
-				Usage:        chat.Usage{PromptTokens: 20, CompletionTokens: 4, TotalTokens: 24},
+				Usage:        chat.Usage{PromptTokens: 20, CompletionTokens: 4, TotalTokens: 24, CachedTokens: 11, CacheCreationTokens: 3},
 			},
 		},
 	}
@@ -185,6 +185,9 @@ func TestGenerateText_ToolLoop(t *testing.T) {
 	}
 	if got.TotalUsage.TotalTokens != 39 {
 		t.Fatalf("usage: %+v", got.TotalUsage)
+	}
+	if got.TotalUsage.CachedTokens != 18 || got.TotalUsage.CacheCreationTokens != 5 {
+		t.Fatalf("cache usage: %+v", got.TotalUsage)
 	}
 	// Second chat call must contain the assistant tool-call message + the
 	// tool-result message.

@@ -85,6 +85,9 @@ func TestFinishPassedWithGreenGate(t *testing.T) {
 	if res.Summary != "wrote a.txt" {
 		t.Fatalf("summary = %q", res.Summary)
 	}
+	if res.Usage.PromptTokens != 20 || res.Usage.CompletionTokens != 20 || res.Usage.TotalTokens != 40 {
+		t.Fatalf("usage = %+v, want prompt/completion/total breakdown", res.Usage)
+	}
 	if len(res.Changes) != 1 || res.Changes[0] != "a.txt" {
 		t.Fatalf("changes = %v", res.Changes)
 	}

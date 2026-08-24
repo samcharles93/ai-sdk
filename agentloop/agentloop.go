@@ -55,13 +55,14 @@ const (
 // Result is the structured outcome of a run. It is the caller's PR body,
 // state-machine transition, and notes write-back in one place.
 type Result struct {
-	Status     Status   `json:"status"`
-	StopReason string   `json:"stop_reason"`
-	Changes    []string `json:"changes,omitempty"` // files written/edited, in first-touch order
-	Iterations int      `json:"iterations"`
-	TokensUsed int      `json:"tokens_used"`
-	Summary    string   `json:"summary,omitempty"` // from the finish tool
-	Detail     string   `json:"detail,omitempty"`  // last gate failure / park explanation
+	Status     Status     `json:"status"`
+	StopReason string     `json:"stop_reason"`
+	Changes    []string   `json:"changes,omitempty"` // files written/edited, in first-touch order
+	Iterations int        `json:"iterations"`
+	TokensUsed int        `json:"tokens_used"`
+	Usage      chat.Usage `json:"usage"`
+	Summary    string     `json:"summary,omitempty"` // from the finish tool
+	Detail     string     `json:"detail,omitempty"`  // last gate failure / park explanation
 }
 
 // Budget bounds a run. Zero values disable the corresponding limit.
@@ -229,6 +230,16 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		if err != nil {
 			genErr = err
 		}
+	}
+	for i, step := range res.Steps {
+		log.Info("agentloop step usage",
+			"iteration", i+1,
+			"prompt_tokens", step.Usage.PromptTokens,
+			"completion_tokens", step.Usage.CompletionTokens,
+			"cached_tokens", step.Usage.CachedTokens,
+			"cache_creation_tokens", step.Usage.CacheCreationTokens,
+			"total_tokens", step.Usage.TotalTokens,
+		)
 	}
 
 	result := classify(ctx, cfg, state, res, genErr, maxSteps)
@@ -481,6 +492,7 @@ func classify(ctx context.Context, cfg Config, state *runState, res core.Generat
 		Changes:    state.changes,
 		Iterations: len(res.Steps),
 		TokensUsed: res.TotalUsage.TotalTokens,
+		Usage:      res.TotalUsage,
 		Summary:    state.finishSummary,
 	}
 

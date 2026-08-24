@@ -31,9 +31,11 @@ func mapFinishReason(s string) FinishReason {
 // addUsage returns the element-wise sum of two [chat.Usage] values.
 func addUsage(a, b chat.Usage) chat.Usage {
 	return chat.Usage{
-		PromptTokens:     a.PromptTokens + b.PromptTokens,
-		CompletionTokens: a.CompletionTokens + b.CompletionTokens,
-		TotalTokens:      a.TotalTokens + b.TotalTokens,
+		PromptTokens:        a.PromptTokens + b.PromptTokens,
+		CompletionTokens:    a.CompletionTokens + b.CompletionTokens,
+		TotalTokens:         a.TotalTokens + b.TotalTokens,
+		CachedTokens:        a.CachedTokens + b.CachedTokens,
+		CacheCreationTokens: a.CacheCreationTokens + b.CacheCreationTokens,
 	}
 }
 
