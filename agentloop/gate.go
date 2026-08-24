@@ -149,7 +149,11 @@ func wrapMutating(tool *core.Tool, g *gateState, cfg GateConfig, workdir string,
 		g.dirty = true
 		g.consecutiveFails++
 		g.lastFailure = gateOut
-		log.Warn("gate cycle failed", "consecutive", g.consecutiveFails, "max", cfg.maxFailures())
+		log.Warn("gate cycle failed",
+			"consecutive", g.consecutiveFails,
+			"max", cfg.maxFailures(),
+			"failure", gateOut,
+		)
 		if g.consecutiveFails >= cfg.maxFailures() {
 			g.parked = true
 			return res + fmt.Sprintf("\n\n[gate] FAILED (%d consecutive failing cycles — parking the run):\n%s",

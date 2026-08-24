@@ -1,8 +1,10 @@
 package agentloop
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,6 +113,28 @@ func TestGateParksAfterConsecutiveFailures(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "c.txt")); err == nil {
 		t.Fatal("run should have stopped before the third write")
+	}
+}
+
+func TestFailedGateCycleLogsFailureOutput(t *testing.T) {
+	var logs bytes.Buffer
+	marker := "compile failed: missing Widget"
+	res := runScript(
+		t, t.TempDir(),
+		Config{
+			Logger: slog.New(slog.NewJSONHandler(&logs, nil)),
+			Gate: GateConfig{
+				Commands:               []GateCommand{{Name: "compile", Argv: []string{"sh", "-c", "echo '" + marker + "' >&2; exit 1"}}},
+				MaxConsecutiveFailures: 1,
+			},
+		},
+		toolStep("write", `{"path":"a.txt","content":"one"}`),
+	)
+	if res.Status != StatusParked {
+		t.Fatalf("status = %s, want parked", res.Status)
+	}
+	if !strings.Contains(logs.String(), marker) {
+		t.Fatalf("gate failure log omitted command output: %s", logs.String())
 	}
 }
 
