@@ -206,6 +206,20 @@ func TestGenerateText_ToolLoop(t *testing.T) {
 	}
 }
 
+func TestGenerateText_PropagatesToolChoice(t *testing.T) {
+	p := &fakeProvider{chatScript: []chat.Response{{Content: "done", FinishReason: "stop"}}}
+	choice := &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "finish"}
+
+	if _, err := GenerateText(context.Background(), p, GenerateOptions{
+		Model: "m", Prompt: "complete", ToolChoice: choice,
+	}); err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	if got := p.chatCalls[0].ToolChoice; got != choice {
+		t.Fatalf("ToolChoice = %#v, want %#v", got, choice)
+	}
+}
+
 func TestGenerateText_ToolLoopPreservesProviderMetadata(t *testing.T) {
 	const metadataKey = "response_output"
 	tool := NewTool("read", "", nil, func(context.Context, string) (string, error) {
@@ -359,6 +373,22 @@ func TestStreamText_TextOnly(t *testing.T) {
 	fr, err := r.FinishReason()
 	if err != nil || fr != FinishReasonStop {
 		t.Fatalf("reason: %v err=%v", fr, err)
+	}
+}
+
+func TestStreamText_PropagatesToolChoice(t *testing.T) {
+	p := &fakeProvider{streamScript: [][]chat.Chunk{{{Delta: "done", Done: true, FinishReason: "stop"}}}}
+	choice := &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "finish"}
+	r, err := StreamText(context.Background(), p, GenerateOptions{
+		Model: "m", Prompt: "complete", ToolChoice: choice,
+	})
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+	for range r.FullStream {
+	}
+	if got := p.streamCalls[0].ToolChoice; got != choice {
+		t.Fatalf("ToolChoice = %#v, want %#v", got, choice)
 	}
 }
 

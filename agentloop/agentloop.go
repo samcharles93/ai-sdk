@@ -71,6 +71,19 @@ type Budget struct {
 	WallClock time.Duration
 }
 
+// CompletionMode controls the bounded recovery attempted when a model ends a
+// run without calling its required finish tool.
+type CompletionMode string
+
+const (
+	// CompletionNone leaves an unfinished model response classified as-is.
+	CompletionNone CompletionMode = ""
+	// CompletionForceFinish makes one final, single-step call that requires the
+	// finish tool. A text response from that call is still unfinished and is
+	// never accepted as completion.
+	CompletionForceFinish CompletionMode = "force_finish"
+)
+
 // NotesStore is caller-side persistent memory across runs. Entries follow
 // the eval_loop convention: every note must cite how it was verified
 // (verified_by), and stores live outside the work tree so they neither
@@ -118,6 +131,10 @@ type Config struct {
 	Preflight []GateCommand
 
 	Budget Budget
+
+	// Completion controls recovery of a normally stopped run that omitted the
+	// required finish tool. It never retries errors, budgets, or hard stops.
+	Completion CompletionMode
 
 	// Compact enables automatic history compaction. When enabled, a run
 	// whose history approaches the model's context window summarises older
@@ -175,6 +192,24 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		maxSteps = 40
 	}
 
+	recoveryMessages := baseMessages(system, first)
+	compact := compactorFor(cfg, provider, model, tools, log)
+	onStep := func(ctx context.Context, messages []chat.Message) ([]chat.Message, error) {
+		next := messages
+		if compact != nil {
+			var err error
+			next, err = compact(ctx, messages)
+			if err != nil {
+				return nil, err
+			}
+			if next == nil {
+				next = messages
+			}
+		}
+		recoveryMessages = append(recoveryMessages[:0], next...)
+		return next, nil
+	}
+
 	res, genErr := core.GenerateText(ctx, provider, core.GenerateOptions{
 		Model:    model,
 		System:   system,
@@ -186,8 +221,15 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 			TokenBudgetIs(cfg.Budget.MaxTokens),
 			state.stopRequested,
 		),
-		OnStep: compactorFor(cfg, provider, model, tools, log),
+		OnStep: onStep,
 	})
+	if shouldForceFinish(cfg, state, res, genErr, maxSteps) {
+		recovery, err := forceFinish(ctx, provider, model, system, first, recoveryMessages, res, tools)
+		res = combineResults(res, recovery)
+		if err != nil {
+			genErr = err
+		}
+	}
 
 	result := classify(ctx, cfg, state, res, genErr, maxSteps)
 	log.Info(
@@ -202,6 +244,70 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		return result, genErr
 	}
 	return result, nil
+}
+
+func baseMessages(system, first string) []chat.Message {
+	messages := make([]chat.Message, 0, 2)
+	if system != "" {
+		messages = append(messages, chat.Message{Role: chat.RoleSystem, Content: system})
+	}
+	return append(messages, chat.Message{Role: chat.RoleUser, Content: first})
+}
+
+func shouldForceFinish(cfg Config, state *runState, res core.GenerateResult, genErr error, maxSteps int) bool {
+	return cfg.Completion == CompletionForceFinish &&
+		genErr == nil &&
+		!state.stopRequested(nil) &&
+		res.FinishReason == core.FinishReasonStop &&
+		len(res.Steps) < maxSteps &&
+		(cfg.Budget.MaxTokens <= 0 || res.TotalUsage.TotalTokens < cfg.Budget.MaxTokens)
+}
+
+func forceFinish(ctx context.Context, provider chat.Provider, model, system, first string, messages []chat.Message, previous core.GenerateResult, tools core.ToolSet) (core.GenerateResult, error) {
+	if len(messages) == 0 {
+		messages = baseMessages(system, first)
+	}
+	if len(previous.Steps) > 0 {
+		last := previous.Steps[len(previous.Steps)-1]
+		messages = append(messages, chat.Message{Role: chat.RoleAssistant, Content: last.Text, Parts: last.Parts})
+	}
+	messages = append(messages, chat.Message{
+		Role:    chat.RoleUser,
+		Content: "Your previous response ended without completing this run. Call the finish tool now with the correct status and a concise, verified summary. Do not reply with text instead of calling finish.",
+	})
+	return core.GenerateText(ctx, provider, core.GenerateOptions{
+		Model:      model,
+		Messages:   messages,
+		Tools:      tools,
+		MaxSteps:   1,
+		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "finish"},
+	})
+}
+
+func combineResults(first, second core.GenerateResult) core.GenerateResult {
+	if len(second.Steps) == 0 {
+		return first
+	}
+	first.Steps = append(first.Steps, second.Steps...)
+	first.ToolCalls = append(first.ToolCalls, second.ToolCalls...)
+	first.ToolResults = append(first.ToolResults, second.ToolResults...)
+	first.Warnings = append(first.Warnings, second.Warnings...)
+	first.TotalUsage = addUsage(first.TotalUsage, second.TotalUsage)
+	first.FinishReason = second.FinishReason
+	first.Text = second.Text
+	first.Parts = second.Parts
+	first.Reasoning = second.Reasoning
+	return first
+}
+
+func addUsage(a, b chat.Usage) chat.Usage {
+	return chat.Usage{
+		PromptTokens:        a.PromptTokens + b.PromptTokens,
+		CompletionTokens:    a.CompletionTokens + b.CompletionTokens,
+		TotalTokens:         a.TotalTokens + b.TotalTokens,
+		CachedTokens:        a.CachedTokens + b.CachedTokens,
+		CacheCreationTokens: a.CacheCreationTokens + b.CacheCreationTokens,
+	}
 }
 
 // runState is the shared mutable state that tool wrappers write and stop

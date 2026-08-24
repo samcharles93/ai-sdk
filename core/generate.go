@@ -19,6 +19,9 @@ type GenerateOptions struct {
 	Messages []chat.Message
 	// Tools is the set of callable tools.
 	Tools ToolSet
+	// ToolChoice constrains how the provider selects from Tools. A nil value
+	// leaves the provider's default selection behaviour unchanged.
+	ToolChoice *chat.ToolChoice
 	// MaxSteps limits the number of tool-calling loops. Defaults to 1.
 	MaxSteps int
 	// MaxParallelToolCalls bounds how many of a step's tool calls execute
@@ -93,6 +96,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 			MaxTokens:       opts.MaxTokens,
 			Temperature:     opts.Temperature,
 			Tools:           wireTools,
+			ToolChoice:      opts.ToolChoice,
 			ProviderOptions: opts.ProviderOptions,
 		}
 

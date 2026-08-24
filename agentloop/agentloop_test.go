@@ -16,14 +16,16 @@ import (
 // standing in for a model. Each entry is one step; once the script is
 // exhausted it answers with plain text (ending the loop).
 type scriptProvider struct {
-	steps []chat.Response
-	i     int
-	delay time.Duration
+	steps    []chat.Response
+	i        int
+	delay    time.Duration
+	requests []chat.Request
 }
 
 func (p *scriptProvider) Name() string { return "script" }
 
 func (p *scriptProvider) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
+	p.requests = append(p.requests, req)
 	if p.delay > 0 {
 		select {
 		case <-ctx.Done():
@@ -202,6 +204,42 @@ func TestEndedWithoutFinishParks(t *testing.T) {
 	)
 	if res.Status != StatusParked || res.StopReason != StopEndedWithoutFinish {
 		t.Fatalf("got %s/%s, want parked/ended_without_finish", res.Status, res.StopReason)
+	}
+}
+
+func TestCompletionForceFinishRecoversOnlyThroughFinishTool(t *testing.T) {
+	p := &scriptProvider{steps: []chat.Response{
+		{Role: chat.RoleAssistant, Content: "analysis is complete", FinishReason: "stop"},
+		toolStep("finish", `{"status":"passed","summary":"analysis complete and verified"}`),
+	}}
+	res, err := Run(context.Background(), Config{
+		Provider: p, Model: "script-1", WorkDir: t.TempDir(),
+		Budget:     Budget{MaxSteps: 4},
+		Completion: CompletionForceFinish,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if res.Status != StatusPassed || res.StopReason != StopFinished {
+		t.Fatalf("got %s/%s, want passed/finished (detail: %s)", res.Status, res.StopReason, res.Detail)
+	}
+	if len(p.requests) != 2 {
+		t.Fatalf("calls = %d, want 2", len(p.requests))
+	}
+	choice := p.requests[1].ToolChoice
+	if choice == nil || choice.Type != chat.ToolChoiceTool || choice.Name != "finish" {
+		t.Fatalf("recovery ToolChoice = %#v, want forced finish", choice)
+	}
+}
+
+func TestCompletionForceFinishRejectsTextOnlyRecovery(t *testing.T) {
+	res := runScript(
+		t, t.TempDir(), Config{Completion: CompletionForceFinish},
+		chat.Response{Role: chat.RoleAssistant, Content: "analysis is complete", FinishReason: "stop"},
+		chat.Response{Role: chat.RoleAssistant, Content: "still not calling finish", FinishReason: "stop"},
+	)
+	if res.Status != StatusIdle || res.StopReason != StopIdle {
+		t.Fatalf("got %s/%s, want idle/idle", res.Status, res.StopReason)
 	}
 }
 

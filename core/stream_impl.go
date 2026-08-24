@@ -121,6 +121,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				MaxTokens:       opts.MaxTokens,
 				Temperature:     opts.Temperature,
 				Tools:           wireTools,
+				ToolChoice:      opts.ToolChoice,
 				ProviderOptions: opts.ProviderOptions,
 			}
 
