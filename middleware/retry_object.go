@@ -39,16 +39,20 @@ func (p *retryObjectProvider) GenerateObject(ctx context.Context, req object.Req
 }
 
 func (p *retryObjectProvider) StreamObject(ctx context.Context, req object.Request) (object.ObjectStream, error) {
+	var stream object.ObjectStream
+	var err error
 	for attempt := 0; attempt < p.cfg.MaxAttempts; attempt++ {
-		stream, err := p.next.StreamObject(ctx, req)
+		stream, err = p.next.StreamObject(ctx, req)
 		if err == nil || !p.retryable(err) {
 			return stream, err
 		}
 		if attempt < p.cfg.MaxAttempts-1 {
 			if waitErr := sleepContext(ctx, p.backoff.Backoff(attempt)); waitErr != nil {
-				return nil, waitErr
+				return stream, waitErr
 			}
 		}
 	}
-	return p.next.StreamObject(ctx, req)
+	// All attempts exhausted: return the last captured error rather than
+	// issuing an additional unscheduled call (which would exceed MaxAttempts).
+	return stream, err
 }

@@ -45,16 +45,20 @@ func (p *retryChatProvider) Chat(ctx context.Context, req chat.Request) (chat.Re
 }
 
 func (p *retryChatProvider) ChatStream(ctx context.Context, req chat.Request) (chat.Stream, error) {
+	var stream chat.Stream
+	var err error
 	for attempt := 0; attempt < p.cfg.MaxAttempts; attempt++ {
-		stream, err := p.next.ChatStream(ctx, req)
+		stream, err = p.next.ChatStream(ctx, req)
 		if err == nil || !p.retryable(err) {
 			return stream, err
 		}
 		if attempt < p.cfg.MaxAttempts-1 {
 			if waitErr := sleepContext(ctx, p.backoff.Backoff(attempt)); waitErr != nil {
-				return nil, waitErr
+				return stream, waitErr
 			}
 		}
 	}
-	return p.next.ChatStream(ctx, req)
+	// All attempts exhausted: return the last captured error rather than
+	// issuing an additional unscheduled call (which would exceed MaxAttempts).
+	return stream, err
 }
