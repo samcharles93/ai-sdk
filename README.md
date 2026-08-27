@@ -29,6 +29,9 @@ imports a provider directly.
 - **Tool use and streaming** built into the chat domain
 - **Agent loops** built on top of `StreamText` — tool-calling agent with
   streaming events
+- **Lifecycle hooks and panic containment** around model and tool execution
+- **Caller-controlled cancellation** — the SDK does not impose hidden request
+  deadlines when no timeout is configured
 - **Middleware** — compose logging, telemetry, and circuit-breaker layers around
   providers
 - **Runtime layer** — resolve `provider/model` references dynamically from a
@@ -40,13 +43,13 @@ imports a provider directly.
 
 | Provider   | Package                   | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
 | ---------- | ------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
-| OpenAI     | `provider/openai`     | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| OpenAI     | `provider/openai`     | ✅   | —     | —     | ✅     | ✅         | —      | —      | —     |
 | Anthropic  | `provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
 | Azure      | `provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
 | Cohere     | `provider/cohere`     | ✅   | ✅    | —     | —      | —          | ✅     | —      | —     |
 | DeepSeek   | `provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
 | Gemini     | `provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Groq       | `provider/groq`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Groq       | `provider/groq`       | ✅   | —     | —     | —      | ✅         | —      | —      | —     |
 | Mistral    | `provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
 | Ollama     | `provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
 | Perplexity | `provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
@@ -126,6 +129,35 @@ resp, err := provider.Chat(ctx, chat.Request{
 })
 ```
 
+### Runtime Resolution
+
+The runtime resolves `provider/model` references and exposes the same entry
+points for chat, speech, and transcription. With no explicit provider timeout,
+the caller's context owns the lifetime of the operation.
+
+```go
+runtime.RegisterBuiltinClasses()
+rt := runtime.NewRuntime(runtime.Config{
+    Providers: map[string]runtime.ProviderConfig{
+        "openai": {
+            ID: "openai", Class: "openai",
+            Auth: runtime.AuthConfig{Type: runtime.AuthTypeAPIKey, APIKey: os.Getenv("OPENAI_API_KEY")},
+        },
+    },
+})
+
+audio, err := rt.Speech(ctx, "openai/gpt-4o-mini-tts", speech.GenerateSpeechRequest{
+    Text: "Hello from Go",
+})
+transcript, err := rt.Transcribe(ctx, "openai/whisper-1", transcribe.TranscribeRequest{
+    Audio: audio.Audio,
+})
+fmt.Println(transcript.Text)
+```
+
+`core.GenerateOptions` also accepts `ToolHooks` for policy and output handling,
+and `ModelHooks` for balanced lifecycle telemetry around every provider call.
+
 ---
 
 ## Architecture
@@ -196,9 +228,9 @@ Full example list at `ai-sdk-examples/README.md`.
 ### Commands
 
 ```bash
-go test ./...              # run all tests
-gofumpt -w .               # format
-golangci-lint run ./...    # lint
+task test       # run all tests
+task test:race  # run the suite with the race detector
+task check      # format, vet, staticcheck, lint, dead-code check, and tests
 ```
 
 The project uses `gofumpt` for formatting and `golangci-lint` with `govet`,

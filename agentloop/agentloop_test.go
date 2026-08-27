@@ -263,6 +263,27 @@ func TestCompletionForceFinishRecoversOnlyThroughFinishTool(t *testing.T) {
 	}
 }
 
+func TestCompletionForceFinishRetainsProtectPaths(t *testing.T) {
+	dir := t.TempDir()
+	p := &scriptProvider{steps: []chat.Response{
+		{Role: chat.RoleAssistant, Content: "analysis is complete", FinishReason: "stop"},
+		toolStep("write", `{"path":"protected.go","content":"must not write"}`),
+	}}
+
+	_, err := Run(context.Background(), Config{
+		Provider: p, Model: "script-1", WorkDir: dir,
+		Budget:       Budget{MaxSteps: 4},
+		Completion:   CompletionForceFinish,
+		ProtectPaths: func(path string) bool { return path == "protected.go" },
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "protected.go")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("protected file was created or stat failed: %v", err)
+	}
+}
+
 func TestCompletionForceFinishRejectsTextOnlyRecovery(t *testing.T) {
 	res := runScript(
 		t, t.TempDir(), Config{Completion: CompletionForceFinish},

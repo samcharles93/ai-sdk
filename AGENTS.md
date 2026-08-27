@@ -5,7 +5,7 @@
 ## CORE | STRICT — Onion Model Architecture
 
 This project follows the **onion model** (also known as hexagonal / ports &
-adapters).  
+adapters).
 Each layer is responsible for a specific concern and **MUST NOT** know about any
 layer above it.
 
@@ -160,9 +160,9 @@ Following
 ## UI Layer — Templ + Datastar
 
 The AI SDK UI layer ports the concepts from the JS AI SDK UI libraries
-(`useChat`, `Chat`, etc.)  
+(`useChat`, `Chat`, etc.)
 to server-side Go using [Templ](https://templ.guide) for HTML templating and
-[Datastar](https://data-star.dev)  
+[Datastar](https://data-star.dev)
 for real-time streaming reactivity via SSE.
 
 ### Key Concepts (ported from JS)

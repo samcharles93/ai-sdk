@@ -30,12 +30,13 @@ func (p *retryChatProvider) Name() string { return p.next.Name() }
 func (p *retryChatProvider) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
 	var resp chat.Response
 	var err error
-	for attempt := 0; attempt < p.cfg.MaxAttempts; attempt++ {
+	maxAttempts := p.cfg.attempts()
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		resp, err = p.next.Chat(ctx, req)
 		if err == nil || !p.retryable(err) {
 			return resp, err
 		}
-		if attempt < p.cfg.MaxAttempts-1 {
+		if attempt < maxAttempts-1 {
 			if waitErr := sleepContext(ctx, p.backoff.Backoff(attempt)); waitErr != nil {
 				return resp, waitErr
 			}
@@ -47,12 +48,13 @@ func (p *retryChatProvider) Chat(ctx context.Context, req chat.Request) (chat.Re
 func (p *retryChatProvider) ChatStream(ctx context.Context, req chat.Request) (chat.Stream, error) {
 	var stream chat.Stream
 	var err error
-	for attempt := 0; attempt < p.cfg.MaxAttempts; attempt++ {
+	maxAttempts := p.cfg.attempts()
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		stream, err = p.next.ChatStream(ctx, req)
 		if err == nil || !p.retryable(err) {
 			return stream, err
 		}
-		if attempt < p.cfg.MaxAttempts-1 {
+		if attempt < maxAttempts-1 {
 			if waitErr := sleepContext(ctx, p.backoff.Backoff(attempt)); waitErr != nil {
 				return stream, waitErr
 			}

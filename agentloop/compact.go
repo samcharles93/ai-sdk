@@ -189,7 +189,8 @@ func (c *compactor) onStep(ctx context.Context, messages []chat.Message) ([]chat
 	}
 
 	if c.log != nil {
-		c.log.Info("agentloop compacted history",
+		c.log.Info(
+			"agentloop compacted history",
 			"before", len(messages),
 			"after", len(replacement),
 		)

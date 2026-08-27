@@ -79,8 +79,16 @@ func (b ExponentialBackoff) Backoff(attempt int) time.Duration {
 
 // RetryConfig controls retry behaviour.
 type RetryConfig struct {
-	// MaxAttempts is the total number of attempts (1 = no retries).
+	// MaxAttempts is the total number of attempts (1 = no retries). Values
+	// less than one are normalised to one, making the zero value safe.
 	MaxAttempts int
+}
+
+func (c RetryConfig) attempts() int {
+	if c.MaxAttempts < 1 {
+		return 1
+	}
+	return c.MaxAttempts
 }
 
 // RetryableError returns true if the error should trigger a retry.

@@ -56,8 +56,9 @@ type Skip struct {
 }
 
 // ModelHook observes model-call lifecycle for liveness, latency, and
-// telemetry. ModelHook is read-only: hooks cannot mutate the request or
-// response. Both methods are called for every provider invocation;
+// telemetry. Hooks must treat the request and response as read-only. They are
+// passed by value, but their maps, slices, and Parts may share backing storage
+// with the live call. Both methods are called for every provider invocation;
 // resp == nil with a non-nil err indicates a provider failure.
 type ModelHook interface {
 	// ModelCallStarted runs immediately before provider.Chat or
@@ -85,13 +86,18 @@ type ToolPanicError struct {
 	Stack    []byte
 }
 
-// Error renders the panic as a stable, model-friendly string. The
-// stack trace is intentionally omitted from the message — model-facing
-// text is bounded, but operators can recover Stack programmatically.
+// Error renders the panic as a stable, model-friendly string. The stack trace
+// is intentionally omitted from the message. Tool execution records this
+// string in ToolResult.Error; code handling a ToolPanicError directly can
+// inspect Stack before it is converted to that model-facing representation.
 func (e *ToolPanicError) Error() string {
 	return fmt.Sprintf("%s: tool %q panicked in %s phase: %v",
 		ErrToolPanicked.Error(), e.ToolName, e.Phase, e.Value)
 }
+
+// Unwrap supports errors.Is(err, ErrToolPanicked) while preserving the panic
+// details for callers handling ToolPanicError before it becomes ToolResult text.
+func (e *ToolPanicError) Unwrap() error { return ErrToolPanicked }
 
 // panicPhase is the canonical phase value used by runBeforeChain,
 // safeToolExecute, and runAfterChain. Kept as named constants so tests

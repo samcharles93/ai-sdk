@@ -129,8 +129,8 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 			fireModelStarted(ctx, opts.ModelHooks, req)
 			chatStart := time.Now()
 			stream, err := provider.ChatStream(ctx, req)
-			chatLatency := time.Since(chatStart)
 			if err != nil {
+				chatLatency := time.Since(chatStart)
 				fireModelFinished(ctx, opts.ModelHooks, req, nil, err, chatLatency, nil)
 				runErr = err
 				finalReason = FinishReasonError
@@ -154,98 +154,93 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 			callIDs := make(map[int]string)
 			callNames := make(map[int]string)
 
-			for {
-				chunk, cerr := stream.Next(ctx)
-				if errors.Is(cerr, io.EOF) {
-					break
-				}
-				if cerr != nil {
+			streamErr := func() (terminalErr error) {
+				defer func() {
 					_ = stream.Close()
-					runErr = cerr
-					finalReason = FinishReasonError
-					_ = emit(StreamPart{Type: StreamPartError, Error: cerr})
-					return
-				}
-				if chunk.Delta != "" {
-					stepText += chunk.Delta
-					if !emit(StreamPart{Type: StreamPartTextDelta, TextDelta: chunk.Delta}) {
-						_ = stream.Close()
-						runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
-						finalReason = FinishReasonError
-						return
+					fireModelFinished(ctx, opts.ModelHooks, req, nil, terminalErr, time.Since(chatStart), &stepUsage)
+				}()
+				for {
+					chunk, cerr := stream.Next(ctx)
+					if errors.Is(cerr, io.EOF) {
+						break
 					}
-				}
-				if chunk.ReasoningDelta != "" {
-					stepReasoning += chunk.ReasoningDelta
-					if !emit(StreamPart{Type: StreamPartReasoningDelta, ReasoningDelta: chunk.ReasoningDelta}) {
-						_ = stream.Close()
-						runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
-						finalReason = FinishReasonError
-						return
+					if cerr != nil {
+						return cerr
 					}
-				}
-				if len(chunk.Warnings) > 0 {
-					stepWarnings = append(stepWarnings, chunk.Warnings...)
-					for i := range chunk.Warnings {
-						w := chunk.Warnings[i]
-						if !emit(StreamPart{Type: StreamPartWarning, Warning: &w}) {
-							_ = stream.Close()
-							runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
-							finalReason = FinishReasonError
-							return
+					if chunk.Delta != "" {
+						stepText += chunk.Delta
+						if !emit(StreamPart{Type: StreamPartTextDelta, TextDelta: chunk.Delta}) {
+							return fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 						}
 					}
-				}
-				if len(chunk.ToolCallDeltas) > 0 {
-					for _, d := range chunk.ToolCallDeltas {
-						if callIDs[d.Index] == "" && d.ID != "" {
-							callIDs[d.Index] = d.ID
-						}
-						if callNames[d.Index] == "" && d.Name != "" {
-							callNames[d.Index] = d.Name
-						}
-						// An announce-only delta (identity, no arguments yet)
-						// contributes nothing to Input, so it emits nothing —
-						// keeping the fragments a faithful decomposition of
-						// the assembled call.
-						if d.ArgsDelta == "" {
-							continue
-						}
-						id := callIDs[d.Index]
-						if id == "" {
-							// Same synthetic fallback AssembleToolCalls applies
-							// when a provider never supplies an ID.
-							id = fmt.Sprintf("call_%d", d.Index)
-						}
-						if !emit(StreamPart{
-							Type:           StreamPartToolInputDelta,
-							ToolCallID:     id,
-							ToolName:       callNames[d.Index],
-							ToolInputDelta: d.ArgsDelta,
-						}) {
-							_ = stream.Close()
-							runErr = fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
-							finalReason = FinishReasonError
-							return
+					if chunk.ReasoningDelta != "" {
+						stepReasoning += chunk.ReasoningDelta
+						if !emit(StreamPart{Type: StreamPartReasoningDelta, ReasoningDelta: chunk.ReasoningDelta}) {
+							return fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
 						}
 					}
-					toolDeltas = append(toolDeltas, chunk.ToolCallDeltas...)
+					if len(chunk.Warnings) > 0 {
+						stepWarnings = append(stepWarnings, chunk.Warnings...)
+						for i := range chunk.Warnings {
+							w := chunk.Warnings[i]
+							if !emit(StreamPart{Type: StreamPartWarning, Warning: &w}) {
+								return fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
+							}
+						}
+					}
+					if len(chunk.ToolCallDeltas) > 0 {
+						for _, d := range chunk.ToolCallDeltas {
+							if callIDs[d.Index] == "" && d.ID != "" {
+								callIDs[d.Index] = d.ID
+							}
+							if callNames[d.Index] == "" && d.Name != "" {
+								callNames[d.Index] = d.Name
+							}
+							// An announce-only delta (identity, no arguments yet)
+							// contributes nothing to Input, so it emits nothing —
+							// keeping the fragments a faithful decomposition of
+							// the assembled call.
+							if d.ArgsDelta == "" {
+								continue
+							}
+							id := callIDs[d.Index]
+							if id == "" {
+								// Same synthetic fallback AssembleToolCalls applies
+								// when a provider never supplies an ID.
+								id = fmt.Sprintf("call_%d", d.Index)
+							}
+							if !emit(StreamPart{
+								Type:           StreamPartToolInputDelta,
+								ToolCallID:     id,
+								ToolName:       callNames[d.Index],
+								ToolInputDelta: d.ArgsDelta,
+							}) {
+								return fmt.Errorf("%w: %w", ErrAborted, ctx.Err())
+							}
+						}
+						toolDeltas = append(toolDeltas, chunk.ToolCallDeltas...)
+					}
+					if chunk.Usage != nil {
+						stepUsage = *chunk.Usage
+					}
+					if chunk.ProviderMetadata != nil {
+						stepProviderMetadata = chunk.ProviderMetadata
+					}
+					if chunk.FinishReason != "" {
+						stepReason = chunk.FinishReason
+					}
+					if chunk.Done {
+						break
+					}
 				}
-				if chunk.Usage != nil {
-					stepUsage = *chunk.Usage
-				}
-				if chunk.ProviderMetadata != nil {
-					stepProviderMetadata = chunk.ProviderMetadata
-				}
-				if chunk.FinishReason != "" {
-					stepReason = chunk.FinishReason
-				}
-				if chunk.Done {
-					break
-				}
+				return nil
+			}()
+			if streamErr != nil {
+				runErr = streamErr
+				finalReason = FinishReasonError
+				_ = emit(StreamPart{Type: StreamPartError, Error: streamErr})
+				return
 			}
-			_ = stream.Close()
-			fireModelFinished(ctx, opts.ModelHooks, req, nil, nil, chatLatency, &stepUsage)
 
 			assembled := chat.AssembleToolCalls(toolDeltas)
 			coreCalls := toCoreToolCalls(assembled)

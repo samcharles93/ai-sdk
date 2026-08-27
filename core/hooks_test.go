@@ -415,6 +415,106 @@ func TestHook_ModelHook_FiresForStreamPath(t *testing.T) {
 	}
 }
 
+func TestHook_ModelHookFinishedOnceForStreamNextError(t *testing.T) {
+	streamErr := errors.New("stream failed")
+	provider := streamOnlyProvider{stream: errStream{err: streamErr}}
+	var finishedCalls atomic.Int32
+	var gotErr error
+
+	res, err := StreamText(context.Background(), provider, GenerateOptions{
+		Model: "m",
+		ModelHooks: []ModelHook{ModelHookFuncs(nil, func(_ context.Context, _ chat.Request, _ *chat.Response, err error, _ time.Duration, _ *chat.Usage) {
+			finishedCalls.Add(1)
+			gotErr = err
+		})},
+	})
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+	for range res.FullStream {
+	}
+	if _, err := res.Usage(); !errors.Is(err, streamErr) {
+		t.Fatalf("Usage error = %v, want stream error", err)
+	}
+	if finishedCalls.Load() != 1 {
+		t.Errorf("ModelCallFinished calls = %d, want 1", finishedCalls.Load())
+	}
+	if !errors.Is(gotErr, streamErr) {
+		t.Errorf("ModelCallFinished error = %v, want stream error", gotErr)
+	}
+}
+
+func TestHook_ModelHookFinishedOnceForStreamCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &cancellableStream{entered: make(chan struct{})}
+	provider := streamOnlyProvider{stream: stream}
+	var finishedCalls atomic.Int32
+	var gotErr error
+	var gotLatency time.Duration
+
+	res, err := StreamText(ctx, provider, GenerateOptions{
+		Model: "m",
+		ModelHooks: []ModelHook{ModelHookFuncs(nil, func(_ context.Context, _ chat.Request, _ *chat.Response, err error, latency time.Duration, _ *chat.Usage) {
+			finishedCalls.Add(1)
+			gotErr = err
+			gotLatency = latency
+		})},
+	})
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+	<-stream.entered
+	const streamLifetime = 20 * time.Millisecond
+	time.Sleep(streamLifetime)
+	cancel()
+	for range res.FullStream {
+	}
+	if _, err := res.Usage(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Usage error = %v, want context cancellation", err)
+	}
+	if finishedCalls.Load() != 1 {
+		t.Errorf("ModelCallFinished calls = %d, want 1", finishedCalls.Load())
+	}
+	if !errors.Is(gotErr, context.Canceled) {
+		t.Errorf("ModelCallFinished error = %v, want context cancellation", gotErr)
+	}
+	if gotLatency < streamLifetime {
+		t.Errorf("ModelCallFinished latency = %v, want at least %v", gotLatency, streamLifetime)
+	}
+}
+
+type streamOnlyProvider struct{ stream chat.Stream }
+
+func (p streamOnlyProvider) Name() string { return "stream-only" }
+func (p streamOnlyProvider) Chat(context.Context, chat.Request) (chat.Response, error) {
+	return chat.Response{}, errors.New("Chat must not be called")
+}
+
+func (p streamOnlyProvider) ChatStream(context.Context, chat.Request) (chat.Stream, error) {
+	return p.stream, nil
+}
+
+type errStream struct{ err error }
+
+func (s errStream) Next(context.Context) (chat.Chunk, error) { return chat.Chunk{}, s.err }
+func (errStream) Close() error                               { return nil }
+
+type cancellableStream struct{ entered chan struct{} }
+
+func (s *cancellableStream) Next(ctx context.Context) (chat.Chunk, error) {
+	close(s.entered)
+	<-ctx.Done()
+	return chat.Chunk{}, ctx.Err()
+}
+func (*cancellableStream) Close() error { return nil }
+
+func TestToolPanicErrorMatchesSentinel(t *testing.T) {
+	err := &ToolPanicError{ToolName: "tool", Phase: "during", Value: "boom"}
+	if !errors.Is(err, ErrToolPanicked) {
+		t.Fatalf("errors.Is(%v, ErrToolPanicked) = false", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Integration: hooks in a real GenerateText run, panic in parallel tool path
 // ---------------------------------------------------------------------------

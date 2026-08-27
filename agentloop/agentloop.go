@@ -235,14 +235,15 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		res.TotalUsage = addUsage(res.TotalUsage, compact.usage)
 	}
 	if shouldForceFinish(cfg, state, res, genErr, maxSteps) {
-		recovery, err := forceFinish(ctx, provider, model, system, first, recoveryMessages, res, tools)
+		recovery, err := forceFinish(ctx, provider, model, system, first, recoveryMessages, res, tools, toolHooks)
 		res = combineResults(res, recovery)
 		if err != nil {
 			genErr = err
 		}
 	}
 	for i, step := range res.Steps {
-		log.Info("agentloop step usage",
+		log.Info(
+			"agentloop step usage",
 			"iteration", i+1,
 			"prompt_tokens", step.Usage.PromptTokens,
 			"completion_tokens", step.Usage.CompletionTokens,
@@ -284,7 +285,7 @@ func shouldForceFinish(cfg Config, state *runState, res core.GenerateResult, gen
 		(cfg.Budget.MaxTokens <= 0 || res.TotalUsage.TotalTokens < cfg.Budget.MaxTokens)
 }
 
-func forceFinish(ctx context.Context, provider chat.Provider, model, system, first string, messages []chat.Message, previous core.GenerateResult, tools core.ToolSet) (core.GenerateResult, error) {
+func forceFinish(ctx context.Context, provider chat.Provider, model, system, first string, messages []chat.Message, previous core.GenerateResult, tools core.ToolSet, toolHooks []core.ToolHook) (core.GenerateResult, error) {
 	if len(messages) == 0 {
 		messages = baseMessages(system, first)
 	}
@@ -300,6 +301,7 @@ func forceFinish(ctx context.Context, provider chat.Provider, model, system, fir
 		Model:      model,
 		Messages:   messages,
 		Tools:      tools,
+		ToolHooks:  toolHooks,
 		MaxSteps:   1,
 		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "finish"},
 	})

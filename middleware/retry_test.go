@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"testing"
@@ -220,6 +221,42 @@ func TestRetryStreamObject_MaxAttemptsOne_NoRetries(t *testing.T) {
 
 	if got := p.streamCalls.Load(); got != 1 {
 		t.Errorf("StreamObject call count = %d, want 1", got)
+	}
+}
+
+func TestRetryMaxAttemptsNonPositiveStillCallsProviderOnce(t *testing.T) {
+	for _, maxAttempts := range []int{0, -1} {
+		t.Run(fmt.Sprintf("MaxAttempts=%d", maxAttempts), func(t *testing.T) {
+			chatProvider := &countingChatProvider{
+				name:     "always-fail",
+				chatFn:   func(context.Context, chat.Request) (chat.Response, error) { return chat.Response{}, errRetryable },
+				streamFn: func(context.Context, chat.Request) (chat.Stream, error) { return nil, errRetryable },
+			}
+			chatRetry := RetryChat(RetryConfig{MaxAttempts: maxAttempts}, zeroBackoff{}, alwaysRetryable)(chatProvider)
+			_, _ = chatRetry.Chat(context.Background(), chat.Request{Model: "m"})
+			_, _ = chatRetry.ChatStream(context.Background(), chat.Request{Model: "m"})
+			if got := chatProvider.chatCalls.Load(); got != 1 {
+				t.Errorf("Chat calls = %d, want 1", got)
+			}
+			if got := chatProvider.streamCalls.Load(); got != 1 {
+				t.Errorf("ChatStream calls = %d, want 1", got)
+			}
+
+			objectProvider := &countingObjectProvider{
+				name:       "always-fail",
+				generateFn: func(context.Context, object.Request) (object.ObjectResult, error) { return nil, errRetryable },
+				streamFn:   func(context.Context, object.Request) (object.ObjectStream, error) { return nil, errRetryable },
+			}
+			objectRetry := RetryObject(RetryConfig{MaxAttempts: maxAttempts}, zeroBackoff{}, alwaysRetryable)(objectProvider)
+			_, _ = objectRetry.GenerateObject(context.Background(), object.Request{Model: "m"})
+			_, _ = objectRetry.StreamObject(context.Background(), object.Request{Model: "m"})
+			if got := objectProvider.generateCalls.Load(); got != 1 {
+				t.Errorf("GenerateObject calls = %d, want 1", got)
+			}
+			if got := objectProvider.streamCalls.Load(); got != 1 {
+				t.Errorf("StreamObject calls = %d, want 1", got)
+			}
+		})
 	}
 }
 
