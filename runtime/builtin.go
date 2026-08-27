@@ -21,6 +21,8 @@ import (
 	"github.com/samcharles93/ai-sdk/provider/openai"
 	"github.com/samcharles93/ai-sdk/provider/perplexity"
 	"github.com/samcharles93/ai-sdk/provider/xai"
+	"github.com/samcharles93/ai-sdk/speech"
+	"github.com/samcharles93/ai-sdk/transcribe"
 )
 
 // RegisterBuiltinClasses registers the provider classes and auth resolvers
@@ -109,10 +111,12 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 // simpleClass wraps a provider constructor that returns a value
 // implementing one or more domain interfaces.
 type simpleClass struct {
-	name      string
-	caps      []Capability
-	buildChat func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error)
-	build     func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error)
+	name            string
+	caps            []Capability
+	buildChat       func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error)
+	buildSpeech     func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error)
+	buildTranscribe func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error)
+	build           func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error)
 }
 
 // providerSetBuilder is satisfied by concrete providers that implement
@@ -157,14 +161,34 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 		}
 		set.Chat = p
 	}
+	if c.buildSpeech != nil {
+		p, err := c.buildSpeech(apiKey, baseURL, httpClient)
+		if err != nil {
+			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
+		}
+		set.Speech = p
+	}
+	if c.buildTranscribe != nil {
+		p, err := c.buildTranscribe(apiKey, baseURL, httpClient)
+		if err != nil {
+			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
+		}
+		set.Transcribe = p
+	}
 	return set, nil
 }
 
 func openaiClass() ProviderClass {
 	return simpleClass{
 		name: "openai",
-		caps: []Capability{CapabilityChat},
+		caps: []Capability{CapabilityChat, CapabilitySpeech, CapabilityTranscribe},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
+			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildSpeech: func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error) {
+			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {
 			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 	}
@@ -223,8 +247,11 @@ func geminiClass() ProviderClass {
 func groqClass() ProviderClass {
 	return simpleClass{
 		name: "groq",
-		caps: []Capability{CapabilityChat},
+		caps: []Capability{CapabilityChat, CapabilityTranscribe},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
+			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {
 			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 	}

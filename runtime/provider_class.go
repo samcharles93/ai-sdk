@@ -7,6 +7,8 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
+	"github.com/samcharles93/ai-sdk/speech"
+	"github.com/samcharles93/ai-sdk/transcribe"
 )
 
 // Capability names a model capability a ProviderClass may satisfy.
@@ -14,8 +16,10 @@ type Capability string
 
 // Standard capabilities.
 const (
-	CapabilityChat  Capability = "chat"
-	CapabilityEmbed Capability = "embed"
+	CapabilityChat       Capability = "chat"
+	CapabilityEmbed      Capability = "embed"
+	CapabilitySpeech     Capability = "speech"
+	CapabilityTranscribe Capability = "transcribe"
 )
 
 // ProviderConfig is the minimal information needed to construct a
@@ -114,8 +118,10 @@ func (m ModelInfo) providerURL(baseURL string) string {
 // ProviderSet is a collection of domain providers produced by a single
 // ProviderClass instance.
 type ProviderSet struct {
-	Chat  chat.Provider
-	Embed embed.Provider
+	Chat       chat.Provider
+	Embed      embed.Provider
+	Speech     speech.Provider
+	Transcribe transcribe.Provider
 }
 
 // Has reports whether the set satisfies cap.
@@ -125,6 +131,10 @@ func (s ProviderSet) Has(cap Capability) bool {
 		return s.Chat != nil
 	case CapabilityEmbed:
 		return s.Embed != nil
+	case CapabilitySpeech:
+		return s.Speech != nil
+	case CapabilityTranscribe:
+		return s.Transcribe != nil
 	default:
 		return false
 	}

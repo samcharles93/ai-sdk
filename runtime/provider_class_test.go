@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	"github.com/samcharles93/ai-sdk/speech"
+	"github.com/samcharles93/ai-sdk/transcribe"
 )
 
 type fakeProvider struct{}
@@ -17,6 +19,20 @@ func (fakeProvider) Chat(ctx context.Context, req chat.Request) (chat.Response, 
 
 func (fakeProvider) ChatStream(ctx context.Context, req chat.Request) (chat.Stream, error) {
 	return nil, nil
+}
+
+type fakeSpeechProvider struct{}
+
+func (fakeSpeechProvider) Name() string { return "fake" }
+func (fakeSpeechProvider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
+	return speech.GenerateSpeechResponse{}, nil
+}
+
+type fakeTranscribeProvider struct{}
+
+func (fakeTranscribeProvider) Name() string { return "fake" }
+func (fakeTranscribeProvider) Transcribe(ctx context.Context, req transcribe.TranscribeRequest) (transcribe.TranscribeResponse, error) {
+	return transcribe.TranscribeResponse{}, nil
 }
 
 type fakeClass struct {
@@ -61,6 +77,17 @@ func TestProviderSetHas(t *testing.T) {
 	full := ProviderSet{Chat: fakeProvider{}}
 	if !full.Has(CapabilityChat) {
 		t.Fatal("set with chat provider should report chat support")
+	}
+
+	if empty.Has(CapabilitySpeech) || empty.Has(CapabilityTranscribe) {
+		t.Fatal("empty set should not report speech/transcribe support")
+	}
+	withAudio := ProviderSet{Speech: fakeSpeechProvider{}, Transcribe: fakeTranscribeProvider{}}
+	if !withAudio.Has(CapabilitySpeech) {
+		t.Fatal("set with speech provider should report speech support")
+	}
+	if !withAudio.Has(CapabilityTranscribe) {
+		t.Fatal("set with transcribe provider should report transcribe support")
 	}
 }
 

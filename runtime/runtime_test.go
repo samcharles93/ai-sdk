@@ -12,6 +12,8 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/speech"
+	"github.com/samcharles93/ai-sdk/transcribe"
 )
 
 // openAICompatibleHandler is a minimal OpenAI-compatible chat completions
@@ -139,6 +141,56 @@ func TestRuntimeChatStreamWithCustomProvider(t *testing.T) {
 	got := text.String()
 	if got != "hello from test-model" {
 		t.Fatalf("streamed text = %q", got)
+	}
+}
+
+func TestRuntimeSpeechAndTranscribeWithOpenAIClass(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/audio/speech", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write([]byte("fake-audio-bytes"))
+	})
+	mux.HandleFunc("/v1/audio/transcriptions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"text":"hello world"}`))
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	RegisterBuiltinClasses()
+
+	rt := NewRuntime(Config{
+		Providers: map[string]ProviderConfig{
+			"local": {
+				ID:      "local",
+				Class:   "openai",
+				BaseURL: ts.URL,
+				Auth: AuthConfig{
+					Type:   AuthTypeAPIKey,
+					APIKey: "test-key",
+				},
+			},
+		},
+	})
+
+	speechResp, err := rt.Speech(context.Background(), "local/tts-1", speech.GenerateSpeechRequest{
+		Text: "hi there",
+	})
+	if err != nil {
+		t.Fatalf("Speech: %v", err)
+	}
+	if string(speechResp.Audio) != "fake-audio-bytes" {
+		t.Fatalf("audio = %q", speechResp.Audio)
+	}
+
+	transcribeResp, err := rt.Transcribe(context.Background(), "local/whisper-1", transcribe.TranscribeRequest{
+		Audio: []byte("fake-input-audio"),
+	})
+	if err != nil {
+		t.Fatalf("Transcribe: %v", err)
+	}
+	if transcribeResp.Text != "hello world" {
+		t.Fatalf("text = %q", transcribeResp.Text)
 	}
 }
 

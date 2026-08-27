@@ -9,6 +9,8 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/speech"
+	"github.com/samcharles93/ai-sdk/transcribe"
 )
 
 // ErrProviderNotFound is returned when a model reference cannot be mapped
@@ -162,6 +164,74 @@ func (r *Runtime) ChatStream(ctx context.Context, ref string, opts core.Generate
 	}
 	opts.Model = modelID
 	return core.StreamText(ctx, provider, opts)
+}
+
+// SpeechProvider resolves a model reference to a speech.Provider. It
+// returns the provider instance and the resolved model ID that should be
+// passed to requests.
+func (r *Runtime) SpeechProvider(ctx context.Context, ref string) (speech.Provider, string, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return nil, "", err
+	}
+	model, err := r.resolveModel(mref)
+	if err != nil {
+		return nil, "", err
+	}
+	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
+	if err != nil {
+		return nil, "", err
+	}
+	if set.Speech == nil {
+		return nil, "", fmt.Errorf("%w: provider %q does not support speech", ErrCapabilityNotSupported, mref.ProviderID)
+	}
+	return set.Speech, model.ID, nil
+}
+
+// Speech performs a non-streaming text-to-speech generation for the given
+// model reference. The model field inside req is overwritten with the
+// resolved model ID.
+func (r *Runtime) Speech(ctx context.Context, ref string, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
+	provider, modelID, err := r.SpeechProvider(ctx, ref)
+	if err != nil {
+		return speech.GenerateSpeechResponse{}, err
+	}
+	req.Model = modelID
+	return core.GenerateSpeech(ctx, provider, req)
+}
+
+// TranscribeProvider resolves a model reference to a transcribe.Provider.
+// It returns the provider instance and the resolved model ID that should
+// be passed to requests.
+func (r *Runtime) TranscribeProvider(ctx context.Context, ref string) (transcribe.Provider, string, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return nil, "", err
+	}
+	model, err := r.resolveModel(mref)
+	if err != nil {
+		return nil, "", err
+	}
+	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
+	if err != nil {
+		return nil, "", err
+	}
+	if set.Transcribe == nil {
+		return nil, "", fmt.Errorf("%w: provider %q does not support transcription", ErrCapabilityNotSupported, mref.ProviderID)
+	}
+	return set.Transcribe, model.ID, nil
+}
+
+// Transcribe performs a non-streaming audio transcription for the given
+// model reference. The model field inside req is overwritten with the
+// resolved model ID.
+func (r *Runtime) Transcribe(ctx context.Context, ref string, req transcribe.TranscribeRequest) (transcribe.TranscribeResponse, error) {
+	provider, modelID, err := r.TranscribeProvider(ctx, ref)
+	if err != nil {
+		return transcribe.TranscribeResponse{}, err
+	}
+	req.Model = modelID
+	return core.Transcribe(ctx, provider, req)
 }
 
 // Models returns the resolved model information for a provider, merged
