@@ -15,6 +15,12 @@ var (
 	// ErrToolExecutionFailed indicates a tool's execute function returned an error.
 	ErrToolExecutionFailed = errors.New("core: tool execution failed")
 
+	// ErrToolPanicked indicates a tool's execute function (or a tool
+	// lifecycle hook) panicked during execution. The panic is recovered
+	// and re-surfaced as a typed [ToolPanicError] carrying the phase
+	// (before/during/after) and the recovered value.
+	ErrToolPanicked = errors.New("core: tool panicked")
+
 	// ErrMaxStepsReached indicates generation was stopped by a step-count stop condition.
 	ErrMaxStepsReached = errors.New("core: max steps reached")
 

@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 )
@@ -48,6 +49,20 @@ type GenerateOptions struct {
 	// keeps the current history unchanged. A non-nil error aborts the
 	// generation. The hook is not called before the first call.
 	OnStep func(ctx context.Context, messages []chat.Message) ([]chat.Message, error)
+	// ToolHooks run around every tool call. Composition is left-to-right
+	// in declaration order: each Before hook sees the (possibly mutated)
+	// call from the previous one, and the first non-nil Skip or deny
+	// short-circuits the chain. After hooks always run, in order. A
+	// panic in any hook (or in tool.Execute) is recovered and surfaced
+	// as a typed [ToolPanicError] in the corresponding [ToolResult];
+	// the panic does not crash the run.
+	ToolHooks []ToolHook
+	// ModelHooks observe model-call lifecycle for liveness, latency,
+	// and telemetry. They run read-only: hooks cannot mutate the
+	// request or response. Both ModelCallStarted and ModelCallFinished
+	// fire for every Chat / ChatStream invocation; nil resp with a
+	// non-nil err indicates a provider failure.
+	ModelHooks []ModelHook
 }
 
 // GenerateText performs a non-streaming text generation with optional
@@ -100,7 +115,19 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 			ProviderOptions: opts.ProviderOptions,
 		}
 
+		fireModelStarted(ctx, opts.ModelHooks, req)
+		chatStart := time.Now()
 		resp, err := provider.Chat(ctx, req)
+		chatLatency := time.Since(chatStart)
+		var respPtr *chat.Response
+		var usagePtr *chat.Usage
+		if err == nil {
+			respCopy := resp
+			respPtr = &respCopy
+			usageCopy := resp.Usage
+			usagePtr = &usageCopy
+		}
+		fireModelFinished(ctx, opts.ModelHooks, req, respPtr, err, chatLatency, usagePtr)
 		if err != nil {
 			return generateResult(steps, totalUsage, lastReason), err
 		}
@@ -130,7 +157,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 		messages = append(messages, assistantMessageFromResponse(resp))
 
 		if len(coreCalls) > 0 {
-			results, toolMsgs := executeToolCalls(ctx, coreCalls, opts.Tools, opts.MaxParallelToolCalls)
+			results, toolMsgs := executeToolCalls(ctx, coreCalls, opts.Tools, opts.ToolHooks, opts.MaxParallelToolCalls)
 			step.ToolResults = results
 			messages = append(messages, toolMsgs...)
 		}

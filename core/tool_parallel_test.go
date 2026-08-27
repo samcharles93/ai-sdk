@@ -39,7 +39,7 @@ func TestExecuteToolCallsRunsConcurrently(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		executeToolCalls(context.Background(), calls, set, n)
+		executeToolCalls(context.Background(), calls, set, nil, n)
 	}()
 
 	timeout := time.After(2 * time.Second)
@@ -71,7 +71,7 @@ func TestExecuteToolCallsParallelPreservesOrder(t *testing.T) {
 		{ToolCallID: "1", ToolName: "fast"},
 	}
 
-	results, msgs := executeToolCalls(context.Background(), calls, set, 2)
+	results, msgs := executeToolCalls(context.Background(), calls, set, nil, 2)
 	if len(results) != 2 || len(msgs) != 2 {
 		t.Fatalf("len(results)=%d len(msgs)=%d, want 2/2", len(results), len(msgs))
 	}
@@ -95,7 +95,7 @@ func TestExecuteToolCallsParallelFailingCall(t *testing.T) {
 		{ToolCallID: "1", ToolName: "ok"},
 	}
 
-	results, _ := executeToolCalls(context.Background(), calls, set, 2)
+	results, _ := executeToolCalls(context.Background(), calls, set, nil, 2)
 	if results[0].Error != "boom" {
 		t.Fatalf("results[0].Error = %q, want %q", results[0].Error, "boom")
 	}
@@ -117,7 +117,7 @@ func TestExecuteToolCallsParallelToolCancelDoesNotTruncate(t *testing.T) {
 		{ToolCallID: "1", ToolName: "fast"},
 	}
 
-	results, msgs := executeToolCalls(context.Background(), calls, set, 2)
+	results, msgs := executeToolCalls(context.Background(), calls, set, nil, 2)
 	if len(results) != 2 || len(msgs) != 2 {
 		t.Fatalf("a tool's own Canceled must not truncate a live batch: %d/%d", len(results), len(msgs))
 	}
@@ -137,7 +137,7 @@ func TestExecuteToolCallsParallelCancelledContext(t *testing.T) {
 	}
 	calls := []ToolCall{{ToolCallID: "0", ToolName: "t"}, {ToolCallID: "1", ToolName: "t"}}
 
-	results, msgs := executeToolCalls(ctx, calls, set, 2)
+	results, msgs := executeToolCalls(ctx, calls, set, nil, 2)
 	if len(results) != 0 || len(msgs) != 0 {
 		t.Fatalf("expected empty batch on cancelled ctx, got %d/%d", len(results), len(msgs))
 	}
@@ -152,7 +152,7 @@ func TestExecuteToolCallsParallelDefaultSequential(t *testing.T) {
 	}
 	calls := []ToolCall{{ToolCallID: "0", ToolName: "a"}, {ToolCallID: "1", ToolName: "b"}}
 
-	results, msgs := executeToolCalls(context.Background(), calls, set, 0)
+	results, msgs := executeToolCalls(context.Background(), calls, set, nil, 0)
 	if len(results) != 2 || len(msgs) != 2 {
 		t.Fatalf("sequential path must still return full batches: %d/%d", len(results), len(msgs))
 	}

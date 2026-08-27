@@ -212,6 +212,11 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		return next, nil
 	}
 
+	var toolHooks []core.ToolHook
+	if cfg.ProtectPaths != nil {
+		toolHooks = append(toolHooks, ProtectPathsHook(cfg.ProtectPaths))
+	}
+
 	res, genErr := core.GenerateText(ctx, provider, core.GenerateOptions{
 		Model:    model,
 		System:   system,
@@ -223,7 +228,8 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 			TokenBudgetIs(cfg.Budget.MaxTokens),
 			state.stopRequested,
 		),
-		OnStep: onStep,
+		OnStep:    onStep,
+		ToolHooks: toolHooks,
 	})
 	if compact != nil {
 		res.TotalUsage = addUsage(res.TotalUsage, compact.usage)
@@ -402,12 +408,15 @@ func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, 
 		}
 	}
 
-	// Wrap order matters: a call blocked by path protection must reach
-	// neither the gate nor change tracking, and the loop breaker sees
-	// everything (including repeated blocked calls).
+	// Wrap order matters: change tracking wraps the tool's success
+	// path; the gate appends its verdict to mutating tools; the loop
+	// breaker sees everything (including repeated blocked calls).
+	//
+	// Path protection is now expressed as a [core.ToolHook] on
+	// [Config.Run]'s GenerateOptions, not as a toolset wrapper — see
+	// ProtectPathsHook. The wrapper form is gone.
 	set = changeTrackedToolSet(set, state)
 	set = gatedToolSet(set, &state.gate, cfg.Gate, cfg.WorkDir, log)
-	set = protectedToolSet(set, cfg.ProtectPaths)
 	set = loopBrokenToolSet(set, &state.loop)
 
 	for name, tool := range cfg.Extra {

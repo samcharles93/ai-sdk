@@ -138,7 +138,7 @@ func TestExecuteToolCalls(t *testing.T) {
 				cancel()
 			}
 
-			results, msgs := executeToolCalls(ctx, tc.calls, tc.set, 1)
+			results, msgs := executeToolCalls(ctx, tc.calls, tc.set, nil, 1)
 
 			if len(results) != tc.wantResults {
 				t.Fatalf("len(results) = %d, want %d (%+v)", len(results), tc.wantResults, results)

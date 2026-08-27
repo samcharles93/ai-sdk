@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 )
@@ -125,8 +126,12 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				ProviderOptions: opts.ProviderOptions,
 			}
 
+			fireModelStarted(ctx, opts.ModelHooks, req)
+			chatStart := time.Now()
 			stream, err := provider.ChatStream(ctx, req)
+			chatLatency := time.Since(chatStart)
 			if err != nil {
+				fireModelFinished(ctx, opts.ModelHooks, req, nil, err, chatLatency, nil)
 				runErr = err
 				finalReason = FinishReasonError
 				_ = emit(StreamPart{Type: StreamPartError, Error: err})
@@ -240,6 +245,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				}
 			}
 			_ = stream.Close()
+			fireModelFinished(ctx, opts.ModelHooks, req, nil, nil, chatLatency, &stepUsage)
 
 			assembled := chat.AssembleToolCalls(toolDeltas)
 			coreCalls := toCoreToolCalls(assembled)
@@ -285,7 +291,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 			}
 
 			if len(coreCalls) > 0 {
-				results, toolMsgs := executeToolCalls(ctx, coreCalls, opts.Tools, opts.MaxParallelToolCalls)
+				results, toolMsgs := executeToolCalls(ctx, coreCalls, opts.Tools, opts.ToolHooks, opts.MaxParallelToolCalls)
 				step.ToolResults = results
 				for i := range results {
 					r := results[i]

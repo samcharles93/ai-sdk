@@ -81,29 +81,30 @@ func gatedToolSet(set core.ToolSet, g *gateState, cfg GateConfig, workdir string
 	return out
 }
 
-// protectedToolSet refuses write/edit on protected paths before the
-// tool ever runs — the refusal is fed back to the model in-band.
-func protectedToolSet(set core.ToolSet, protect func(string) bool) core.ToolSet {
-	if protect == nil {
-		return set
-	}
-	out := make(core.ToolSet, len(set))
-	for name, tool := range set {
-		if name != "write" && name != "edit" {
-			out[name] = tool
-			continue
-		}
-		inner := tool.Execute
-		wrapped := *tool
-		wrapped.Execute = func(ctx context.Context, input string) (string, error) {
-			if path := pathFromArgs(input); path != "" && protect(path) {
-				return "blocked: " + path + " is protected in this stage and must not be modified. It is part of the mission's specification — change the code it exercises instead.", nil
+// ProtectPathsHook returns a [core.ToolHook] that denies write/edit tool
+// calls whose "path" argument matches the supplied predicate, surfacing
+// the refusal as an in-band [core.Skip] (the same shape as a tool
+// error). Other tools and non-matching calls pass through unmodified.
+//
+// This is the hook equivalent of the prior protectedToolSet wrapper —
+// the same policy is now expressed declaratively on
+// [core.GenerateOptions.ToolHooks] rather than by hand-wrapping every
+// Tool.Execute closure in the toolset.
+func ProtectPathsHook(protect func(string) bool) core.ToolHook {
+	return core.ToolHookFuncs(
+		func(_ context.Context, call *core.ToolCall) (*core.Skip, error) {
+			if call.ToolName != "write" && call.ToolName != "edit" {
+				return nil, nil
 			}
-			return inner(ctx, input)
-		}
-		out[name] = &wrapped
-	}
-	return out
+			if path := pathFromArgs(call.Input); path != "" && protect(path) {
+				return &core.Skip{
+					Error: "blocked: " + path + " is protected in this stage and must not be modified. It is part of the mission's specification — change the code it exercises instead.",
+				}, nil
+			}
+			return nil, nil
+		},
+		nil,
+	)
 }
 
 // changeTrackedToolSet records the touched path of every successful
