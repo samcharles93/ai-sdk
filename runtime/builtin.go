@@ -281,9 +281,8 @@ func togetheraiClass() ProviderClass {
 }
 
 func (cfg ProviderConfig) httpClient() *http.Client {
-	timeout := time.Duration(cfg.Timeout) * time.Millisecond
-	if timeout <= 0 {
-		timeout = 5 * time.Minute
+	if cfg.Timeout <= 0 {
+		return &http.Client{}
 	}
-	return &http.Client{Timeout: timeout}
+	return &http.Client{Timeout: time.Duration(cfg.Timeout) * time.Millisecond}
 }

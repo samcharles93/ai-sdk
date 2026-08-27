@@ -43,8 +43,9 @@ type ProviderConfig struct {
 	// Insecure disables TLS certificate verification.
 	Insecure bool
 
-	// Timeout for provider HTTP requests in milliseconds. Zero means the
-	// class default.
+	// Timeout is an optional whole-request timeout in milliseconds. Values
+	// greater than zero opt in to a timeout; zero leaves requests unlimited so
+	// callers can control cancellation through context deadlines.
 	Timeout int
 
 	// Options carries class-specific options as a generic map. Classes
