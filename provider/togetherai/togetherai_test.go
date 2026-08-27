@@ -14,6 +14,17 @@ import (
 	"github.com/samcharles93/ai-sdk/image"
 )
 
+func TestNew_UsesConfiguredHTTPClient(t *testing.T) {
+	client := &http.Client{}
+	p, err := New(Config{APIKey: "k", HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.http != client {
+		t.Fatal("provider did not retain configured HTTP client")
+	}
+}
+
 func newTestServer(t *testing.T, h http.HandlerFunc) (*httptest.Server, *Provider) {
 	t.Helper()
 	srv := httptest.NewServer(h)

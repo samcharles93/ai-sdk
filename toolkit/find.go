@@ -70,9 +70,6 @@ func makeFindExecutor(cwd string) Executor {
 			return Result{Content: fmt.Sprintf("invalid parameters: %v", err), IsError: true}, nil
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, DefaultToolTimeout)
-		defer cancel()
-
 		searchPath := cwd
 		if p.Path != "" {
 			searchPath = resolvePath(cwd, p.Path)

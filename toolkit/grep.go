@@ -115,9 +115,6 @@ func makeGrepExecutor(cwd string, workspaceIndex GrepIndex) Executor {
 			return Result{Content: "pattern is required", IsError: true}, nil
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, DefaultToolTimeout)
-		defer cancel()
-
 		searchPath := cwd
 		if p.Path != "" {
 			searchPath = resolvePath(cwd, p.Path)

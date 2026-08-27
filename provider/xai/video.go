@@ -19,7 +19,6 @@ const (
 	videoGenerationsAPIPath = "/v1/videos/generations"
 	videoStatusAPIPath      = "/v1/videos/"
 	defaultPollInterval     = 5 * time.Second
-	defaultPollTimeout      = 10 * time.Minute
 )
 
 // --- wire types ----------------------------------------------------------
@@ -59,10 +58,19 @@ type VideoOptions struct {
 	VideoURL           string   `json:"video_url,omitempty"`
 	ReferenceImageURLs []string `json:"reference_image_urls,omitempty"`
 	PollIntervalMs     int      `json:"poll_interval_ms,omitempty"`
-	PollTimeoutMs      int      `json:"poll_timeout_ms,omitempty"`
+	// PollTimeoutMs optionally limits the complete polling phase. Zero leaves
+	// polling bounded only by the GenerateVideo caller's context.
+	PollTimeoutMs int `json:"poll_timeout_ms,omitempty"`
 }
 
 // --- Video Generation ----------------------------------------------------
+
+func pollContext(ctx context.Context, timeoutMS int) (context.Context, context.CancelFunc) {
+	if timeoutMS <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
+}
 
 // GenerateVideo creates videos from text prompts using xAI's video generation API.
 // It satisfies video.Provider.
@@ -190,12 +198,7 @@ func (p *Provider) GenerateVideo(ctx context.Context, req video.GenerateVideoReq
 		pollInterval = defaultPollInterval
 	}
 
-	pollTimeout := time.Duration(opts.PollTimeoutMs) * time.Millisecond
-	if pollTimeout == 0 {
-		pollTimeout = defaultPollTimeout
-	}
-
-	pollCtx, cancel := context.WithTimeout(ctx, pollTimeout)
+	pollCtx, cancel := pollContext(ctx, opts.PollTimeoutMs)
 	defer cancel()
 
 	ticker := time.NewTicker(pollInterval)

@@ -30,6 +30,17 @@ func TestNew_RequiresAllFields(t *testing.T) {
 	}
 }
 
+func TestNew_UsesConfiguredHTTPClient(t *testing.T) {
+	client := &http.Client{}
+	p, err := New(Config{APIKey: "k", Endpoint: "https://e.com", Deployment: "d", HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.client != client {
+		t.Fatal("provider did not retain configured HTTP client")
+	}
+}
+
 func TestChat_NonStreaming(t *testing.T) {
 	var gotURL, gotAuth, gotCT string
 	var gotBody map[string]any

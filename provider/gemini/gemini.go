@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 )
@@ -24,8 +23,10 @@ const defaultBaseURL = "https://generativelanguage.googleapis.com"
 
 // Config configures a Gemini Provider.
 type Config struct {
-	APIKey     string
-	BaseURL    string
+	APIKey  string
+	BaseURL string
+	// HTTPClient overrides the client used for requests. If nil, requests are
+	// bounded only by their caller contexts.
 	HTTPClient *http.Client
 }
 
@@ -48,7 +49,7 @@ func New(cfg Config) (*Provider, error) {
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: 5 * time.Minute}
+		hc = &http.Client{}
 	}
 	return &Provider{apiKey: cfg.APIKey, baseURL: base, client: hc}, nil
 }

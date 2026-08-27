@@ -12,14 +12,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 )
 
 const (
 	defaultBaseURL = "https://api.openai.com"
-	defaultTimeout = 5 * time.Minute
 )
 
 type Config struct {
@@ -27,7 +25,8 @@ type Config struct {
 	APIKey string
 	// BaseURL overrides the API root.
 	BaseURL string
-	// HTTPClient overrides the default five-minute client.
+	// HTTPClient overrides the client used for requests. If nil, requests are
+	// bounded only by their caller contexts.
 	HTTPClient *http.Client
 }
 
@@ -59,7 +58,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: defaultTimeout}
+		client = &http.Client{}
 	}
 	return &Provider{apiKey: cfg.APIKey, baseURL: normaliseBaseURL(base), client: client}, nil
 }

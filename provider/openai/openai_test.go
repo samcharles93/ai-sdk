@@ -22,6 +22,17 @@ func TestNew_RequiresAPIKey(t *testing.T) {
 	}
 }
 
+func TestNew_UsesConfiguredHTTPClient(t *testing.T) {
+	client := &http.Client{}
+	p, err := New(Config{APIKey: "k", HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.client != client {
+		t.Fatal("provider did not retain configured HTTP client")
+	}
+}
+
 func TestNormaliseBaseURL(t *testing.T) {
 	cases := map[string]string{
 		// Host-only URLs get the conventional /v1 appended.

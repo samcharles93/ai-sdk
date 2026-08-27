@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 )
@@ -24,8 +23,8 @@ type Config struct {
 	// BaseURL is the root URL of the Ollama server. If empty,
 	// "http://localhost:11434" is used.
 	BaseURL string
-	// HTTPClient is used for all requests. If nil, a client with a
-	// 5-minute timeout is used.
+	// HTTPClient is used for all requests. If nil, requests are bounded only
+	// by their caller contexts.
 	HTTPClient *http.Client
 }
 
@@ -44,7 +43,7 @@ func New(cfg Config) *Provider {
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: 5 * time.Minute}
+		hc = &http.Client{}
 	}
 	return &Provider{baseURL: base, http: hc}
 }

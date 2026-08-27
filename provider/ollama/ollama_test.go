@@ -13,6 +13,14 @@ import (
 	"github.com/samcharles93/ai-sdk/chat"
 )
 
+func TestNew_UsesConfiguredHTTPClient(t *testing.T) {
+	client := &http.Client{}
+	p := New(Config{HTTPClient: client})
+	if p.http != client {
+		t.Fatal("provider did not retain configured HTTP client")
+	}
+}
+
 func TestChat_NonStreaming(t *testing.T) {
 	var got ollamaRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

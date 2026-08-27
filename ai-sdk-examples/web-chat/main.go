@@ -68,10 +68,12 @@ func run() error {
 	})
 
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", *port),
-		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 300 * time.Second,
+		Addr:        fmt.Sprintf(":%d", *port),
+		Handler:     mux,
+		ReadTimeout: 30 * time.Second,
+		// Streaming responses may legitimately remain open for the complete
+		// caller-controlled generation lifetime.
+		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
 	}
 

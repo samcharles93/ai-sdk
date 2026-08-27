@@ -17,6 +17,38 @@ func (s staticGrepIndex) Candidates(context.Context, string, bool, bool) ([]stri
 	return s.files, true
 }
 
+type deadlineGrepIndex struct {
+	deadline time.Time
+	ok       bool
+}
+
+func (i *deadlineGrepIndex) Candidates(ctx context.Context, _ string, _, _ bool) ([]string, bool) {
+	i.deadline, i.ok = ctx.Deadline()
+	return nil, false
+}
+
+func TestGrepPreservesCallerDeadline(t *testing.T) {
+	callerDeadline := time.Now().Add(2 * time.Hour)
+	ctx, cancel := context.WithDeadline(context.Background(), callerDeadline)
+	defer cancel()
+
+	index := &deadlineGrepIndex{}
+	tool := NewGrepTool(t.TempDir(), index)
+	params, err := json.Marshal(GrepParams{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tool.Execute(ctx, params, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !index.ok {
+		t.Fatal("grep index received a context without the caller's deadline")
+	}
+	if delta := index.deadline.Sub(callerDeadline); delta < -time.Second || delta > time.Second {
+		t.Fatalf("grep deadline = %s, want caller deadline %s", index.deadline, callerDeadline)
+	}
+}
+
 func TestGrepUsesIndexCandidatesAsAdvisoryFileSet(t *testing.T) {
 	tmp := t.TempDir()
 	indexed := filepath.Join(tmp, "indexed.txt")

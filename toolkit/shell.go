@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,10 +16,7 @@ import (
 )
 
 const (
-	defaultShellTimeout = 120 * time.Second
-	maxShellTimeout     = 10 * time.Minute
-
-	// shellCancelGrace is how long a timed-out command is given to finish
+	// shellCancelGrace is how long a cancelled command is given to finish
 	// on its own before the tool starts signalling it.
 	shellCancelGrace = 1 * time.Second
 
@@ -30,7 +28,7 @@ const (
 // ShellParams are the parameters for the shell tool.
 type ShellParams struct {
 	Command string `json:"command"`
-	Timeout int    `json:"timeout,omitempty"` // seconds, defaults to 120
+	Timeout int    `json:"timeout,omitempty"` // optional seconds; zero uses the caller context
 }
 
 var shellSchema = Schema{
@@ -45,7 +43,7 @@ var shellSchema = Schema{
 			},
 			"timeout": {
 				"type": "integer",
-				"description": "Timeout in seconds. Defaults to 120."
+				"description": "Optional timeout in seconds. Omit to use the caller's context budget."
 			}
 		},
 		"required": ["command"]
@@ -59,6 +57,13 @@ func NewShellTool(cwd string, mq *MutationQueue) Tool {
 		Source:  "builtin",
 		Execute: makeShellExecutor(cwd, mq),
 	}
+}
+
+func shellTimeout(seconds int) (time.Duration, bool) {
+	if seconds <= 0 {
+		return 0, false
+	}
+	return time.Duration(seconds) * time.Second, true
 }
 
 type bridgeWriter struct {
@@ -82,13 +87,7 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 			return Result{Content: "command is required", IsError: true}, nil
 		}
 
-		timeout := defaultShellTimeout
-		if p.Timeout > 0 {
-			timeout = time.Duration(p.Timeout) * time.Second
-		}
-		if timeout > maxShellTimeout {
-			timeout = maxShellTimeout
-		}
+		timeout, hasTimeout := shellTimeout(p.Timeout)
 
 		if cwd != "" {
 			info, err := os.Stat(cwd)
@@ -104,7 +103,11 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 			defer mq.GlobalUnlock()
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, timeout)
+		runCtx := ctx
+		cancel := func() {}
+		if hasTimeout {
+			runCtx, cancel = context.WithTimeout(ctx, timeout)
+		}
 		defer cancel()
 
 		shell, args := shellCommand(p.Command)
@@ -113,7 +116,7 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 			cmd.Dir = cwd
 		}
 
-		// Run the shell as its own process-group leader so the timeout
+		// Run the shell as its own process-group leader so cancellation
 		// escalation can signal the whole tree — build steps, servers,
 		// grandchild agents — rather than just the shell itself.
 		setProcessGroup(cmd)
@@ -131,12 +134,12 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 		go func() { done <- cmd.Wait() }()
 
 		var err error
-		timedOut := false
+		interrupted := false
 		select {
 		case err = <-done:
 			// Completed within budget.
-		case <-ctx.Done():
-			timedOut = true
+		case <-runCtx.Done():
+			interrupted = true
 			err = signalGracefulShutdown(cmd, done)
 		}
 
@@ -167,6 +170,7 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 			}
 		}
 
+		timedOut := interrupted && hasTimeout && ctx.Err() == nil && errors.Is(runCtx.Err(), context.DeadlineExceeded)
 		if timedOut {
 			// A timeout is reported as such even when the command exited
 			// cleanly during the SIGTERM grace period: it still overran its
@@ -174,6 +178,12 @@ func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
 			return Result{
 				Content: fmt.Sprintf("[timeout after: %s]\n%s", timeout, content), IsError: true,
 				ErrorKind: "timeout", Truncated: tr.Truncated, ResultBytes: len(output),
+			}, nil
+		}
+		if interrupted {
+			return Result{
+				Content: "[cancelled]\n" + content, IsError: true,
+				ErrorKind: "cancelled", Truncated: tr.Truncated, ResultBytes: len(output),
 			}, nil
 		}
 

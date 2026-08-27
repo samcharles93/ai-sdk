@@ -92,9 +92,6 @@ func makeReadExecutor(cwd string, rt *ReadTracker) Executor {
 			p.Limit = DefaultReadLines
 		}
 
-		_, cancel := context.WithTimeout(ctx, DefaultToolTimeout)
-		defer cancel()
-
 		path := resolvePath(cwd, p.Path)
 
 		if !isConfined(cwd, path) {

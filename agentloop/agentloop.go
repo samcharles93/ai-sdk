@@ -41,6 +41,7 @@ const (
 	StopFinished        = "finished"
 	StopBudgetExhausted = "budget_exhausted"
 	StopTimedOut        = "timed_out"
+	StopProviderError   = "provider_error"
 	StopLoopBreak       = "loop_break"
 	StopGateParked      = "gate_parked"
 	StopGateFailedFinal = "gate_failed_final"
@@ -254,7 +255,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		"tokens", result.TokensUsed,
 		"changes", len(result.Changes),
 	)
-	if genErr != nil && !errors.Is(genErr, context.DeadlineExceeded) && !errors.Is(genErr, context.Canceled) {
+	if genErr != nil && ctx.Err() == nil {
 		return result, genErr
 	}
 	return result, nil
@@ -500,12 +501,12 @@ func classify(ctx context.Context, cfg Config, state *runState, res core.Generat
 	}
 
 	switch {
-	case genErr != nil && (errors.Is(genErr, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded)):
+	case genErr != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
 		r.Status, r.StopReason = StatusParked, StopTimedOut
-	case genErr != nil && errors.Is(genErr, context.Canceled):
+	case genErr != nil && errors.Is(ctx.Err(), context.Canceled):
 		r.Status, r.StopReason = StatusParked, StopTimedOut
 	case genErr != nil:
-		r.Status, r.StopReason = StatusParked, "provider_error"
+		r.Status, r.StopReason = StatusParked, StopProviderError
 		r.Detail = genErr.Error()
 	case state.gate.parked:
 		r.Status, r.StopReason = StatusParked, StopGateParked

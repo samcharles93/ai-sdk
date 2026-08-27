@@ -18,7 +18,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"time"
 
 	"github.com/samcharles93/ai-sdk/provider/openai"
 	"github.com/samcharles93/ai-sdk/transcribe"
@@ -44,10 +43,7 @@ func run() error {
 	// Generate a minimal WAV file programmatically (1 second of 440Hz sine tone)
 	audio := generateTestWAV()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	resp, err := provider.Transcribe(ctx, transcribe.TranscribeRequest{
+	resp, err := provider.Transcribe(context.Background(), transcribe.TranscribeRequest{
 		Model:    "whisper-1",
 		Audio:    audio,
 		Language: "en",

@@ -21,7 +21,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
@@ -30,7 +29,6 @@ import (
 
 const (
 	defaultAPIVersion = "2024-02-01"
-	defaultTimeout    = 5 * time.Minute
 )
 
 // Config configures an Azure OpenAI Provider.
@@ -45,7 +43,8 @@ type Config struct {
 	// APIVersion overrides the API version query parameter.
 	// Defaults to "2024-02-01".
 	APIVersion string
-	// HTTPClient overrides the HTTP client used for requests.
+	// HTTPClient overrides the client used for requests. If nil, requests are
+	// bounded only by their caller contexts.
 	HTTPClient *http.Client
 }
 
@@ -85,7 +84,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: defaultTimeout}
+		hc = &http.Client{}
 	}
 	return &Provider{
 		apiKey:     cfg.APIKey,

@@ -46,7 +46,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/samcharles93/ai-sdk/image"
 )
@@ -62,8 +61,8 @@ type Config struct {
 	APIKey string
 	// BaseURL overrides [DefaultBaseURL]. Trailing slashes are trimmed.
 	BaseURL string
-	// HTTPClient is used for all outbound requests. If nil, a client
-	// with a 5-minute timeout is used.
+	// HTTPClient is used for all outbound requests. If nil, requests are
+	// bounded only by their caller contexts.
 	HTTPClient *http.Client
 }
 
@@ -88,7 +87,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: 5 * time.Minute}
+		hc = &http.Client{}
 	}
 	return &Provider{apiKey: cfg.APIKey, baseURL: base, http: hc}, nil
 }

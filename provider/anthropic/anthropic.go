@@ -11,14 +11,12 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 )
 
 const (
 	defaultBaseURL   = "https://api.anthropic.com"
-	defaultTimeout   = 5 * time.Minute
 	defaultMaxTokens = 4096
 	anthropicVersion = "2023-06-01"
 )
@@ -116,8 +114,10 @@ func isAdaptiveOnlyModel(model string) bool {
 
 // Config configures an Anthropic Provider.
 type Config struct {
-	APIKey     string
-	BaseURL    string
+	APIKey  string
+	BaseURL string
+	// HTTPClient overrides the client used for requests. If nil, requests are
+	// bounded only by their caller contexts.
 	HTTPClient *http.Client
 }
 
@@ -142,7 +142,7 @@ func New(cfg Config) (*Provider, error) {
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: defaultTimeout}
+		hc = &http.Client{}
 	}
 	return &Provider{apiKey: cfg.APIKey, baseURL: base, client: hc}, nil
 }

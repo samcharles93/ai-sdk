@@ -33,6 +33,17 @@ func TestNew_RequiresAPIKey(t *testing.T) {
 	}
 }
 
+func TestNew_UsesConfiguredHTTPClient(t *testing.T) {
+	client := &http.Client{}
+	p, err := New(Config{APIKey: "k", HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.client != client {
+		t.Fatal("provider did not retain configured HTTP client")
+	}
+}
+
 // TestChat_NonStreaming tests a basic chat completion without tools.
 func TestChat_NonStreaming(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

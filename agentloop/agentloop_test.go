@@ -21,6 +21,7 @@ type scriptProvider struct {
 	steps    []chat.Response
 	i        int
 	delay    time.Duration
+	err      error
 	requests []chat.Request
 }
 
@@ -34,6 +35,9 @@ func (p *scriptProvider) Chat(ctx context.Context, req chat.Request) (chat.Respo
 			return chat.Response{}, ctx.Err()
 		case <-time.After(p.delay):
 		}
+	}
+	if p.err != nil {
+		return chat.Response{}, p.err
 	}
 	if p.i >= len(p.steps) {
 		return chat.Response{Role: chat.RoleAssistant, Content: "script exhausted", FinishReason: "stop"}, nil
@@ -322,6 +326,24 @@ func TestWallClockTimesOut(t *testing.T) {
 	}
 	if res.Status != StatusParked || res.StopReason != StopTimedOut {
 		t.Fatalf("got %s/%s, want parked/timed_out", res.Status, res.StopReason)
+	}
+}
+
+func TestProviderContextErrorIsNotClassifiedAsWallClockTimeout(t *testing.T) {
+	for _, providerErr := range []error{context.DeadlineExceeded, context.Canceled} {
+		t.Run(providerErr.Error(), func(t *testing.T) {
+			res, err := Run(context.Background(), Config{
+				Provider: &scriptProvider{err: providerErr},
+				Model:    "script-1",
+				WorkDir:  t.TempDir(),
+			})
+			if !errors.Is(err, providerErr) {
+				t.Fatalf("error = %v, want provider error %v", err, providerErr)
+			}
+			if res.Status != StatusParked || res.StopReason != StopProviderError {
+				t.Fatalf("got %s/%s, want parked/provider_error", res.Status, res.StopReason)
+			}
+		})
 	}
 }
 

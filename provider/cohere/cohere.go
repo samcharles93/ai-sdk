@@ -13,7 +13,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
@@ -22,7 +21,6 @@ import (
 
 const (
 	defaultBaseURL = "https://api.cohere.com/v1"
-	defaultTimeout = 5 * time.Minute
 )
 
 // Config configures a Cohere Provider.
@@ -31,7 +29,8 @@ type Config struct {
 	APIKey string
 	// BaseURL overrides the API base URL. Defaults to https://api.cohere.com/v1.
 	BaseURL string
-	// HTTPClient overrides the HTTP client used for requests.
+	// HTTPClient overrides the client used for requests. If nil, requests are
+	// bounded only by their caller contexts.
 	HTTPClient *http.Client
 }
 
@@ -62,7 +61,7 @@ func New(cfg Config) (*Provider, error) {
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: defaultTimeout}
+		hc = &http.Client{}
 	}
 	return &Provider{apiKey: cfg.APIKey, baseURL: base, client: hc}, nil
 }
