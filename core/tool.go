@@ -3,6 +3,10 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"reflect"
+
+	"github.com/samcharles93/ai-sdk/schema"
 )
 
 // Tool defines a callable tool that a language model can invoke during
@@ -32,5 +36,32 @@ func NewTool(name, description string, parameters json.RawMessage, execute func(
 		Description: description,
 		Parameters:  parameters,
 		Execute:     execute,
+	}
+}
+
+// NewTypedTool creates a Tool whose JSON Schema parameters are derived
+// automatically from In via reflection (see schema.FromType), and whose
+// Execute function decodes the model's raw JSON input into In before
+// calling fn. This removes the class of bugs where a hand-written schema
+// drifts from the struct a raw NewTool handler decodes into.
+//
+// Use NewTool instead when there is no static Go input type to derive a
+// schema from (for example, tools proxied from an MCP server).
+func NewTypedTool[In any](name, description string, fn func(ctx context.Context, input In) (string, error)) *Tool {
+	params := schema.FromType(reflect.TypeFor[In]()).Build()
+
+	return &Tool{
+		Name:        name,
+		Description: description,
+		Parameters:  params,
+		Execute: func(ctx context.Context, raw string) (string, error) {
+			var in In
+			if raw != "" {
+				if err := json.Unmarshal([]byte(raw), &in); err != nil {
+					return "", fmt.Errorf("%s: invalid input: %w", name, err)
+				}
+			}
+			return fn(ctx, in)
+		},
 	}
 }
