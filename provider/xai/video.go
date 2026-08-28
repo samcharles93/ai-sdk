@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 	"github.com/samcharles93/ai-sdk/video"
 )
 
@@ -177,9 +178,7 @@ func (p *Provider) GenerateVideo(ctx context.Context, req video.GenerateVideoReq
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := chat.SanitizeErrorBody(respBody)
-		return video.GenerateVideoResponse{}, classifyVideoHTTPError(resp.StatusCode, snippet)
+		return video.GenerateVideoResponse{}, classifyVideoHTTPError(resp)
 	}
 
 	var createResp wireVideoCreateResponse
@@ -263,9 +262,7 @@ func (p *Provider) pollVideoStatus(ctx context.Context, requestID string) (*wire
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := chat.SanitizeErrorBody(respBody)
-		return nil, classifyVideoHTTPError(resp.StatusCode, snippet)
+		return nil, classifyVideoHTTPError(resp)
 	}
 
 	var status wireVideoStatusResponse
@@ -288,19 +285,26 @@ func mapResolution(res string) string {
 	}
 }
 
-func classifyVideoHTTPError(code int, body string) error {
+func classifyVideoHTTPError(resp *http.Response) error {
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	snippet := chat.SanitizeErrorBody(b)
+	code := resp.StatusCode
 	var base error
+	retryable := false
 	switch {
 	case code == 401 || code == 403:
 		base = video.ErrAuthFailed
 	case code == 429:
 		base = video.ErrRateLimited
+		retryable = true
 	case code >= 500:
 		base = video.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = video.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("xai: status %d: %s: %w", code, body, base)
+	return errx.NewProviderError("xai", resp, base, snippet, retryable)
 }
 
 // Compile-time assertion that *Provider satisfies video.Provider.

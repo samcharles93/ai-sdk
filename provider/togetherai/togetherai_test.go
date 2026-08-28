@@ -10,7 +10,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	errx "github.com/samcharles93/ai-sdk/error"
 	"github.com/samcharles93/ai-sdk/image"
 )
 
@@ -289,6 +291,36 @@ func TestGenerateImage_HTTPErrorMapping(t *testing.T) {
 				t.Fatalf("got %v, want %v", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestGenerateImage_RateLimit_TypedProviderError(t *testing.T) {
+	_, p := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.Header().Set("X-Request-Id", "req-togetherai-123")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"message":"slow down"}}`)
+	})
+	_, err := p.GenerateImage(context.Background(), image.GenerateImageRequest{Model: "m", Prompt: "p"})
+
+	var perr *errx.ProviderError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *errx.ProviderError, got %T: %v", err, err)
+	}
+	if perr.Provider != "togetherai" {
+		t.Errorf("Provider = %q, want togetherai", perr.Provider)
+	}
+	if perr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want %d", perr.StatusCode, http.StatusTooManyRequests)
+	}
+	if perr.RequestID != "req-togetherai-123" {
+		t.Errorf("RequestID = %q, want req-togetherai-123", perr.RequestID)
+	}
+	if perr.RetryAfter != 7*time.Second {
+		t.Errorf("RetryAfter = %v, want 7s", perr.RetryAfter)
+	}
+	if !perr.Retryable {
+		t.Error("Retryable = false, want true for 429")
 	}
 }
 

@@ -10,7 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 func TestNew_UsesConfiguredHTTPClient(t *testing.T) {
@@ -162,6 +165,42 @@ func TestChat_HTTPError(t *testing.T) {
 	}
 	if !errors.Is(err, chat.ErrProviderUnavailable) {
 		t.Errorf("expected ErrProviderUnavailable, got %v", err)
+	}
+}
+
+func TestChat_RateLimit_TypedProviderError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.Header().Set("X-Request-Id", "req-ollama-123")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"slow down"}`)
+	}))
+	defer srv.Close()
+
+	p := New(Config{BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "llama3",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+
+	var perr *errx.ProviderError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *errx.ProviderError, got %T: %v", err, err)
+	}
+	if perr.Provider != "ollama" {
+		t.Errorf("Provider = %q, want ollama", perr.Provider)
+	}
+	if perr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want %d", perr.StatusCode, http.StatusTooManyRequests)
+	}
+	if perr.RequestID != "req-ollama-123" {
+		t.Errorf("RequestID = %q, want req-ollama-123", perr.RequestID)
+	}
+	if perr.RetryAfter != 7*time.Second {
+		t.Errorf("RetryAfter = %v, want 7s", perr.RetryAfter)
+	}
+	if !perr.Retryable {
+		t.Error("Retryable = false, want true for 429")
 	}
 }
 

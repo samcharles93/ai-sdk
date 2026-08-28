@@ -24,6 +24,7 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
+	errx "github.com/samcharles93/ai-sdk/error"
 	"github.com/samcharles93/ai-sdk/image"
 )
 
@@ -338,21 +339,25 @@ func (p *Provider) classifyChatError(resp *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	snippet := chat.SanitizeErrorBody(b)
 	var base error
+	retryable := false
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
 		base = chat.ErrAuthFailed
 	case resp.StatusCode == http.StatusTooManyRequests:
 		base = chat.ErrRateLimited
+		retryable = true
 	case resp.StatusCode == http.StatusBadRequest && strings.Contains(strings.ToLower(snippet), "context length"):
 		base = chat.ErrContextLength
 	case resp.StatusCode == http.StatusBadRequest:
 		base = chat.ErrInvalidRequest
 	case resp.StatusCode >= 500:
 		base = chat.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = chat.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("azure: status %d: %s: %w", resp.StatusCode, snippet, base)
+	return errx.NewProviderError("azure", resp, base, snippet, retryable)
 }
 
 // --- Chat (non-streaming) --------------------------------------------------
@@ -651,19 +656,23 @@ func (p *Provider) classifyEmbedError(resp *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	snippet := chat.SanitizeErrorBody(b)
 	var base error
+	retryable := false
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
 		base = embed.ErrAuthFailed
 	case resp.StatusCode == http.StatusTooManyRequests:
 		base = embed.ErrRateLimited
+		retryable = true
 	case resp.StatusCode == http.StatusBadRequest:
 		base = embed.ErrInvalidRequest
 	case resp.StatusCode >= 500:
 		base = embed.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = embed.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("azure: status %d: %s: %w", resp.StatusCode, snippet, base)
+	return errx.NewProviderError("azure", resp, base, snippet, retryable)
 }
 
 // Embed produces embedding vectors for the given inputs.
@@ -744,19 +753,23 @@ func (p *Provider) classifyImageError(resp *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	snippet := chat.SanitizeErrorBody(b)
 	var base error
+	retryable := false
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
 		base = image.ErrAuthFailed
 	case resp.StatusCode == http.StatusTooManyRequests:
 		base = image.ErrRateLimited
+		retryable = true
 	case resp.StatusCode == http.StatusBadRequest:
 		base = image.ErrInvalidRequest
 	case resp.StatusCode >= 500:
 		base = image.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = image.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("azure: status %d: %s: %w", resp.StatusCode, snippet, base)
+	return errx.NewProviderError("azure", resp, base, snippet, retryable)
 }
 
 // GenerateImage creates one or more images from the given prompt.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 type ollamaEmbedRequest struct {
@@ -23,17 +24,25 @@ type ollamaEmbedResponse struct {
 	PromptEvalCount int         `json:"prompt_eval_count"`
 }
 
-func classifyEmbedStatus(code int) error {
+func classifyEmbedStatus(resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	snippet := chat.SanitizeErrorBody(body)
+	var base error
+	retryable := false
 	switch {
-	case code == 401 || code == 403:
-		return embed.ErrAuthFailed
-	case code == 429:
-		return embed.ErrRateLimited
-	case code >= 500:
-		return embed.ErrProviderUnavailable
+	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+		base = embed.ErrAuthFailed
+	case resp.StatusCode == http.StatusTooManyRequests:
+		base = embed.ErrRateLimited
+		retryable = true
+	case resp.StatusCode >= 500:
+		base = embed.ErrProviderUnavailable
+		retryable = true
 	default:
-		return embed.ErrProviderUnavailable
+		base = embed.ErrProviderUnavailable
+		retryable = true
 	}
+	return errx.NewProviderError("ollama", resp, base, snippet, retryable)
 }
 
 // Embed produces one embedding vector per entry in req.Inputs by calling
@@ -66,9 +75,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		base := classifyEmbedStatus(resp.StatusCode)
-		return embed.Response{}, fmt.Errorf("ollama: http %d: %s: %w", resp.StatusCode, chat.SanitizeErrorBody(snippet), base)
+		return embed.Response{}, classifyEmbedStatus(resp)
 	}
 
 	var oer ollamaEmbedResponse

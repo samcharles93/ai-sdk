@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 const defaultBaseURL = "http://localhost:11434"
@@ -253,24 +254,30 @@ func (p *Provider) doRequest(ctx context.Context, body ollamaRequest) (*http.Res
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		base := classifyStatus(resp.StatusCode)
-		return nil, fmt.Errorf("ollama: http %d: %s: %w", resp.StatusCode, chat.SanitizeErrorBody(snippet), base)
+		return nil, classifyStatus(resp)
 	}
 	return resp, nil
 }
 
-func classifyStatus(code int) error {
+func classifyStatus(resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	snippet := chat.SanitizeErrorBody(body)
+	var base error
+	retryable := false
 	switch {
-	case code == 401 || code == 403:
-		return chat.ErrAuthFailed
-	case code == 429:
-		return chat.ErrRateLimited
-	case code >= 500:
-		return chat.ErrProviderUnavailable
+	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+		base = chat.ErrAuthFailed
+	case resp.StatusCode == http.StatusTooManyRequests:
+		base = chat.ErrRateLimited
+		retryable = true
+	case resp.StatusCode >= 500:
+		base = chat.ErrProviderUnavailable
+		retryable = true
 	default:
-		return chat.ErrProviderUnavailable
+		base = chat.ErrProviderUnavailable
+		retryable = true
 	}
+	return errx.NewProviderError("ollama", resp, base, snippet, retryable)
 }
 
 // Chat performs a non-streaming chat completion against Ollama's /api/chat.

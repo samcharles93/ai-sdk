@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	errx "github.com/samcharles93/ai-sdk/error"
 
 	"github.com/samcharles93/ai-sdk/embed"
 )
@@ -108,6 +112,42 @@ func TestEmbed_AuthError(t *testing.T) {
 	})
 	if !errors.Is(err, embed.ErrAuthFailed) {
 		t.Errorf("expected ErrAuthFailed, got %v", err)
+	}
+}
+
+func TestEmbed_RateLimit_TypedProviderError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "3")
+		w.Header().Set("X-Request-Id", "req-embed-456")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"slow down"}`)
+	}))
+	defer srv.Close()
+
+	p := New(Config{BaseURL: srv.URL})
+	_, err := p.Embed(context.Background(), embed.Request{
+		Model:  "nomic-embed",
+		Inputs: []string{"hi"},
+	})
+
+	var perr *errx.ProviderError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *errx.ProviderError, got %T: %v", err, err)
+	}
+	if perr.Provider != "ollama" {
+		t.Errorf("Provider = %q, want ollama", perr.Provider)
+	}
+	if perr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want %d", perr.StatusCode, http.StatusTooManyRequests)
+	}
+	if perr.RequestID != "req-embed-456" {
+		t.Errorf("RequestID = %q, want req-embed-456", perr.RequestID)
+	}
+	if perr.RetryAfter != 3*time.Second {
+		t.Errorf("RetryAfter = %v, want 3s", perr.RetryAfter)
+	}
+	if !perr.Retryable {
+		t.Error("Retryable = false, want true for 429")
 	}
 }
 

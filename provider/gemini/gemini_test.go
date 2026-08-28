@@ -10,8 +10,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 func newTestProvider(t *testing.T, handler http.HandlerFunc) (*Provider, *httptest.Server) {
@@ -247,6 +249,39 @@ func TestChat_RateLimit(t *testing.T) {
 	})
 	if !errors.Is(err, chat.ErrRateLimited) {
 		t.Fatalf("expected ErrRateLimited, got %v", err)
+	}
+}
+
+func TestChat_RateLimit_TypedProviderError(t *testing.T) {
+	p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.Header().Set("X-Request-Id", "req-gemini-123")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"slow down"}`)
+	})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "m",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+
+	var perr *errx.ProviderError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *errx.ProviderError, got %T: %v", err, err)
+	}
+	if perr.Provider != "gemini" {
+		t.Errorf("Provider = %q, want gemini", perr.Provider)
+	}
+	if perr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want %d", perr.StatusCode, http.StatusTooManyRequests)
+	}
+	if perr.RequestID != "req-gemini-123" {
+		t.Errorf("RequestID = %q, want req-gemini-123", perr.RequestID)
+	}
+	if perr.RetryAfter != 7*time.Second {
+		t.Errorf("RetryAfter = %v, want 7s", perr.RetryAfter)
+	}
+	if !perr.Retryable {
+		t.Error("Retryable = false, want true for 429")
 	}
 }
 

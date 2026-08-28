@@ -47,6 +47,7 @@ import (
 	"strconv"
 	"strings"
 
+	errx "github.com/samcharles93/ai-sdk/error"
 	"github.com/samcharles93/ai-sdk/image"
 )
 
@@ -188,7 +189,8 @@ func (p *Provider) GenerateImage(ctx context.Context, req image.GenerateImageReq
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return image.GenerateImageResponse{}, mapHTTPError(resp.StatusCode, bodyBytes)
+		resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return image.GenerateImageResponse{}, mapHTTPError(resp)
 	}
 
 	var decoded togetherImageResponse
@@ -293,19 +295,23 @@ func parseSize(size string) (int, int, error) {
 // mapHTTPError converts an HTTP failure response into a wrapped image
 // sentinel error. The Together AI error envelope is decoded best-effort;
 // when it fails the raw body is included verbatim.
-func mapHTTPError(status int, body []byte) error {
+func mapHTTPError(resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	msg := strings.TrimSpace(string(body))
 	var env togetherErrorEnvelope
 	if json.Unmarshal(body, &env) == nil && env.Error.Message != "" {
 		msg = env.Error.Message
 	}
 
+	status := resp.StatusCode
 	var sentinel error
+	retryable := false
 	switch {
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		sentinel = image.ErrAuthFailed
 	case status == http.StatusTooManyRequests:
 		sentinel = image.ErrRateLimited
+		retryable = true
 	case status == http.StatusBadRequest:
 		// Together returns 400 for content policy violations — surface as
 		// content-filtered when the message hints at it; otherwise treat
@@ -317,10 +323,12 @@ func mapHTTPError(status int, body []byte) error {
 		}
 	case status >= 500:
 		sentinel = image.ErrProviderUnavailable
+		retryable = true
 	default:
 		sentinel = image.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("togetherai: HTTP %d: %s: %w", status, msg, sentinel)
+	return errx.NewProviderError("togetherai", resp, sentinel, msg, retryable)
 }
 
 func isContentFilterMessage(msg string) bool {

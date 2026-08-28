@@ -13,6 +13,7 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 var _ embed.Provider = (*Provider)(nil)
@@ -42,26 +43,32 @@ type embedWireResponse struct {
 	Embeddings []embedWireValues `json:"embeddings"`
 }
 
-// classifyEmbedHTTP maps a non-2xx HTTP response into a sentinel embed error,
-// stripping the API key from any echoed URL in the snippet.
-func classifyEmbedHTTP(code int, body []byte) error {
+// classifyEmbedHTTP maps a non-2xx HTTP response into a typed
+// *errx.ProviderError, stripping the API key from any echoed URL in the
+// snippet.
+func classifyEmbedHTTP(resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	snippet := chat.SanitizeErrorBody(body)
 	snippet = scrubKey(snippet)
 
 	var base error
+	retryable := false
 	switch {
-	case code == 401 || code == 403:
+	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		base = embed.ErrAuthFailed
-	case code == 400 && strings.Contains(strings.ToLower(snippet), "api key"):
+	case resp.StatusCode == 400 && strings.Contains(strings.ToLower(snippet), "api key"):
 		base = embed.ErrAuthFailed
-	case code == 429:
+	case resp.StatusCode == 429:
 		base = embed.ErrRateLimited
-	case code >= 500:
+		retryable = true
+	case resp.StatusCode >= 500:
 		base = embed.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = embed.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("gemini: status %d: %s: %w", code, snippet, base)
+	return errx.NewProviderError("gemini", resp, base, snippet, retryable)
 }
 
 // Embed produces one embedding vector per entry in req.Inputs, in the same order.
@@ -104,8 +111,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return embed.Response{}, classifyEmbedHTTP(resp.StatusCode, raw)
+		return embed.Response{}, classifyEmbedHTTP(resp)
 	}
 
 	var wr embedWireResponse

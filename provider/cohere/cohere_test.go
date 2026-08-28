@@ -3,14 +3,17 @@ package cohere
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
+	errx "github.com/samcharles93/ai-sdk/error"
 	"github.com/samcharles93/ai-sdk/rerank"
 )
 
@@ -41,6 +44,41 @@ func TestNew_UsesConfiguredHTTPClient(t *testing.T) {
 	}
 	if p.client != client {
 		t.Fatal("provider did not retain configured HTTP client")
+	}
+}
+
+func TestChat_RateLimit_TypedProviderError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.Header().Set("X-Request-Id", "req-cohere-123")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"message":"slow down"}`)
+	}))
+	defer srv.Close()
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "command-r",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "x"}},
+	})
+
+	var perr *errx.ProviderError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *errx.ProviderError, got %T: %v", err, err)
+	}
+	if perr.Provider != "cohere" {
+		t.Errorf("Provider = %q, want cohere", perr.Provider)
+	}
+	if perr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want %d", perr.StatusCode, http.StatusTooManyRequests)
+	}
+	if perr.RequestID != "req-cohere-123" {
+		t.Errorf("RequestID = %q, want req-cohere-123", perr.RequestID)
+	}
+	if perr.RetryAfter != 7*time.Second {
+		t.Errorf("RetryAfter = %v, want 7s", perr.RetryAfter)
+	}
+	if !perr.Retryable {
+		t.Error("Retryable = false, want true for 429")
 	}
 }
 

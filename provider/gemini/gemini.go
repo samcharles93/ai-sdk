@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 // defaultBaseURL is the production Gemini API host.
@@ -357,27 +358,32 @@ func (p *Provider) buildURL(model, action string) string {
 	return p.baseURL + path + "?" + q
 }
 
-// classifyHTTP maps a non-2xx HTTP response into a sentinel chat error,
+// classifyHTTP maps a non-2xx HTTP response into a typed *errx.ProviderError,
 // stripping the API key from any echoed URL in the snippet.
-func classifyHTTP(code int, body []byte) error {
+func classifyHTTP(resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	snippet := chat.SanitizeErrorBody(body)
 	// Defensive: scrub anything that looks like an api key echo.
 	snippet = scrubKey(snippet)
 
 	var base error
+	retryable := false
 	switch {
-	case code == 401 || code == 403:
+	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		base = chat.ErrAuthFailed
-	case code == 400 && strings.Contains(strings.ToLower(snippet), "api key"):
+	case resp.StatusCode == 400 && strings.Contains(strings.ToLower(snippet), "api key"):
 		base = chat.ErrAuthFailed
-	case code == 429:
+	case resp.StatusCode == 429:
 		base = chat.ErrRateLimited
-	case code >= 500:
+		retryable = true
+	case resp.StatusCode >= 500:
 		base = chat.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = chat.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("gemini: status %d: %s: %w", code, snippet, base)
+	return errx.NewProviderError("gemini", resp, base, snippet, retryable)
 }
 
 func scrubKey(s string) string {
@@ -430,8 +436,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return chat.Response{}, classifyHTTP(resp.StatusCode, raw)
+		return chat.Response{}, classifyHTTP(resp)
 	}
 
 	var wr wireResponse
@@ -523,9 +528,9 @@ func (p *Provider) ChatStream(ctx context.Context, req chat.Request) (chat.Strea
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		err := classifyHTTP(resp)
 		resp.Body.Close()
-		return nil, classifyHTTP(resp.StatusCode, raw)
+		return nil, err
 	}
 
 	return &stream{

@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	errx "github.com/samcharles93/ai-sdk/error"
 
 	"github.com/samcharles93/ai-sdk/embed"
 )
@@ -93,6 +96,39 @@ func TestEmbed_HTTPError(t *testing.T) {
 	})
 	if !errors.Is(err, embed.ErrProviderUnavailable) {
 		t.Fatalf("expected ErrProviderUnavailable, got %v", err)
+	}
+}
+
+func TestEmbed_RateLimit_TypedProviderError(t *testing.T) {
+	p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.Header().Set("X-Request-Id", "req-gemini-embed-123")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"slow down"}`)
+	})
+	_, err := p.Embed(context.Background(), embed.Request{
+		Model:  "m",
+		Inputs: []string{"x"},
+	})
+
+	var perr *errx.ProviderError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *errx.ProviderError, got %T: %v", err, err)
+	}
+	if perr.Provider != "gemini" {
+		t.Errorf("Provider = %q, want gemini", perr.Provider)
+	}
+	if perr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want %d", perr.StatusCode, http.StatusTooManyRequests)
+	}
+	if perr.RequestID != "req-gemini-embed-123" {
+		t.Errorf("RequestID = %q, want req-gemini-embed-123", perr.RequestID)
+	}
+	if perr.RetryAfter != 7*time.Second {
+		t.Errorf("RetryAfter = %v, want 7s", perr.RetryAfter)
+	}
+	if !perr.Retryable {
+		t.Error("Retryable = false, want true for 429")
 	}
 }
 

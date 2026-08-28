@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 	"github.com/samcharles93/ai-sdk/transcribe"
 	"github.com/samcharles93/ai-sdk/util"
 )
@@ -88,9 +89,7 @@ func (p *Provider) Transcribe(ctx context.Context, req transcribe.TranscribeRequ
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := chat.SanitizeErrorBody(respBody)
-		return transcribe.TranscribeResponse{}, classifyTranscriptionHTTPError(resp.StatusCode, snippet)
+		return transcribe.TranscribeResponse{}, classifyTranscriptionHTTPError(resp)
 	}
 
 	var wr wireTranscriptionResponse
@@ -199,19 +198,25 @@ func buildTranscriptionForm(req transcribe.TranscribeRequest) (*bytes.Buffer, st
 	return body, writer.FormDataContentType(), nil
 }
 
-func classifyTranscriptionHTTPError(code int, body string) error {
+func classifyTranscriptionHTTPError(resp *http.Response) error {
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	snippet := chat.SanitizeErrorBody(respBody)
 	var base error
+	retryable := false
 	switch {
-	case code == 401 || code == 403:
+	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		base = transcribe.ErrAuthFailed
-	case code == 429:
+	case resp.StatusCode == 429:
 		base = transcribe.ErrRateLimited
-	case code >= 500:
+		retryable = true
+	case resp.StatusCode >= 500:
 		base = transcribe.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = transcribe.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("groq: status %d: %s: %w", code, body, base)
+	return errx.NewProviderError("groq", resp, base, snippet, retryable)
 }
 
 // Compile-time assertion that *Provider satisfies transcribe.Provider.

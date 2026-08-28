@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 	"github.com/samcharles93/ai-sdk/image"
 )
 
@@ -134,9 +135,7 @@ func (p *Provider) GenerateImage(ctx context.Context, req image.GenerateImageReq
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		snippet := chat.SanitizeErrorBody(respBody)
-		return image.GenerateImageResponse{}, classifyImageHTTPError(resp.StatusCode, snippet)
+		return image.GenerateImageResponse{}, classifyImageHTTPError(resp)
 	}
 
 	var wr wireImageResponse
@@ -169,19 +168,26 @@ func (p *Provider) GenerateImage(ctx context.Context, req image.GenerateImageReq
 	return out, nil
 }
 
-func classifyImageHTTPError(code int, body string) error {
+func classifyImageHTTPError(resp *http.Response) error {
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	snippet := chat.SanitizeErrorBody(b)
+	code := resp.StatusCode
 	var base error
+	retryable := false
 	switch {
 	case code == 401 || code == 403:
 		base = image.ErrAuthFailed
 	case code == 429:
 		base = image.ErrRateLimited
+		retryable = true
 	case code >= 500:
 		base = image.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = image.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("xai: status %d: %s: %w", code, body, base)
+	return errx.NewProviderError("xai", resp, base, snippet, retryable)
 }
 
 // Compile-time assertion that *Provider satisfies image.Provider.
