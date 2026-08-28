@@ -24,13 +24,18 @@ func (p *retryImageProvider) Name() string { return p.next.Name() }
 func (p *retryImageProvider) GenerateImage(ctx context.Context, req image.GenerateImageRequest) (image.GenerateImageResponse, error) {
 	var resp image.GenerateImageResponse
 	var err error
-	for attempt := 0; attempt < p.cfg.MaxAttempts; attempt++ {
+	maxAttempts := p.cfg.attempts()
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		resp, err = p.next.GenerateImage(ctx, req)
 		if err == nil || !p.retryable(err) {
 			return resp, err
 		}
-		if attempt < p.cfg.MaxAttempts-1 {
-			if waitErr := sleepContext(ctx, p.backoff.Backoff(attempt)); waitErr != nil {
+		delay := effectiveDelay(p.backoff, attempt, err)
+		if p.cfg.OnAttempt != nil {
+			p.cfg.OnAttempt(attempt, err, delay)
+		}
+		if attempt < maxAttempts-1 {
+			if waitErr := sleepContext(ctx, delay); waitErr != nil {
 				return resp, waitErr
 			}
 		}

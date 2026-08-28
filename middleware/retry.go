@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"strings"
 	"time"
@@ -82,6 +83,11 @@ type RetryConfig struct {
 	// MaxAttempts is the total number of attempts (1 = no retries). Values
 	// less than one are normalised to one, making the zero value safe.
 	MaxAttempts int
+
+	// OnAttempt, when non-nil, is invoked on every retryable failure —
+	// including the final, non-retried attempt — so callers can log or
+	// telemeter retry behaviour without wrapping the provider themselves.
+	OnAttempt RetryObserver
 }
 
 func (c RetryConfig) attempts() int {
@@ -91,6 +97,13 @@ func (c RetryConfig) attempts() int {
 	return c.MaxAttempts
 }
 
+// RetryObserver is invoked on every retryable failure — including the
+// final, non-retried attempt — so callers can log or telemeter retry
+// behaviour without wrapping the provider themselves. attempt is
+// zero-indexed; delay is what will actually be waited before the next
+// attempt (0 on the final attempt, since no further call follows).
+type RetryObserver func(attempt int, err error, delay time.Duration)
+
 // RetryableError returns true if the error should trigger a retry.
 type RetryableError func(error) bool
 
@@ -98,12 +111,22 @@ type RetryableError func(error) bool
 // temporary network errors. It does NOT retry auth failures or invalid
 // requests (which would always fail on retry).
 //
-// The function matches against the shared [errx] sentinels and falls back to
-// substring matching in the error message for common transient keywords when
-// the error cannot be unwrapped to a known sentinel.
+// Classification prefers a typed [errx.ProviderError], reading its
+// Retryable field directly when the error is (or wraps) one — this is
+// the mechanism providers use to report a retry decision made once at
+// the HTTP boundary, from the actual status code, rather than inferred
+// from message text. When the error is not a ProviderError (a provider
+// that hasn't migrated yet, a network error, ...), classification falls
+// back to matching the shared [errx] sentinels and, failing that,
+// substring matching in the error message for common transient keywords.
 func DefaultRetryableError(err error) bool {
 	if err == nil {
 		return false
+	}
+
+	var perr *errx.ProviderError
+	if errors.As(err, &perr) {
+		return perr.Retryable
 	}
 
 	// Sentinels that always warrant a retry.
@@ -204,6 +227,20 @@ func isQuotaPermanent(err error) bool {
 		}
 	}
 	return false
+}
+
+// effectiveDelay returns the delay to wait before the next retry
+// attempt. It prefers the server's Retry-After (via a typed
+// [errx.ProviderError] on err) over the computed backoff — the server
+// is authoritative about how long it wants callers to wait. Falls back
+// to backoff.Backoff(attempt) when err carries no Retry-After (or isn't
+// a ProviderError at all).
+func effectiveDelay(backoff BackoffStrategy, attempt int, err error) time.Duration {
+	var perr *errx.ProviderError
+	if errors.As(err, &perr) && perr.RetryAfter > 0 {
+		return perr.RetryAfter
+	}
+	return backoff.Backoff(attempt)
 }
 
 // sleepContext sleeps for d or until ctx is cancelled, returning any context error.

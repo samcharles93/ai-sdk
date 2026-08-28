@@ -10,8 +10,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 func TestNew_RequiresAPIKey(t *testing.T) {
@@ -508,6 +510,62 @@ func TestChat_RateLimit(t *testing.T) {
 	})
 	if !errors.Is(err, chat.ErrRateLimited) {
 		t.Fatalf("expected ErrRateLimited, got %v", err)
+	}
+}
+
+func TestChat_RateLimit_TypedProviderError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "12")
+		w.Header().Set("Request-Id", "req-anthropic-456")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`)
+	}))
+	defer srv.Close()
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "m",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "x"}},
+	})
+
+	var perr *errx.ProviderError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *errx.ProviderError, got %T: %v", err, err)
+	}
+	if perr.Provider != "anthropic" {
+		t.Errorf("Provider = %q, want anthropic", perr.Provider)
+	}
+	if perr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want %d", perr.StatusCode, http.StatusTooManyRequests)
+	}
+	if perr.RequestID != "req-anthropic-456" {
+		t.Errorf("RequestID = %q, want req-anthropic-456", perr.RequestID)
+	}
+	if perr.RetryAfter != 12*time.Second {
+		t.Errorf("RetryAfter = %v, want 12s", perr.RetryAfter)
+	}
+	if !perr.Retryable {
+		t.Error("Retryable = false, want true for 429")
+	}
+}
+
+func TestChat_AuthError_TypedProviderErrorNotRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"authentication_error","message":"invalid api key"}}`)
+	}))
+	defer srv.Close()
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	_, err := p.Chat(context.Background(), chat.Request{
+		Model:    "m",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "x"}},
+	})
+
+	var perr *errx.ProviderError
+	if !errors.As(err, &perr) {
+		t.Fatalf("expected *errx.ProviderError, got %T: %v", err, err)
+	}
+	if perr.Retryable {
+		t.Error("Retryable = true, want false for 401")
 	}
 }
 

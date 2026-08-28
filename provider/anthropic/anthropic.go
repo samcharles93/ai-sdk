@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 const (
@@ -609,11 +610,13 @@ func classifyHTTPError(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	snippet := chat.SanitizeErrorBody(body)
 	var base error
+	retryable := false
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
 		base = chat.ErrAuthFailed
 	case resp.StatusCode == http.StatusTooManyRequests:
 		base = chat.ErrRateLimited
+		retryable = true
 	case resp.StatusCode == http.StatusBadRequest &&
 		(strings.Contains(strings.ToLower(snippet), "prompt is too long") ||
 			strings.Contains(strings.ToLower(snippet), "input is too long") ||
@@ -623,10 +626,12 @@ func classifyHTTPError(resp *http.Response) error {
 		base = chat.ErrInvalidRequest
 	case resp.StatusCode >= 500:
 		base = chat.ErrProviderUnavailable
+		retryable = true
 	default:
 		base = chat.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("anthropic: status %d: %s: %w", resp.StatusCode, snippet, base)
+	return errx.NewProviderError("anthropic", resp, base, snippet, retryable)
 }
 
 func mapStopReason(r string) string {

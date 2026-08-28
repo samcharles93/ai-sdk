@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	errx "github.com/samcharles93/ai-sdk/error"
 )
 
 const (
@@ -144,19 +145,22 @@ func classifyHTTPError(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	snippet := chat.SanitizeErrorBody(body)
 	var base error
+	retryable := false
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
 		base = chat.ErrAuthFailed
 	case resp.StatusCode == http.StatusTooManyRequests:
 		base = chat.ErrRateLimited
+		retryable = true
 	case resp.StatusCode == http.StatusBadRequest && strings.Contains(strings.ToLower(snippet), "context length"):
 		base = chat.ErrContextLength
 	case resp.StatusCode == http.StatusBadRequest:
 		base = chat.ErrInvalidRequest
 	default:
 		base = chat.ErrProviderUnavailable
+		retryable = true
 	}
-	return fmt.Errorf("openai: status %d: %s: %w", resp.StatusCode, snippet, base)
+	return errx.NewProviderError("openai", resp, base, snippet, retryable)
 }
 
 func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {

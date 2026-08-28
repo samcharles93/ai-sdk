@@ -30,8 +30,12 @@ func (p *retryObjectProvider) GenerateObject(ctx context.Context, req object.Req
 		if err == nil || !p.retryable(err) {
 			return resp, err
 		}
+		delay := effectiveDelay(p.backoff, attempt, err)
+		if p.cfg.OnAttempt != nil {
+			p.cfg.OnAttempt(attempt, err, delay)
+		}
 		if attempt < maxAttempts-1 {
-			if waitErr := sleepContext(ctx, p.backoff.Backoff(attempt)); waitErr != nil {
+			if waitErr := sleepContext(ctx, delay); waitErr != nil {
 				return resp, waitErr
 			}
 		}
@@ -48,8 +52,12 @@ func (p *retryObjectProvider) StreamObject(ctx context.Context, req object.Reque
 		if err == nil || !p.retryable(err) {
 			return stream, err
 		}
+		delay := effectiveDelay(p.backoff, attempt, err)
+		if p.cfg.OnAttempt != nil {
+			p.cfg.OnAttempt(attempt, err, delay)
+		}
 		if attempt < maxAttempts-1 {
-			if waitErr := sleepContext(ctx, p.backoff.Backoff(attempt)); waitErr != nil {
+			if waitErr := sleepContext(ctx, delay); waitErr != nil {
 				return stream, waitErr
 			}
 		}

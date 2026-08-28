@@ -24,13 +24,18 @@ func (p *retrySpeechProvider) Name() string { return p.next.Name() }
 func (p *retrySpeechProvider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
 	var resp speech.GenerateSpeechResponse
 	var err error
-	for attempt := 0; attempt < p.cfg.MaxAttempts; attempt++ {
+	maxAttempts := p.cfg.attempts()
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		resp, err = p.next.GenerateSpeech(ctx, req)
 		if err == nil || !p.retryable(err) {
 			return resp, err
 		}
-		if attempt < p.cfg.MaxAttempts-1 {
-			if waitErr := sleepContext(ctx, p.backoff.Backoff(attempt)); waitErr != nil {
+		delay := effectiveDelay(p.backoff, attempt, err)
+		if p.cfg.OnAttempt != nil {
+			p.cfg.OnAttempt(attempt, err, delay)
+		}
+		if attempt < maxAttempts-1 {
+			if waitErr := sleepContext(ctx, delay); waitErr != nil {
 				return resp, waitErr
 			}
 		}
