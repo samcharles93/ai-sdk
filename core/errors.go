@@ -26,4 +26,10 @@ var (
 
 	// ErrAborted indicates the generation was cancelled via context or abort signal.
 	ErrAborted = errors.New("core: generation aborted")
+
+	// ErrObjectDecode indicates a provider's structured-output response
+	// could not be strictly decoded into the requested Go type, either
+	// because the JSON was malformed or because it carried fields the
+	// type doesn't declare.
+	ErrObjectDecode = errors.New("core: object decode failed")
 )
