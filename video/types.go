@@ -1,5 +1,20 @@
 package video
 
+// VideoMode identifies the video-generation mode. Values are the wire
+// strings understood by providers such as xAI.
+type VideoMode string
+
+const (
+	// VideoModeTextToVideo generates a new video from a text prompt.
+	VideoModeTextToVideo VideoMode = "text-to-video"
+	// VideoModeEditVideo edits an existing source video.
+	VideoModeEditVideo VideoMode = "edit-video"
+	// VideoModeExtendVideo extends an existing source video.
+	VideoModeExtendVideo VideoMode = "extend-video"
+	// VideoModeReferenceToVideo generates a video from reference images.
+	VideoModeReferenceToVideo VideoMode = "reference-to-video"
+)
+
 // GenerateVideoRequest is a provider-agnostic video generation request.
 type GenerateVideoRequest struct {
 	// Model identifies the video generation model to use.
@@ -12,6 +27,15 @@ type GenerateVideoRequest struct {
 	Resolution string `json:"resolution,omitempty"`
 	// FrameRate is the requested frames per second.
 	FrameRate int `json:"frame_rate,omitempty"`
+	// Mode selects the video generation mode (text-to-video, edit-video,
+	// extend-video, reference-to-video).
+	Mode VideoMode `json:"mode,omitempty"`
+	// SourceVideo is the URL of a source video for edit/extend modes.
+	SourceVideo string `json:"source_video,omitempty"`
+	// ReferenceImages are reference image URLs used by reference-to-video mode.
+	ReferenceImages []string `json:"reference_images,omitempty"`
+	// Ratio is the requested aspect ratio of the generated video.
+	Ratio string `json:"ratio,omitempty"`
 	// ProviderOptions carries provider-specific options.
 	ProviderOptions map[string]any `json:"provider_options,omitempty"`
 }

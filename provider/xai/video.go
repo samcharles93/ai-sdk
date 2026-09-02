@@ -54,14 +54,22 @@ type wireVideoError struct {
 
 // VideoOptions carries xAI-specific video generation options.
 type VideoOptions struct {
-	Mode               string   `json:"mode,omitempty"`
-	Resolution         string   `json:"resolution,omitempty"`
-	VideoURL           string   `json:"video_url,omitempty"`
-	ReferenceImageURLs []string `json:"reference_image_urls,omitempty"`
-	PollIntervalMs     int      `json:"poll_interval_ms,omitempty"`
+	Resolution     string `json:"resolution,omitempty"`
+	PollIntervalMs int    `json:"poll_interval_ms,omitempty"`
 	// PollTimeoutMs optionally limits the complete polling phase. Zero leaves
 	// polling bounded only by the GenerateVideo caller's context.
 	PollTimeoutMs int `json:"poll_timeout_ms,omitempty"`
+}
+
+// videoCompatOptions captures the legacy untyped xAI video fields so callers
+// can keep passing mode/video_url/reference_image_urls via the xAI
+// ProviderOptions bucket. These fields are now first-class on
+// video.GenerateVideoRequest; they only take effect when the typed request
+// fields are unset.
+type videoCompatOptions struct {
+	Mode               string   `json:"mode,omitempty"`
+	VideoURL           string   `json:"video_url,omitempty"`
+	ReferenceImageURLs []string `json:"reference_image_urls,omitempty"`
 }
 
 // --- Video Generation ----------------------------------------------------
@@ -83,31 +91,32 @@ func (p *Provider) GenerateVideo(ctx context.Context, req video.GenerateVideoReq
 		return video.GenerateVideoResponse{}, fmt.Errorf("xai: prompt is required: %w", video.ErrInvalidRequest)
 	}
 
-	// Parse provider options.
-	var opts VideoOptions
-	if rawOpts, ok := req.ProviderOptions["xai"].(map[string]any); ok {
-		if v, ok := rawOpts["mode"].(string); ok {
-			opts.Mode = v
-		}
-		if v, ok := rawOpts["resolution"].(string); ok {
-			opts.Resolution = v
-		}
-		if v, ok := rawOpts["video_url"].(string); ok {
-			opts.VideoURL = v
-		}
-		if urls, ok := rawOpts["reference_image_urls"].([]any); ok {
-			for _, u := range urls {
-				if s, ok := u.(string); ok {
-					opts.ReferenceImageURLs = append(opts.ReferenceImageURLs, s)
-				}
-			}
-		}
-		if v, ok := rawOpts["poll_interval_ms"].(float64); ok {
-			opts.PollIntervalMs = int(v)
-		}
-		if v, ok := rawOpts["poll_timeout_ms"].(float64); ok {
-			opts.PollTimeoutMs = int(v)
-		}
+	// Parse provider-specific knobs (resolution + polling).
+	opts, err := video.ProviderOptionsFor[VideoOptions](req.ProviderOptions, "xai")
+	if err != nil {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: parse video provider options: %w", err)
+	}
+
+	// Back-compat: read the legacy untyped mode/video_url/reference_image_urls
+	// only when the corresponding typed request fields are unset.
+	compat, err := video.ProviderOptionsFor[videoCompatOptions](req.ProviderOptions, "xai")
+	if err != nil {
+		return video.GenerateVideoResponse{}, fmt.Errorf("xai: parse video compat options: %w", err)
+	}
+
+	// Effective mode/source/references: typed request fields win over the
+	// legacy ProviderOptions bucket.
+	mode := string(req.Mode)
+	if mode == "" {
+		mode = compat.Mode
+	}
+	sourceVideo := req.SourceVideo
+	if sourceVideo == "" {
+		sourceVideo = compat.VideoURL
+	}
+	referenceImages := req.ReferenceImages
+	if len(referenceImages) == 0 {
+		referenceImages = compat.ReferenceImageURLs
 	}
 
 	// Build request body.
@@ -132,26 +141,28 @@ func (p *Provider) GenerateVideo(ctx context.Context, req video.GenerateVideoReq
 		body["resolution"] = opts.Resolution
 	}
 
-	// Video editing: pass source video URL.
-	if opts.Mode == "edit-video" && opts.VideoURL != "" {
-		body["video"] = map[string]any{"url": opts.VideoURL}
-	} else if opts.Mode == "extend-video" && opts.VideoURL != "" {
-		// Video extension: pass source video URL.
-		body["video"] = map[string]any{"url": opts.VideoURL}
+	// Aspect ratio.
+	if req.Ratio != "" {
+		body["ratio"] = req.Ratio
+	}
+
+	// Video editing/extension: pass the source video URL.
+	if sourceVideo != "" && (mode == "edit-video" || mode == "extend-video") {
+		body["video"] = map[string]any{"url": sourceVideo}
 	}
 
 	// Reference images for reference-to-video mode.
-	if opts.Mode == "reference-to-video" && len(opts.ReferenceImageURLs) > 0 {
-		referenceImages := make([]map[string]string, len(opts.ReferenceImageURLs))
-		for i, url := range opts.ReferenceImageURLs {
-			referenceImages[i] = map[string]string{"url": url}
+	if mode == "reference-to-video" && len(referenceImages) > 0 {
+		refs := make([]map[string]string, len(referenceImages))
+		for i, url := range referenceImages {
+			refs[i] = map[string]string{"url": url}
 		}
-		body["reference_images"] = referenceImages
+		body["reference_images"] = refs
 	}
 
-	// Determine endpoint based on mode.
+	// Determine endpoint based on the effective mode.
 	endpoint := p.baseURL + videoGenerationsAPIPath
-	switch opts.Mode {
+	switch mode {
 	case "edit-video":
 		endpoint = p.baseURL + "/v1/videos/edits"
 	case "extend-video":
