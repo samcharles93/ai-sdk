@@ -1,16 +1,58 @@
-# AGENTS.md — AI SDK (Go re-interpretation)
+# AGENTS.md — AI SDK
 
----
+Guidance for any coding agent working in this repository.
 
-## CORE | STRICT — Onion Model Architecture
+Keep every rule here harness-agnostic: name the required behaviour, not the tool
+that provides it (e.g. "spawn a fresh reviewer that did not write the code", not
+a specific sub-command).
+
+## Code Quality & Refactoring Standards
+
+- **Zero Patch Stacking:** Never apply more than two sequential fixes to the
+  same logic block. If a solution fails twice, scrap the block and rewrite it
+  cleanly.
+- **Root-Cause Fixes:** Fix invalid state at the producer, not via defensive
+  checks at the consumer.
+- **Architectural Simplicity:** Prefer a complete 20-line rewrite over a 5-line
+  band-aid that adds conditional complexity or obscures intent.
+- **Revert on Flail:** If an implementation becomes convoluted to satisfy edge
+  cases, discard the approach and select a simpler design.
+
+## What this is
+
+**ai-sdk** is a provider-agnostic Go SDK that unifies eight domains — chat, embedding, image
+generation (and image editing), speech synthesis, transcription, object
+(structure) generation, video generation, and reranking — behind typed domain
+interfaces (`chat.Provider`, `image.Provider`, `video.Provider`, ...). A pluggable
+`runtime` resolves `provider/model` references into working providers so
+applications (such as `archied`) can consume AI backends without hardcoding any
+implementation.
+
+The architecture sections below are authoritative for settled design. Read them
+before making non-trivial changes. `cmd/` is the composition root — it wires
+domains to concrete providers and starts the server.
+
+## Scope Discipline
+
+The architecture + package reference sections are the settled design.
+
+- **Settled design exists** → Implement it immediately with a diff. Do not
+  produce design prose. If a small detail is missing, ask the maintainer
+  directly.
+- **No settled design exists** → Write a decisive, 1-page design doc before
+  coding, or open a decision in beads.
+- **Strictly Prohibited:** Ownership ledgers, field-level inventories,
+  current-state traces, parity matrices for their own sake, and
+  planning/refactor tracking issues that duplicate beads.
+- **Solo Project Context:** Prefer the smallest workable change over extensive
+  defensive scaffolding.
+
+## Architecture (Onion Model) — CORE | STRICT
 
 This project follows the **onion model** (also known as hexagonal / ports &
-adapters).
-Each layer is responsible for a specific concern and **MUST NOT** know about any
-layer above it.
-
-Dependency direction: **inward only** — outer layers depend on inner layers,
-never the reverse.
+adapters). Each layer is responsible for a specific concern and **MUST NOT**
+know about any layer above it. Dependency direction: **inward only** — outer
+layers depend on inner layers, never the reverse.
 
 ```tree
 ┌──────────────────────────────────────────────────┐
@@ -54,7 +96,7 @@ never the reverse.
 ├──────────────────────────────────────────────────┤
 │  Domain          chat/                        │  Chat types + Provider interface
 │  Interfaces      embed/                       │  Embedding types + Provider
-│  ─────────────── image/                       │  Image gen types + Provider
+│  ─────────────── image/                       │  Image gen types + Provider (+ Editor)
 │  (INNERMOST)     speech/                      │  Speech synthesis types + Provider
 │                  transcribe/                   │  Transcription types + Provider
 │                  object/                      │  Object gen types + Provider
@@ -71,6 +113,7 @@ never the reverse.
 │                  provider/mistral/             │
 │                  provider/ollama/              │
 │                  provider/openai/              │
+│                  provider/openaiobject/        │
 │                  provider/perplexity/          │
 │                  provider/togetherai/          │
 │                  provider/xai/                 │
@@ -86,7 +129,8 @@ never the reverse.
      domain-layer code and does not import `core` or any other package.
 2. **Provider packages (`provider/*`)** MAY import domain packages
    (`chat`, `embed`) to implement their interfaces. They MUST NOT import
-   `core`, `ui`, `registry`, or `middleware`.
+   `core`, `ui`, `registry`, or `middleware`. A provider package MUST NOT import
+   another provider package.
 3. **Core/Services (`core/`)** MAY import domain packages and their
    interfaces. It MUST NOT import provider implementations or UI packages. It
    works strictly against interfaces.
@@ -147,6 +191,10 @@ Following
 - Domain packages define the `Provider` interface because they are consumed by
   higher layers.
 - HTTP handlers define service interfaces, not the other way around.
+- **Optional capabilities** are separate interfaces (e.g. `image.Editor`, an
+  optional image-edit capability) rather than methods bolted onto the base
+  `Provider`. Callers type-assert before use; keep the base `Provider` minimal so
+  every implementer builds without adding every optional method.
 
 ### Dependency Injection
 
@@ -155,19 +203,86 @@ Following
 - Changing a `New` signature produces compile-time errors showing all affected
   call sites.
 
----
+## Runtime Capabilities
+
+The `runtime` package is the provider-resolution layer. `ProviderSet` carries
+one optional field per domain (Chat, Embed, Image, Video, Object, Rerank,
+Speech, Transcribe); `Capability` constants name each; `Supports`/`Has` report
+what a class/provider can satisfy. Built-in classes are registered by
+`runtime.RegisterBuiltinClasses()`.
+
+`Runtime` exposes a high-level entry point per domain, mirroring the
+`ChatProvider`/`Chat` pattern:
+
+```go
+rt.Image(ctx, "xai/grok-image", image.GenerateImageRequest{...})      // image.GenerateImageResponse
+rt.Video(ctx, "xai/grok-video", video.GenerateVideoRequest{...})      // video.GenerateVideoResponse
+rt.Object(ctx, "openaiobject/gpt-4o-mini", object.Request{...})       // object.ObjectResult
+rt.Rerank(ctx, "cohere/rerank-v3.5", rerank.Request{...})             // rerank.Response
+rt.Speech(ctx, "openai/tts-1", speech.GenerateSpeechRequest{...})     // speech.GenerateSpeechResponse
+rt.Transcribe(ctx, "openai/whisper-1", transcribe.TranscribeRequest{...})
+```
+
+Each domain also exposes a `*Provider` resolver
+(`rt.ImageProvider(ctx, ref)` returns `(image.Provider, modelID, error)`).
+
+**Extensibility:**
+
+```go
+runtime.RegisterClass(myCustomClass{})
+```
+
+A custom `ProviderClass` does arbitrary setup (discovery, auth exchange, header
+injection) before returning a `ProviderSet`. This is the escape hatch for
+providers not covered by the built-in classes.
+
+## Provider Ecosystem
+
+Capabilities as resolvable through the runtime (the `Class` column is the
+`ProviderConfig.Class` value):
+
+| Provider      | Package                      | Class          | Chat | Embed | Image | Video | Object | Rerank | Speech | Transcribe |
+| ------------- | ---------------------------- | -------------- | ---- | ----- | ----- | ----- | ------ | ------ | ------ | ---------- |
+| OpenAI        | `provider/openai`            | `openai`       | ✅   | —     | —     | —     | —      | —      | ✅     | ✅         |
+| OpenAIObject  | `provider/openaiobject`      | `openaiobject` | —    | —     | —     | —     | ✅     | —      | —      | —          |
+| Anthropic     | `provider/anthropic`         | `anthropic`    | ✅   | —     | —     | —     | —      | —      | —      | —          |
+| Azure         | `provider/azure`             | `azure`        | ✅   | ✅    | ✅    | —     | —      | —      | —      | —          |
+| Cohere        | `provider/cohere`            | `cohere`       | ✅   | ✅    | —     | —     | —      | ✅     | —      | —          |
+| DeepSeek      | `provider/deepseek`          | `deepseek`     | ✅   | —     | —     | —     | —      | —      | —      | —          |
+| Gemini        | `provider/gemini`            | `gemini`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
+| Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | ✅     | —          |
+| Mistral       | `provider/mistral`           | `mistral`      | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
+| Ollama        | `provider/ollama`            | `ollama`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
+| Perplexity    | `provider/perplexity`        | `perplexity`   | ✅   | —     | —     | —     | —      | —      | —      | —          |
+| TogetherAI    | `provider/togetherai`        | `togetherai`   | ✅   | —     | ✅    | —     | —      | ✅     | —      | —          |
+| xAI           | `provider/xai`               | `xai`          | ✅   | —     | ✅    | ✅    | —      | —      | —      | —          |
+
+Notes:
+- TogetherAI chat routes through the OpenAI-compatible path; its native provider
+  implements image + rerank.
+- Azure chat/embed/image come from one `provider/azure` provider.
+- xAI implements chat + image + video from a single `*Provider`.
+- `openaiobject` is a standalone object-generation backend (OpenAI Chat
+  Completions with `response_format.json_schema`).
+
+**Extended Thinking Support:** Anthropic provider supports Claude extended
+thinking (`reasoning_effort`/`thinking_budget_tokens`) via
+`chat.Request.ProviderOptions`.
+
+This table reflects capabilities resolvable through the runtime. Additional
+provider capabilities may be added as packages evolve against domain interface
+contracts.
 
 ## UI Layer — Templ + Datastar
 
-The AI SDK UI layer ports the concepts from the JS AI SDK UI libraries
-(`useChat`, `Chat`, etc.)
-to server-side Go using [Templ](https://templ.guide) for HTML templating and
-[Datastar](https://data-star.dev)
-for real-time streaming reactivity via SSE.
+The UI layer maps the new AI SDK UI concepts to server-side Go using
+[Templ](https://templ.guide)
+for HTML templating and [Datastar](https://data-star.dev) for real-time
+streaming reactivity via SSE.
 
-### Key Concepts (ported from JS)
+### Key Concepts
 
-| JS Concept          | Go Equivalent                          |
+| Concept            | Go Equivalent                          |
 | ------------------- | -------------------------------------- |
 | `useChat()` hook    | `chat.Chat` struct with methods        |
 | `UIMessage`         | `chat.UIMessage` struct                |
@@ -180,14 +295,12 @@ for real-time streaming reactivity via SSE.
 
 ### Component Strategy
 
-Templ components from the JS component libraries are ported as `.templ` files  
+Templ components are written as `.templ` files
 using Datastar attributes for reactivity:
 
 - `data-signals` for local state
 - `data-on-*` for event handling
 - SSE streaming for real-time text deltas from `streamText`
-
----
 
 ## File Organization
 
@@ -198,6 +311,7 @@ ai-sdk-examples/            # Example programs demonstrating SDK usage
   object-generation/        #   Structured object generation
   speech-to-text/           #   Audio transcription example
   image-generation/         #   Image generation example
+  video-generation/         #   Video generation example
 cmd/ai-sdk/                 # Entrypoint — wires dependencies, starts server
 chat/                     # Domain: chat types & interface
 embed/                    # Domain: embedding types & interface
@@ -209,6 +323,7 @@ video/                    # Domain: video generation types & interface
 rerank/                   # Domain: reranking types & interface
 core/                     # Services: GenerateText, StreamText orchestration
 agent/                    # Agent: tool-loop agent over StreamText
+runtime/                  # Provider resolution, catalog, provider classes
 middleware/               # Middleware: wraps domain interfaces (logging, telemetry)
 registry/                 # Infrastructure: provider registry
 schema/                   # Infrastructure: JSON Schema builder
@@ -230,6 +345,7 @@ provider/                 # Providers: concrete implementations
   mistral/
   ollama/
   openai/
+  openaiobject/
   perplexity/
   togetherai/
   xai/
@@ -239,38 +355,13 @@ ui/                       # UI: Templ components & HTTP handlers
   handlers/               #   HTTP handler implementations
 ```
 
-## Provider Ecosystem
-
-| Provider   | Package                   | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
-| ---------- | ------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
-| OpenAI     | `provider/openai`     | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Anthropic  | `provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Azure      | `provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| Cohere     | `provider/cohere`     | ✅   | ✅    | —     | —      | —          | —      | ✅     | —     |
-| DeepSeek   | `provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Gemini     | `provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Groq       | `provider/groq`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Mistral    | `provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Ollama     | `provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Perplexity | `provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| TogetherAI | `provider/togetherai` | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| xAI        | `provider/xai`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
-
-**Extended Thinking Support:** Anthropic provider supports Claude extended
-thinking (`reasoning_effort`/`thinking_budget_tokens`) via
-`chat.Request.ProviderOptions`.
-
-This table reflects currently implemented interfaces in this repository.
-Additional provider capabilities may be added as packages evolve against domain
-interface contracts.
-
-## New Package Documentation
+## Package Reference
 
 ### `runtime/` — AI Provider Runtime
 
 The runtime layer resolves model references like `openai/gpt-5.4` into working
-provider instances. It is designed for applications (such as `tau`) that want to
-consume AI providers without hardcoding every implementation.
+provider instances. It is designed for applications (such as `archied`) that
+want to consume AI providers without hardcoding every implementation.
 
 ```tree
 runtime/
@@ -278,83 +369,109 @@ runtime/
   provider_class.go ProviderClass interface + class registry
   catalog.go        models.dev catalog loader + merge/overrides
   config.go         Declarative runtime configuration
-  runtime.go        Runtime: Chat, ChatStream, provider resolution
+  runtime.go        Runtime: Chat/ChatStream + per-domain entrypoints
   builtin.go        Built-in classes (openai-compatible, openai, anthropic, ...)
 ```
 
 **Key abstractions:**
 
 - `ProviderClass` — a factory that turns a `ProviderConfig` into a `ProviderSet`
-  of domain providers. Built-in classes include `openai-compatible` (any
-  OpenAI-compatible endpoint) and the known models.dev npm mappings (`openai`,
-  `anthropic`, `groq`, ...).
+  of domain providers. `ProviderSet` has one optional field per capability;
+  `Has/Capability` reports what a set satisfies.
 - `Catalog` — loads `https://models.dev/api.json`, merges overrides, and exposes
   provider/model metadata.
-- `Runtime` — public entry point: `Chat(ctx, "provider/model", opts)` and
-  `ChatStream(ctx, "provider/model", opts)`.
+- `Runtime` — public entry point: `Chat`, `ChatStream`, plus `*Provider`
+  resolvers and convenience methods for every domain.
 
-**Extensibility:**
+**Trap:** A class must advertise a capability in its `caps` AND actually return a
+provider that satisfies it. Advertising a capability whose builder returns a
+provider that does not implement the interface leaves the `ProviderSet` field nil
+(no half-wired set). When building a single provider that implements several
+interfaces, prefer the combined builder + type-assertion so one instance is
+shared.
 
-```go
-runtime.RegisterClass(myCustomClass{})
-```
-
-Custom classes can perform arbitrary setup (discovery, auth exchange, header
-injection) before returning domain providers. This is the escape hatch for
-providers like OpenShift MaaS that are not directly covered by the built-in
-classes.
-
-### `object/` — Object Generation Domain
-
-The object generation domain provides types and interfaces for structured JSON
-output from language models. It mirrors the AI SDK's `generateObject` function.
+### `image/` — Image Generation + Editing
 
 ```tree
-object/
-  client.go           Thin Client facade with nil-guard
+image/
+  client.go           Thin Client facade (GenerateImage + EditImage) with nil-guard
   doc.go              Package-level documentation
-  errors.go           Sentinel errors (ErrNoProvider, ErrInvalidRequest)
-  provider.go         Provider interface (GenerateObject method)
+  errors.go           Sentinel errors (ErrNoProvider, ErrEditNotSupported, ...)
+  provider.go         Provider interface (GenerateImage) + optional Editor interface
   provider_options.go Provider-specific options helpers
-  types.go            Request, Response, Object, ObjectResult types
+  types.go            GenerateImageRequest/Response, EditImageRequest/Response
 ```
 
-**Key types:**
+**Key interfaces:**
 
-- `Provider` interface — `GenerateObject(ctx, req) (ObjectResult, error)`
-- `Request` — Model, Prompt, MaxTokens, ProviderOptions
-- `Response` — ID, Model, Object, Warnings
-- `ObjectResult` — type alias for `any`; providers return concrete types
+- `Provider` — `GenerateImage(ctx, req)` (required)
+- `Editor` — `EditImage(ctx, req)` (optional capability; type-assert to use, or
+  call `image.Client.EditImage` which returns `ErrEditNotSupported` when the
+  provider can't edit).
 
-**Usage via core:**
+**Trap:** Keep image editing on the optional `Editor` interface, not on
+`Provider`. Widening `Provider` forces every provider (azure, togetherai, xai)
+and every middleware wrapper to implement the method, breaking the build for
+non-editing backends.
 
-```go
-result, err := core.GenerateObject(ctx, provider, objRequest)
-```
-
-### `video/` — Video Generation Domain
-
-Types and interfaces for video generation from text prompts.
+### `video/` — Video Generation
 
 ```tree
 video/
   client.go           Thin Client facade with nil-guard
   doc.go              Package-level documentation
   errors.go           Sentinel errors
-  provider.go         Provider interface (GenerateVideo method)
-  types.go            GenerateVideoRequest, GenerateVideoResponse, VideoResult
+  provider.go         Provider interface (GenerateVideo)
+  types.go            GenerateVideoRequest, GenerateVideoResponse, VideoMode
 ```
 
 **Key types:**
 
-- `GenerateVideoRequest` — Model, Prompt, Duration, Resolution, FrameRate
-- `GenerateVideoResponse` — Videos ([]VideoResult), Warnings
-- `VideoResult` — Data, URL, MediaType
+- `GenerateVideoRequest` — Model, Prompt, Duration, Resolution, FrameRate,
+  plus typed `Mode` (`VideoModeTextToVideo`/`EditVideo`/`ExtendVideo`/
+  `ReferenceToVideo`), `SourceVideo`, `ReferenceImages`, `Ratio`.
+- `VideoResult` — Data, URL, MediaType. Async providers (e.g. xAI) poll
+  internally inside `GenerateVideo`, so the call blocks until the video is ready
+  or fails.
+
+**Trap:** Preserve back-compat: providers should read typed mode/source/reference
+fields first and fall back to legacy `ProviderOptions["xai"]` keys only when the
+typed fields are unset. Do not add a competing `Duration` int-seconds field
+alongside the existing string field — it creates ambiguity.
+
+### `object/` — Object Generation Domain
+
+```tree
+object/
+  client.go           Thin Client facade with nil-guard
+  doc.go              Package-level documentation
+  errors.go           Sentinel errors
+  provider.go         Provider interface (GenerateObject + StreamObject)
+  provider_options.go Provider-specific options helpers
+  stream.go           ObjectStream iterator (Next/Close), ObjectChunk
+  types.go            Request, Response, Object, ObjectResult
+```
+
+**Key types:**
+
+- `Provider` interface — `GenerateObject(ctx, req)` + `StreamObject(ctx, req)`
+- `Request` — Model, Prompt, MaxTokens, Schema, ProviderOptions
+- `ObjectResult` — type alias for `any`; providers return `object.Object` (or a
+  richer shape). `core.GenerateTypedObject[T]`/`StreamTypedObject[T]` derive the
+  schema from `T` and strictly decode.
+
+**Usage via core:**
+
+```go
+result, err := core.GenerateObject(ctx, provider, objRequest)
+value, err := core.GenerateTypedObject[MyType](ctx, provider, objRequest)
+```
+
+**Trap:** A provider package must not import `core` (output would be an onion
+violation). Validate `GenerateTypedObject` integration in a throwaway test
+package and delete it, keeping the provider→core boundary clean.
 
 ### `agent/` — Agent Orchestration
-
-The agent package provides a tool-loop agent that orchestrates multi-step
-reasoning and tool execution over `core.StreamText`.
 
 ```tree
 agent/
@@ -368,72 +485,22 @@ agent/
 - `Agent` struct — Provider, Model, System, Tools, MaxSteps, Temperature,
   MaxTokens
 - `Agent.Run(ctx, prompt)` — returns `<-chan StreamEvent`
-- `RunAgent(ctx, provider, prompt, tools, maxSteps)` — convenience function
 - `StreamEvent` — Type-based event dispatch (TextDelta, ToolCall, ToolResult,
-  etc.)
+  Finish, Error, Abort)
 
-**Event system:**
-
-```go
-switch ev.Type {
-case agent.EventTextDelta:   // streaming text
-case agent.EventToolCall:    // tool invocation requested
-case agent.EventToolResult:  // tool execution complete
-case agent.EventFinish:      // generation complete
-case agent.EventError:       // stream error
-case agent.EventAbort:       // context cancelled
-}
-```
-
-The agent does NOT execute tools itself — `core.StreamText` handles the full
-tool loop internally. The agent concentrates on event translation and lifecycle
+The agent does NOT execute tools itself — `core.StreamText` handles the full tool
+loop internally. The agent concentrates on event translation and lifecycle
 management.
 
 ### `upload/` — File Upload Utilities
 
-Parses multipart form data and provides file type detection.
-
-```tree
-upload/
-  doc.go              Package-level documentation
-  skill.go            Skill-specific upload helpers
-  upload.go           ParseMultipartForm, DetectMediaType, ToBase64
-  upload_test.go      Tests
-```
-
-**Key functions:**
-
-- `ParseMultipartForm(r *http.Request, maxMemory int64) ([]File, error)`
-- `DetectMediaType(data []byte) string` — PNG, JPEG, GIF, PDF detection
-- `ToBase64(f File) string`
-
-**File type:**
-
 ```go
-type File struct {
-    Name      string
-    Data      []byte
-    MediaType string
-    Size      int64
-}
+ParseMultipartForm(r *http.Request, maxMemory int64) ([]File, error)
+DetectMediaType(data []byte) string  // PNG, JPEG, GIF, PDF detection
+ToBase64(f File) string
 ```
 
 ### `util/` — Prompt Helpers and Token Counting
-
-Shared utilities for prompt construction and token estimation.
-
-```tree
-util/
-  doc.go              Package-level documentation
-  id.go               ID generation
-  prompt.go           FormatMessages, SystemPrompt, UserPrompt, etc.
-  prompt_test.go      Tests
-  stream.go           Stream utilities
-  tokenizer.go        Token counting helpers
-  tokenizer_test.go   Tests
-```
-
-**Prompt construction:**
 
 ```go
 util.SystemPrompt("You are a helpful assistant.")
@@ -445,54 +512,23 @@ util.FormatMessages(messages) // human-readable formatting
 
 ### `error/` — Sentinel Errors
 
-Package-level sentinel error values for use across the project.
-
-```tree
-error/
-  errors.go           Sentinel error variables
-  errors_test.go      Tests
-```
-
-**Sentinel errors:**
-
 ```go
-ErrInvalidInput      = errors.New("invalid input")
-ErrTimeout           = errors.New("timeout")
-ErrCancelled         = errors.New("cancelled")
-ErrNotImplemented    = errors.New("not implemented")
-ErrProviderNotAvailable = errors.New("provider not available")
-ErrModelNotFound     = errors.New("model not found")
-ErrQuotaExceeded     = errors.New("quota exceeded")
+ErrInvalidInput           = errors.New("invalid input")
+ErrTimeout                = errors.New("timeout")
+ErrCancelled              = errors.New("cancelled")
+ErrNotImplemented         = errors.New("not implemented")
+ErrProviderNotAvailable   = errors.New("provider not available")
+ErrModelNotFound          = errors.New("model not found")
+ErrQuotaExceeded          = errors.New("quota exceeded")
 ```
 
 ### `logger/` — Structured Logging
 
-Minimal structured logging abstraction. Adaptable to `log/slog`.
-
-```tree
-logger/
-  logger.go           Logger interface, slogLogger adapter, NoopLogger
-  logger_test.go      Tests
-```
-
-**Key types:**
-
-- `Logger` interface —
-  `Info(msg, attrs...), Error(msg, attrs...), Debug(msg, attrs...)`
+- `Logger` interface — `Info(msg, attrs...), Error(msg, attrs...), Debug(msg, attrs...)`
 - `NewSlogLogger(l *slog.Logger) Logger` — adapts stdlib slog
 - `NoopLogger` — no-op implementation for tests
 
 ### `telemetry/` — OpenTelemetry-Compatible Tracing
-
-Minimal tracing interfaces compatible with OpenTelemetry conventions.
-
-```tree
-telemetry/
-  doc.go              Package-level documentation
-  telemetry.go        Span, Tracer interfaces, NoopSpan, NoopTracer
-```
-
-**Key interfaces:**
 
 ```go
 type Span interface {
@@ -500,47 +536,28 @@ type Span interface {
     SetAttribute(key, value string)
     RecordError(err error)
 }
-
 type Tracer interface {
     Start(ctx context.Context, name string) (context.Context, Span)
 }
 ```
 
-- `NoopSpan` / `NoopTracer` — zero-cost no-op implementations
-- `DefaultTracer` — package-level `NoopTracer{}` fallback
+`NoopSpan` / `NoopTracer` are zero-cost no-ops; `DefaultTracer` is the package
+fallback.
 
 ### `middleware/` — Provider Middleware
 
-Middleware layer wrapping domain Provider interfaces. Supports composition via
-`Chain()`.
-
-```tree
-middleware/
-  doc.go              Package-level documentation
-  middleware.go       ChatMiddleware type, ChatRequestHook, ChatResponseHook, Chain()
-  telemetry.go        TelemetryMiddleware (spans Chat/ChatStream calls)
-  telemetry_test.go   Tests
+```go
+type ChatMiddleware func(next chat.Provider) chat.Provider
+func Chain(middlewares ...ChatMiddleware) ChatMiddleware // composes left-to-right
 ```
 
-**Key patterns:**
-
-- `ChatMiddleware func(next chat.Provider) chat.Provider`
-- `Chain(middlewares ...ChatMiddleware) ChatMiddleware` — composes left-to-right
-- `TelemetryMiddleware` — wraps provider with OTel spans for Chat and ChatStream
+- `TelemetryMiddleware` — wraps provider with OTel spans for Chat/ChatStream
 - `ChatRequestHook` / `ChatResponseHook` — interception points
+- Generation domains have per-domain wrappers (`retry_image`,
+  `telemetry_video`, `circuitbreaker_object`, `rerank`, etc.); image editing has
+  `*_image_edit` wrappers.
 
 ### `uimessage/sse/` — SSE Streaming
-
-Server-Sent Events wire format for the AI SDK UI message stream protocol.
-
-```tree
-uimessage/sse/
-  sse_test.go         Tests
-  transform.go        Core text-stream to chunk channel adaptation
-  writer.go           SSE Writer, Headers, Pipe
-```
-
-**Key components:**
 
 - `Writer` — streams `uimessage.Chunk` values as SSE `data:` events
 - `NewWriter(rw http.ResponseWriter)` — applies headers, flushes automatically
@@ -548,6 +565,103 @@ uimessage/sse/
   (`X-Vercel-Ai-Ui-Message-Stream: v1`)
 - `Pipe(ctx, src, w)` — drains chunk channel into SSE writer
 - `FromTextStream` — adapts core text stream into UI message chunks
+
+## Build & Test
+
+Commands are defined in `Taskfile.yaml` (Go 1.26.2, `gofumpt`, `goimports`,
+`golangci-lint`, `staticcheck`, `go vet`, `deadcode`).
+
+```bash
+task check        # gofumpt -w . + go vet + staticcheck + golangci-lint + deadcode + go test ./...
+                  #   ⚠ THE DEFINITIVE GATE — run this before calling a change done
+task test         # go test ./...
+task test:race    # go test -race ./...
+task test:cover   # go test -coverprofile=coverage.out ./...
+task fmt          # gofumpt -w . && goimports -w .
+task vet          # go vet ./...
+task lint         # golangci-lint run ./...
+task staticcheck  # staticcheck ./...
+task deadcode     # golangci-lint run --tests=false --enable-only=unused,staticcheck ./...
+task tidy         # go mod tidy (root + ai-sdk-examples)
+task clean        # remove coverage.out
+```
+
+Single package/test runs:
+
+```bash
+go test ./runtime/... -run TestProviderSetHas -v -count=1
+```
+
+## Repository Hygiene
+
+- **Generated assets are LAW:** Never hand-edit, revert, or fight generated
+  files — `.templ` output (`*_templ.go`), schema outputs, and any `go generate`
+  artifact. Re-run the generator and commit the result verbatim.
+- **Ignored paths:** Never commit build artifacts, binaries, `coverage.out`,
+  `.serena/`, `.beads/`, or IDE/editor files.
+- **Scratch files:** Place scratch files strictly in `/tmp` or the harness
+  scratch space. Never put scratch files in the working tree.
+- **Conventional Commits:** Scope by package — `feat(runtime): ...`,
+  `feat(image): ...`, `fix(xai): ...`, `chore(docs): ...`. One logical change per
+  commit; discrete features get separate commits.
+- **Commit policy:** Commit finished, gate-clean changes (`task check` passing +
+  a clean review) **without asking**. This repo works in branch/worktree; commit
+  each validated slice so nothing is left uncommitted. Push only when instructed.
+
+## Development Protocol
+
+1. **Red (Failing Test):** Write failing test cases first using table-driven tests
+   against target behaviour. Verify the failure originates from test assertions,
+   not compilation errors.
+2. **Green (Implementation):** Implement minimal code to satisfy the failing
+   tests.
+3. **Quality Gate:** Run `task check`.
+4. **Formatting is LAW:** Adopt all formatting and simplification changes from
+   `task fmt` (`gofumpt` + `goimports`) verbatim. Never revert or fight canonical
+   linter/formatter diffs.
+5. **Adversarial Verification:** Run a verification pass in an isolated reviewer
+   context assuming all changes are incorrect until verified. Check: dead code,
+   unchecked errors, hardcoded constants, missing error paths, nil pointers,
+   goroutine leaks, race conditions, and dependency-direction (onion) violations.
+6. **Linter Guard:** When fixing lint findings, preserve the existing semantics
+   (e.g. keep boolean predicates alongside `errors.As`; don't duplicate slice
+   elements when extracting loops). Do not break text-generation paths while
+   changing a provider's error handling.
+
+## Issue Tracking (Beads)
+
+All task management is tracked via **bd (beads)**. Do not write local Markdown
+TODO lists or use non-Beads trackers.
+
+```bash
+bd ready               # List unclaimed work
+bd show <id>           # View issue details
+bd update <id> --claim # Claim an issue
+bd close <id>          # Mark issue complete
+bd remember            # Persist cross-session architectural facts
+```
+
+`bd prime` injects full workflow context. Use `bd remember` for knowledge
+retention. Issues live in a local Dolt DB; `.beads/issues.jsonl` is an export.
+
+## Session Completion Protocol
+
+1. **Log remaining work:** File new items via `bd` for identified debt or
+   follow-up tasks.
+2. **Run gate:** Verify `task check` passes completely clean.
+3. **Update tracker:** Close finished issues via `bd close <id>`.
+4. **Commit (always):**
+
+   ```bash
+   git add <scoped-files>
+   git commit -m "feat(scope): description"
+   ```
+
+   Commit each validated slice as you go — do not leave work uncommitted.
+5. **Sync & Push Policy:** Push to git remotes and run `bd dolt push` only when
+   explicitly instructed.
+6. **Handoff:** Report changed files, gate verification results, and active
+   issue states.
 
 ## Examples
 
@@ -559,7 +673,8 @@ Example programs demonstrating SDK usage live in `ai-sdk-examples/`:
 | `anthropic-agent/`   | Agent with mock weather tool and streaming output |
 | `object-generation/` | Structured object generation API pattern          |
 | `speech-to-text/`    | Audio transcription API pattern                   |
-| `image-generation/`  | Image generation API pattern (Azure, TogetherAI)  |
+| `image-generation/`  | Image generation API pattern (TogetherAI)         |
+| `video-generation/`  | Video generation API pattern (xAI)                |
 
 Run examples from the workspace root:
 
@@ -574,6 +689,7 @@ ANTHROPIC_API_KEY=sk-ant-... go run ./ai-sdk-examples/anthropic-agent/ "What is 
 go run ./ai-sdk-examples/object-generation/
 go run ./ai-sdk-examples/speech-to-text/
 go run ./ai-sdk-examples/image-generation/
+go run ./ai-sdk-examples/video-generation/
 ```
 
 ## References
@@ -582,83 +698,3 @@ go run ./ai-sdk-examples/image-generation/
 - AI SDK Core: <https://ai-sdk.dev/docs/reference/ai-sdk-core>
 - AI SDK UI useChat: <https://ai-sdk.dev/docs/reference/ai-sdk-core/ui-message>
 - Datastar: <https://data-star.dev>
-
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:46cd31e7 -->
-## Beads Issue Tracker
-
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
-
-## Agent Context Profiles
-
-The managed Beads block is task-tracking guidance, not permission to override repository, user, or orchestrator instructions.
-
-- **Conservative (default)**: Use `bd` for task tracking. Do not run git commits, git pushes, or Dolt remote sync unless explicitly asked. At handoff, report changed files, validation, and suggested next commands.
-- **Minimal**: Keep tool instruction files as pointers to `bd prime`; use the same conservative git policy unless active instructions say otherwise.
-- **Team-maintainer**: Only when the repository explicitly opts in, agents may close beads, run quality gates, commit, and push as part of session close. A current "do not commit" or "do not push" instruction still wins.
-
-## Session Completion
-
-This protocol applies when ending a Beads implementation workflow. It is subordinate to explicit user, repository, and orchestrator instructions.
-
-1. **File issues for remaining work** - Create beads for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **Handle git/sync by active profile**:
-   ```bash
-   # Conservative/minimal/default: report status and proposed commands; wait for approval.
-   git status
-
-   # Team-maintainer opt-in only, unless current instructions forbid it:
-   git pull --rebase
-   bd dolt push
-   git push
-   git status
-   ```
-5. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
-
-**Critical rules:**
-- Explicit user or orchestrator instructions override this Beads block.
-- Do not commit or push without clear authority from the active profile or the current user request.
-- If a required sync or push is blocked, stop and report the exact command and error.
-<!-- END BEADS INTEGRATION -->
-
-<!-- BEGIN BEADS CODEX SETUP: generated by bd setup codex -->
-## Beads Issue Tracker
-
-Use Beads (`bd`) for durable task tracking in repositories that include it. Use the `beads` skill at `.agents/skills/beads/SKILL.md` (project install) or `~/.agents/skills/beads/SKILL.md` (global install) for Beads workflow guidance, then use the `bd` CLI for issue operations.
-
-### Quick Reference
-
-```bash
-bd ready                # Find available work
-bd show <id>            # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>           # Complete work
-bd prime                # Refresh Beads context
-```
-
-### Rules
-
-- Use `bd` for all task tracking; do not create markdown TODO lists.
-- Run `bd prime` when Beads context is missing or stale. Codex 0.129.0+ can load Beads context automatically through native hooks; use `/hooks` to inspect or toggle them.
-- Keep persistent project memory in Beads via `bd remember`; do not create ad hoc memory files.
-
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
-<!-- END BEADS CODEX SETUP -->

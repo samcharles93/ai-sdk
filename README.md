@@ -1,7 +1,6 @@
 # AI SDK (Go)
 
-A provider-agnostic AI SDK for Go — a re-interpretation of the
-[AI SDK](https://ai-sdk.dev) ecosystem for the Go programming language. Chat,
+A provider-agnostic AI SDK for Go. Chat,
 embeddings, image generation, speech, transcription, structured object
 generation, video, and reranking — all through a unified, type-safe,
 interface-driven API.
