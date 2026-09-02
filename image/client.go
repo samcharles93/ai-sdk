@@ -35,3 +35,22 @@ func (c *Client) GenerateImage(ctx context.Context, req GenerateImageRequest) (G
 	}
 	return c.p.GenerateImage(ctx, req)
 }
+
+// EditImage edits one or more existing images by delegating to the
+// underlying Provider's EditImage implementation. If the Client or its
+// Provider is nil, it returns ErrNoProvider. If the Provider does not
+// support image editing (it does not implement [Editor]), it returns
+// ErrEditNotSupported.
+func (c *Client) EditImage(ctx context.Context, req EditImageRequest) (EditImageResponse, error) {
+	if c == nil || c.p == nil {
+		return EditImageResponse{}, ErrNoProvider
+	}
+	ed, ok := c.p.(Editor)
+	if !ok {
+		return EditImageResponse{}, ErrEditNotSupported
+	}
+	if req.Prompt == "" {
+		return EditImageResponse{}, ErrInvalidRequest
+	}
+	return ed.EditImage(ctx, req)
+}

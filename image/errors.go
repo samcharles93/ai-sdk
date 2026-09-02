@@ -24,4 +24,8 @@ var (
 	// ErrContentFiltered indicates the provider rejected the prompt due to
 	// content filtering.
 	ErrContentFiltered = errors.New("image: content filtered")
+
+	// ErrEditNotSupported indicates the Provider does not implement image
+	// editing (it does not satisfy the optional [Editor] interface).
+	ErrEditNotSupported = errors.New("image: image editing not supported")
 )

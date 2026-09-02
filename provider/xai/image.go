@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/samcharles93/ai-sdk/chat"
 	errx "github.com/samcharles93/ai-sdk/error"
@@ -168,10 +171,120 @@ func (p *Provider) GenerateImage(ctx context.Context, req image.GenerateImageReq
 	return out, nil
 }
 
+// EditImage edits one or more existing images using xAI's image edits API.
+// The source image (and optional mask) are sent as multipart file parts; it
+// satisfies image.Editor.
+func (p *Provider) EditImage(ctx context.Context, req image.EditImageRequest) (image.EditImageResponse, error) {
+	if req.Model == "" {
+		return image.EditImageResponse{}, fmt.Errorf("xai: model is required: %w", image.ErrInvalidRequest)
+	}
+	if req.Prompt == "" {
+		return image.EditImageResponse{}, fmt.Errorf("xai: prompt is required: %w", image.ErrInvalidRequest)
+	}
+	if len(req.Image.Data) == 0 && req.Image.URL == "" {
+		return image.EditImageResponse{}, fmt.Errorf("xai: source image is required: %w", image.ErrInvalidRequest)
+	}
+
+	opts, err := image.ProviderOptionsFor[ImageOptions](req.ProviderOptions, "xai")
+	if err != nil {
+		return image.EditImageResponse{}, fmt.Errorf("xai: parse provider options: %w", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	if err := writer.WriteField("model", req.Model); err != nil {
+		return image.EditImageResponse{}, fmt.Errorf("xai: write model field: %w", err)
+	}
+	if err := writer.WriteField("prompt", req.Prompt); err != nil {
+		return image.EditImageResponse{}, fmt.Errorf("xai: write prompt field: %w", err)
+	}
+	if req.N > 0 {
+		if err := writer.WriteField("n", strconv.Itoa(req.N)); err != nil {
+			return image.EditImageResponse{}, fmt.Errorf("xai: write n field: %w", err)
+		}
+	}
+	if req.Size != "" {
+		if err := writer.WriteField("size", req.Size); err != nil {
+			return image.EditImageResponse{}, fmt.Errorf("xai: write size field: %w", err)
+		}
+	}
+	if opts.OutputFormat != "" {
+		if err := writer.WriteField("response_format", opts.OutputFormat); err != nil {
+			return image.EditImageResponse{}, fmt.Errorf("xai: write response_format field: %w", err)
+		}
+	}
+
+	if len(req.Image.Data) > 0 {
+		part, err := writer.CreateFormFile("image", sourceImageFilename(req.Image))
+		if err != nil {
+			return image.EditImageResponse{}, fmt.Errorf("xai: build image part: %w", err)
+		}
+		if _, err := part.Write(req.Image.Data); err != nil {
+			return image.EditImageResponse{}, fmt.Errorf("xai: write image part: %w", err)
+		}
+	}
+	if len(req.Mask.Data) > 0 {
+		part, err := writer.CreateFormFile("mask", sourceImageFilename(req.Mask))
+		if err != nil {
+			return image.EditImageResponse{}, fmt.Errorf("xai: build mask part: %w", err)
+		}
+		if _, err := part.Write(req.Mask.Data); err != nil {
+			return image.EditImageResponse{}, fmt.Errorf("xai: write mask part: %w", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return image.EditImageResponse{}, fmt.Errorf("xai: close multipart body: %w", err)
+	}
+
+	url := p.baseURL + imageEditsAPIPath
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &body)
+	if err != nil {
+		return image.EditImageResponse{}, fmt.Errorf("xai: build edit request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
+	httpReq.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return image.EditImageResponse{}, fmt.Errorf("xai: http do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return image.EditImageResponse{}, classifyImageHTTPError(resp)
+	}
+
+	var wr wireImageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+		return image.EditImageResponse{}, fmt.Errorf("xai: decode edit response: %w", err)
+	}
+
+	out := image.EditImageResponse{
+		Images: make([]image.GeneratedImage, len(wr.Data)),
+	}
+	mediaType := outputFormatToMediaType(opts.OutputFormat)
+	for i, d := range wr.Data {
+		img := image.GeneratedImage{}
+		if d.B64JSON != "" {
+			img.Base64 = d.B64JSON
+			img.MediaType = mediaType
+		}
+		if d.URL != "" {
+			img.URL = d.URL
+		}
+		out.Images[i] = img
+	}
+
+	return out, nil
+}
+
 func classifyImageHTTPError(resp *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	snippet := chat.SanitizeErrorBody(b)
 	code := resp.StatusCode
+	bodyLower := strings.ToLower(snippet)
 	var base error
 	retryable := false
 	switch {
@@ -183,6 +296,8 @@ func classifyImageHTTPError(resp *http.Response) error {
 	case code >= 500:
 		base = image.ErrProviderUnavailable
 		retryable = true
+	case code == 400 && isContentFiltered(bodyLower):
+		base = image.ErrContentFiltered
 	default:
 		base = image.ErrProviderUnavailable
 		retryable = true
@@ -190,8 +305,42 @@ func classifyImageHTTPError(resp *http.Response) error {
 	return errx.NewProviderError("xai", resp, base, snippet, retryable)
 }
 
-// Compile-time assertion that *Provider satisfies image.Provider.
+// isContentFiltered reports whether a sanitised, lower-cased error body
+// indicates a content-filter/safety rejection (typically HTTP 400).
+func isContentFiltered(bodyLower string) bool {
+	for _, marker := range []string{
+		"content_filter",
+		"content_policy_violation",
+		"content policy",
+		"safety system",
+		"filtered",
+	} {
+		if strings.Contains(bodyLower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// Compile-time assertions that *Provider satisfies image.Provider and
+// image.Editor.
 var _ image.Provider = (*Provider)(nil)
+var _ image.Editor = (*Provider)(nil)
+
+// sourceImageFilename derives a multipart filename for an image/mask part
+// from its media type, defaulting to PNG.
+func sourceImageFilename(src image.EditImageSource) string {
+	switch src.MediaType {
+	case "image/jpeg", "image/jpg":
+		return "image.jpg"
+	case "image/webp":
+		return "image.webp"
+	case "image/gif":
+		return "image.gif"
+	default:
+		return "image.png"
+	}
+}
 
 // outputFormatToMediaType maps xAI output_format values to MIME types.
 func outputFormatToMediaType(format string) string {

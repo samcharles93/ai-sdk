@@ -13,3 +13,16 @@ type Provider interface {
 	// GenerateImage creates one or more images from the given prompt.
 	GenerateImage(ctx context.Context, req GenerateImageRequest) (GenerateImageResponse, error)
 }
+
+// Editor is implemented by image providers that support editing existing
+// images. It is an OPTIONAL capability: not every [Provider] will implement
+// it, so callers must type-assert a [Provider] to [Editor] before attempting
+// an edit (or use [Client.EditImage], which performs this check automatically
+// and returns [ErrEditNotSupported] when the provider can't edit).
+type Editor interface {
+	// Name returns a short, stable identifier for the provider.
+	Name() string
+
+	// EditImage edits one or more existing images based on the given request.
+	EditImage(ctx context.Context, req EditImageRequest) (EditImageResponse, error)
+}

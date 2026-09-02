@@ -39,3 +39,45 @@ type GenerateImageResponse struct {
 	// Warnings contains non-fatal warnings.
 	Warnings []string `json:"warnings,omitempty"`
 }
+
+// EditImageRequest is a provider-agnostic image editing request. It mirrors
+// GenerateImageRequest's conventions (model, prompt, size, provider options)
+// and adds the source image (and optional mask) to edit.
+type EditImageRequest struct {
+	// Model identifies the image editing model to use.
+	Model string `json:"model"`
+	// Prompt describes the desired edit.
+	Prompt string `json:"prompt"`
+	// Image is the source image to edit.
+	Image EditImageSource `json:"image,omitempty"`
+	// Mask is an optional image mask marking the region(s) to edit. When
+	// provided, only the masked area is modified.
+	Mask EditImageSource `json:"mask,omitempty"`
+	// N is the number of edited images to return. Defaults to 1.
+	N int `json:"n,omitempty"`
+	// Size is the requested output dimensions (e.g. "1024x1024").
+	Size string `json:"size,omitempty"`
+	// AspectRatio is the target aspect ratio (e.g. "16:9").
+	AspectRatio string `json:"aspect_ratio,omitempty"`
+	// ProviderOptions carries provider-specific options.
+	ProviderOptions map[string]any `json:"provider_options,omitempty"`
+}
+
+// EditImageSource is a referenced source image or mask: either inline bytes
+// or a provider-hosted URL.
+type EditImageSource struct {
+	// Data contains the raw image bytes.
+	Data []byte `json:"data,omitempty"`
+	// URL is a provider-hosted URL for the image.
+	URL string `json:"url,omitempty"`
+	// MediaType is the MIME type of Data (e.g. "image/png").
+	MediaType string `json:"media_type,omitempty"`
+}
+
+// EditImageResponse is the result of an image editing request.
+type EditImageResponse struct {
+	// Images contains the edited images.
+	Images []GeneratedImage `json:"images"`
+	// Warnings contains non-fatal warnings.
+	Warnings []string `json:"warnings,omitempty"`
+}
