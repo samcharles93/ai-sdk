@@ -10,6 +10,8 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
+	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/object"
 	"github.com/samcharles93/ai-sdk/provider/anthropic"
 	"github.com/samcharles93/ai-sdk/provider/azure"
 	"github.com/samcharles93/ai-sdk/provider/cohere"
@@ -19,10 +21,14 @@ import (
 	"github.com/samcharles93/ai-sdk/provider/mistral"
 	"github.com/samcharles93/ai-sdk/provider/ollama"
 	"github.com/samcharles93/ai-sdk/provider/openai"
+	"github.com/samcharles93/ai-sdk/provider/openaiobject"
 	"github.com/samcharles93/ai-sdk/provider/perplexity"
+	"github.com/samcharles93/ai-sdk/provider/togetherai"
 	"github.com/samcharles93/ai-sdk/provider/xai"
+	"github.com/samcharles93/ai-sdk/rerank"
 	"github.com/samcharles93/ai-sdk/speech"
 	"github.com/samcharles93/ai-sdk/transcribe"
+	"github.com/samcharles93/ai-sdk/video"
 )
 
 // RegisterBuiltinClasses registers the provider classes and auth resolvers
@@ -41,6 +47,7 @@ func RegisterBuiltinClasses() {
 	MustRegisterClass(mistralClass())
 	MustRegisterClass(ollamaClass())
 	MustRegisterClass(openaiClass())
+	MustRegisterClass(openaiobjectClass())
 	MustRegisterClass(perplexityClass())
 	MustRegisterClass(togetheraiClass())
 	MustRegisterClass(xaiClass())
@@ -114,6 +121,10 @@ type simpleClass struct {
 	name            string
 	caps            []Capability
 	buildChat       func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error)
+	buildImage      func(apiKey, baseURL string, httpClient *http.Client) (image.Provider, error)
+	buildVideo      func(apiKey, baseURL string, httpClient *http.Client) (video.Provider, error)
+	buildObject     func(apiKey, baseURL string, httpClient *http.Client) (object.Provider, error)
+	buildRerank     func(apiKey, baseURL string, httpClient *http.Client) (rerank.Provider, error)
 	buildSpeech     func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error)
 	buildTranscribe func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error)
 	build           func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error)
@@ -152,6 +163,30 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 		if c.Supports(CapabilityEmbed) {
 			set.Embed = p
 		}
+		// A provider built through the combined builder may also satisfy
+		// generation interfaces (image/video/object/rerank). Surface them
+		// only when the class advertises the capability, so a nil assertion
+		// is simply skipped rather than producing a half-wired set.
+		if c.Supports(CapabilityImage) {
+			if img, ok := p.(image.Provider); ok {
+				set.Image = img
+			}
+		}
+		if c.Supports(CapabilityVideo) {
+			if vid, ok := p.(video.Provider); ok {
+				set.Video = vid
+			}
+		}
+		if c.Supports(CapabilityObject) {
+			if obj, ok := p.(object.Provider); ok {
+				set.Object = obj
+			}
+		}
+		if c.Supports(CapabilityRerank) {
+			if rk, ok := p.(rerank.Provider); ok {
+				set.Rerank = rk
+			}
+		}
 		return set, nil
 	}
 	if c.buildChat != nil {
@@ -160,6 +195,34 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
 		}
 		set.Chat = p
+	}
+	if c.buildImage != nil {
+		p, err := c.buildImage(apiKey, baseURL, httpClient)
+		if err != nil {
+			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
+		}
+		set.Image = p
+	}
+	if c.buildVideo != nil {
+		p, err := c.buildVideo(apiKey, baseURL, httpClient)
+		if err != nil {
+			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
+		}
+		set.Video = p
+	}
+	if c.buildObject != nil {
+		p, err := c.buildObject(apiKey, baseURL, httpClient)
+		if err != nil {
+			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
+		}
+		set.Object = p
+	}
+	if c.buildRerank != nil {
+		p, err := c.buildRerank(apiKey, baseURL, httpClient)
+		if err != nil {
+			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
+		}
+		set.Rerank = p
 	}
 	if c.buildSpeech != nil {
 		p, err := c.buildSpeech(apiKey, baseURL, httpClient)
@@ -194,6 +257,16 @@ func openaiClass() ProviderClass {
 	}
 }
 
+func openaiobjectClass() ProviderClass {
+	return simpleClass{
+		name: "openaiobject",
+		caps: []Capability{CapabilityObject},
+		buildObject: func(apiKey, baseURL string, httpClient *http.Client) (object.Provider, error) {
+			return openaiobject.New(openaiobject.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+	}
+}
+
 func anthropicClass() ProviderClass {
 	return simpleClass{
 		name: "anthropic",
@@ -207,7 +280,7 @@ func anthropicClass() ProviderClass {
 func azureClass() ProviderClass {
 	return simpleClass{
 		name: "azure",
-		caps: []Capability{CapabilityChat, CapabilityEmbed},
+		caps: []Capability{CapabilityChat, CapabilityEmbed, CapabilityImage},
 		build: func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error) {
 			return azure.New(azure.Config{APIKey: apiKey, Endpoint: baseURL, HTTPClient: httpClient})
 		},
@@ -217,7 +290,7 @@ func azureClass() ProviderClass {
 func cohereClass() ProviderClass {
 	return simpleClass{
 		name: "cohere",
-		caps: []Capability{CapabilityChat, CapabilityEmbed},
+		caps: []Capability{CapabilityChat, CapabilityEmbed, CapabilityRerank},
 		build: func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error) {
 			return cohere.New(cohere.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
@@ -290,8 +363,14 @@ func perplexityClass() ProviderClass {
 func xaiClass() ProviderClass {
 	return simpleClass{
 		name: "xai",
-		caps: []Capability{CapabilityChat},
+		caps: []Capability{CapabilityChat, CapabilityImage, CapabilityVideo},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
+			return xai.New(xai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildImage: func(apiKey, baseURL string, httpClient *http.Client) (image.Provider, error) {
+			return xai.New(xai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildVideo: func(apiKey, baseURL string, httpClient *http.Client) (video.Provider, error) {
 			return xai.New(xai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 	}
@@ -300,9 +379,15 @@ func xaiClass() ProviderClass {
 func togetheraiClass() ProviderClass {
 	return simpleClass{
 		name: "togetherai",
-		caps: []Capability{CapabilityChat},
+		caps: []Capability{CapabilityChat, CapabilityImage, CapabilityRerank},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
 			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildImage: func(apiKey, baseURL string, httpClient *http.Client) (image.Provider, error) {
+			return togetherai.New(togetherai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildRerank: func(apiKey, baseURL string, httpClient *http.Client) (rerank.Provider, error) {
+			return togetherai.New(togetherai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 	}
 }

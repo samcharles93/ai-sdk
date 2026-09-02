@@ -9,8 +9,12 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/object"
+	"github.com/samcharles93/ai-sdk/rerank"
 	"github.com/samcharles93/ai-sdk/speech"
 	"github.com/samcharles93/ai-sdk/transcribe"
+	"github.com/samcharles93/ai-sdk/video"
 )
 
 // ErrProviderNotFound is returned when a model reference cannot be mapped
@@ -232,6 +236,141 @@ func (r *Runtime) Transcribe(ctx context.Context, ref string, req transcribe.Tra
 	}
 	req.Model = modelID
 	return core.Transcribe(ctx, provider, req)
+}
+
+// ImageProvider resolves a model reference to an image.Provider. It
+// returns the provider instance and the resolved model ID that should be
+// passed to requests.
+func (r *Runtime) ImageProvider(ctx context.Context, ref string) (image.Provider, string, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return nil, "", err
+	}
+	model, err := r.resolveModel(mref)
+	if err != nil {
+		return nil, "", err
+	}
+	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
+	if err != nil {
+		return nil, "", err
+	}
+	if set.Image == nil {
+		return nil, "", fmt.Errorf("%w: provider %q does not support image generation", ErrCapabilityNotSupported, mref.ProviderID)
+	}
+	return set.Image, model.ID, nil
+}
+
+// Image performs a non-streaming image generation for the given model
+// reference. The model field inside req is overwritten with the resolved
+// model ID.
+func (r *Runtime) Image(ctx context.Context, ref string, req image.GenerateImageRequest) (image.GenerateImageResponse, error) {
+	provider, modelID, err := r.ImageProvider(ctx, ref)
+	if err != nil {
+		return image.GenerateImageResponse{}, err
+	}
+	req.Model = modelID
+	return core.GenerateImage(ctx, provider, req)
+}
+
+// VideoProvider resolves a model reference to a video.Provider. It
+// returns the provider instance and the resolved model ID that should be
+// passed to requests.
+func (r *Runtime) VideoProvider(ctx context.Context, ref string) (video.Provider, string, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return nil, "", err
+	}
+	model, err := r.resolveModel(mref)
+	if err != nil {
+		return nil, "", err
+	}
+	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
+	if err != nil {
+		return nil, "", err
+	}
+	if set.Video == nil {
+		return nil, "", fmt.Errorf("%w: provider %q does not support video generation", ErrCapabilityNotSupported, mref.ProviderID)
+	}
+	return set.Video, model.ID, nil
+}
+
+// Video performs a non-streaming video generation for the given model
+// reference. The model field inside req is overwritten with the resolved
+// model ID.
+func (r *Runtime) Video(ctx context.Context, ref string, req video.GenerateVideoRequest) (video.GenerateVideoResponse, error) {
+	provider, modelID, err := r.VideoProvider(ctx, ref)
+	if err != nil {
+		return video.GenerateVideoResponse{}, err
+	}
+	req.Model = modelID
+	return core.GenerateVideo(ctx, provider, req)
+}
+
+// ObjectProvider resolves a model reference to an object.Provider. It
+// returns the provider instance and the resolved model ID that should be
+// passed to requests.
+func (r *Runtime) ObjectProvider(ctx context.Context, ref string) (object.Provider, string, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return nil, "", err
+	}
+	model, err := r.resolveModel(mref)
+	if err != nil {
+		return nil, "", err
+	}
+	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
+	if err != nil {
+		return nil, "", err
+	}
+	if set.Object == nil {
+		return nil, "", fmt.Errorf("%w: provider %q does not support object generation", ErrCapabilityNotSupported, mref.ProviderID)
+	}
+	return set.Object, model.ID, nil
+}
+
+// Object performs a non-streaming object generation for the given model
+// reference. The model field inside req is overwritten with the resolved
+// model ID.
+func (r *Runtime) Object(ctx context.Context, ref string, req object.Request) (object.ObjectResult, error) {
+	provider, modelID, err := r.ObjectProvider(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	req.Model = modelID
+	return core.GenerateObject(ctx, provider, req)
+}
+
+// RerankProvider resolves a model reference to a rerank.Provider. It
+// returns the provider instance and the resolved model ID that should be
+// passed to requests.
+func (r *Runtime) RerankProvider(ctx context.Context, ref string) (rerank.Provider, string, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return nil, "", err
+	}
+	model, err := r.resolveModel(mref)
+	if err != nil {
+		return nil, "", err
+	}
+	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
+	if err != nil {
+		return nil, "", err
+	}
+	if set.Rerank == nil {
+		return nil, "", fmt.Errorf("%w: provider %q does not support reranking", ErrCapabilityNotSupported, mref.ProviderID)
+	}
+	return set.Rerank, model.ID, nil
+}
+
+// Rerank re-orders documents for the given model reference. The model
+// field inside req is overwritten with the resolved model ID.
+func (r *Runtime) Rerank(ctx context.Context, ref string, req rerank.Request) (rerank.Response, error) {
+	provider, modelID, err := r.RerankProvider(ctx, ref)
+	if err != nil {
+		return rerank.Response{}, err
+	}
+	req.Model = modelID
+	return provider.Rerank(ctx, req)
 }
 
 // Models returns the resolved model information for a provider, merged

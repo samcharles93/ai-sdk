@@ -7,8 +7,12 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
+	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/object"
+	"github.com/samcharles93/ai-sdk/rerank"
 	"github.com/samcharles93/ai-sdk/speech"
 	"github.com/samcharles93/ai-sdk/transcribe"
+	"github.com/samcharles93/ai-sdk/video"
 )
 
 // Capability names a model capability a ProviderClass may satisfy.
@@ -18,6 +22,10 @@ type Capability string
 const (
 	CapabilityChat       Capability = "chat"
 	CapabilityEmbed      Capability = "embed"
+	CapabilityImage      Capability = "image"
+	CapabilityVideo      Capability = "video"
+	CapabilityObject     Capability = "object"
+	CapabilityRerank     Capability = "rerank"
 	CapabilitySpeech     Capability = "speech"
 	CapabilityTranscribe Capability = "transcribe"
 )
@@ -120,6 +128,10 @@ func (m ModelInfo) providerURL(baseURL string) string {
 type ProviderSet struct {
 	Chat       chat.Provider
 	Embed      embed.Provider
+	Image      image.Provider
+	Video      video.Provider
+	Object     object.Provider
+	Rerank     rerank.Provider
 	Speech     speech.Provider
 	Transcribe transcribe.Provider
 }
@@ -131,6 +143,14 @@ func (s ProviderSet) Has(cap Capability) bool {
 		return s.Chat != nil
 	case CapabilityEmbed:
 		return s.Embed != nil
+	case CapabilityImage:
+		return s.Image != nil
+	case CapabilityVideo:
+		return s.Video != nil
+	case CapabilityObject:
+		return s.Object != nil
+	case CapabilityRerank:
+		return s.Rerank != nil
 	case CapabilitySpeech:
 		return s.Speech != nil
 	case CapabilityTranscribe:
