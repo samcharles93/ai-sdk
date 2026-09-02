@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
 	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"

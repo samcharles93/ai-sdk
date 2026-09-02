@@ -36,6 +36,7 @@ func (fakeObjectProvider) Name() string { return "fakeobject" }
 func (fakeObjectProvider) GenerateObject(ctx context.Context, req object.Request) (object.ObjectResult, error) {
 	return nil, nil
 }
+
 func (fakeObjectProvider) StreamObject(ctx context.Context, req object.Request) (object.ObjectStream, error) {
 	return dummyObjectStream{}, nil
 }
@@ -62,15 +63,19 @@ func (genCombined) Name() string { return "gencombined" }
 func (genCombined) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
 	return chat.Response{}, nil
 }
+
 func (genCombined) ChatStream(ctx context.Context, req chat.Request) (chat.Stream, error) {
 	return nil, nil
 }
+
 func (genCombined) Embed(ctx context.Context, req embed.Request) (embed.Response, error) {
 	return embed.Response{}, nil
 }
+
 func (genCombined) GenerateImage(ctx context.Context, req image.GenerateImageRequest) (image.GenerateImageResponse, error) {
 	return image.GenerateImageResponse{}, nil
 }
+
 func (genCombined) Rerank(ctx context.Context, req rerank.Request) (rerank.Response, error) {
 	return rerank.Response{}, nil
 }

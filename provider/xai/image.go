@@ -324,8 +324,10 @@ func isContentFiltered(bodyLower string) bool {
 
 // Compile-time assertions that *Provider satisfies image.Provider and
 // image.Editor.
-var _ image.Provider = (*Provider)(nil)
-var _ image.Editor = (*Provider)(nil)
+var (
+	_ image.Provider = (*Provider)(nil)
+	_ image.Editor   = (*Provider)(nil)
+)
 
 // sourceImageFilename derives a multipart filename for an image/mask part
 // from its media type, defaulting to PNG.
