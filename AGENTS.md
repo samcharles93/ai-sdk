@@ -604,8 +604,8 @@ go test ./runtime/... -run TestProviderSetHas -v -count=1
 - **Conventional Commits:** Scope by package — `feat(runtime): ...`,
   `feat(image): ...`, `fix(xai): ...`, `chore(docs): ...`. One logical change per
   commit; discrete features get separate commits.
-- **Commit policy:** Commit finished, gate-clean changes (`task check` passing +
-  a clean review) **without asking**. This repo works in branch/worktree; commit
+- **Commit policy:** Commit finished, gate-clean changes (`task check` passing)
+  **without asking**. This repo works in branch/worktree; commit
   each validated slice so nothing is left uncommitted. Push only when instructed.
 
 ## Development Protocol
@@ -619,11 +619,7 @@ go test ./runtime/... -run TestProviderSetHas -v -count=1
 4. **Formatting is LAW:** Adopt all formatting and simplification changes from
    `task fmt` (`gofumpt` + `goimports`) verbatim. Never revert or fight canonical
    linter/formatter diffs.
-5. **Adversarial Verification:** Run a verification pass in an isolated reviewer
-   context assuming all changes are incorrect until verified. Check: dead code,
-   unchecked errors, hardcoded constants, missing error paths, nil pointers,
-   goroutine leaks, race conditions, and dependency-direction (onion) violations.
-6. **Linter Guard:** When fixing lint findings, preserve the existing semantics
+5. **Linter Guard:** When fixing lint findings, preserve the existing semantics
    (e.g. keep boolean predicates alongside `errors.As`; don't duplicate slice
    elements when extracting loops). Do not break text-generation paths while
    changing a provider's error handling.
