@@ -142,13 +142,13 @@ func classifyHTTPError(resp *http.Response) error {
 	snippet := chat.SanitizeErrorBody(body)
 	var base error
 	retryable := false
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
 		base = object.ErrAuthFailed
-	case resp.StatusCode == http.StatusTooManyRequests:
+	case http.StatusTooManyRequests:
 		base = object.ErrRateLimited
 		retryable = true
-	case resp.StatusCode == http.StatusBadRequest:
+	case http.StatusBadRequest:
 		base = object.ErrInvalidRequest
 	default:
 		base = object.ErrProviderUnavailable
