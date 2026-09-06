@@ -1,10 +1,11 @@
-// Command minimax-video demonstrates the reference MiniMax video provider,
-// wired through the ai-sdk runtime the way an operator (or archie) would for
-// a provider that is not in the models.dev catalog.
+// Command minimax-video demonstrates the reference MiniMax provider, wired
+// through the ai-sdk runtime the way an operator (or archie) would for a
+// provider that is not in the models.dev catalog.
 //
-// MiniMax is registered as the built-in "minimax" provider class
-// (CapabilityVideo), but it resolves only when the runtime config supplies a
-// provider entry with a model ID (e.g. MiniMax-H3) and an API key. If
+// MiniMax is registered as the built-in "minimax" provider class and, besides
+// this video example, serves chat (OpenAI-compatible), image, and speech. It
+// resolves only when the runtime config supplies a provider entry with model
+// IDs (e.g. MiniMax-H3, image-01, speech-2.8-hd) and an API key. If
 // MINIMAX_API_KEY is set, it submits a short text-to-video job (which may take
 // minutes, polling internally). Otherwise it prints the config + resolve
 // pattern for reference.
@@ -91,6 +92,9 @@ func printDocs() {
 	fmt.Println()
 	fmt.Println("Note: video generation is expensive and may take minutes to complete.")
 	fmt.Println("The provider handles the submit-and-poll loop internally.")
+	fmt.Println()
+	fmt.Println("MiniMax also serves chat (OpenAI-compatible), image, and speech through the")
+	fmt.Println("same runtime config: rt.Chat/rt.Image/rt.Speech with the appropriate model refs.")
 	fmt.Println()
 	fmt.Println("For a provider not shipped here, register a custom runtime.ProviderClass")
 	fmt.Println("and return a ProviderSet with the domain interface(s) you implement.")

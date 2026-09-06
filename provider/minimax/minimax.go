@@ -25,6 +25,8 @@ import (
 
 	"github.com/samcharles93/ai-sdk/chat"
 	errx "github.com/samcharles93/ai-sdk/error"
+	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/speech"
 	"github.com/samcharles93/ai-sdk/video"
 )
 
@@ -273,7 +275,7 @@ func parseDuration(s string) (int, error) {
 // create submits a generation job and returns the task ID MiniMax assigned.
 func (p *Provider) create(ctx context.Context, body map[string]any) (string, error) {
 	var out wireCreateResponse
-	if err := p.doJSON(ctx, http.MethodPost, "/v2/video_generation", body, &out); err != nil {
+	if err := p.doJSON(ctx, http.MethodPost, "/v2/video_generation", body, &out, videoSentinels); err != nil {
 		return "", err
 	}
 	if out.TaskID == "" {
@@ -334,7 +336,7 @@ func (t wireTaskStatus) errorMessage() string {
 func (p *Provider) query(ctx context.Context, taskID string) (wireTaskStatus, error) {
 	var out wireQueryResponse
 	path := "/v2/query/video_generation/" + taskID
-	if err := p.doJSON(ctx, http.MethodGet, path, nil, &out); err != nil {
+	if err := p.doJSON(ctx, http.MethodGet, path, nil, &out, videoSentinels); err != nil {
 		return wireTaskStatus{}, err
 	}
 	return out.Task, nil
@@ -353,8 +355,9 @@ type apiError struct {
 // doJSON issues one request and decodes a 200 response into out. A non-200
 // response is classified into a typed ProviderError carrying MiniMax's own
 // message when present, so a create/query failure is never reported as a bare
-// HTTP status.
-func (p *Provider) doJSON(ctx context.Context, method, path string, body, out any) error {
+// HTTP status. base maps a status code to the domain sentinel of the caller
+// (video, speech, or image).
+func (p *Provider) doJSON(ctx context.Context, method, path string, body, out any, base sentinelSet) error {
 	var reader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -400,20 +403,36 @@ func (p *Provider) doJSON(ctx context.Context, method, path string, body, out an
 	if msg == "" {
 		msg = chat.SanitizeErrorBody(data)
 	}
-	return errx.NewProviderError("minimax", resp, baseErrorForStatus(resp.StatusCode), msg, retryable(resp.StatusCode))
+	return errx.NewProviderError("minimax", resp, base.base(resp.StatusCode), msg, retryable(resp.StatusCode))
 }
 
-// baseErrorForStatus maps a MiniMax HTTP status code to the video sentinel.
-func baseErrorForStatus(code int) error {
+// sentinelSet holds the three status-mapped sentinels a domain uses so the
+// shared doJSON can classify failures without knowing which domain
+// (video/speech/image) the caller serves.
+type sentinelSet struct {
+	auth        error
+	rateLimited error
+	unavailable error
+}
+
+// base maps a MiniMax HTTP status code to the domain sentinel.
+func (s sentinelSet) base(code int) error {
 	switch code {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return video.ErrAuthFailed
+		return s.auth
 	case http.StatusPaymentRequired, http.StatusTooManyRequests:
-		return video.ErrRateLimited
+		return s.rateLimited
 	default:
-		return video.ErrProviderUnavailable
+		return s.unavailable
 	}
 }
+
+// Domain sentinel sets for the domains the minimax provider implements.
+var (
+	videoSentinels  = sentinelSet{video.ErrAuthFailed, video.ErrRateLimited, video.ErrProviderUnavailable}
+	speechSentinels = sentinelSet{speech.ErrAuthFailed, speech.ErrRateLimited, speech.ErrProviderUnavailable}
+	imageSentinels  = sentinelSet{image.ErrAuthFailed, image.ErrRateLimited, image.ErrProviderUnavailable}
+)
 
 // retryable reports whether a status code represents a transient failure
 // worth retrying. 402 (insufficient balance) is not retried, since retrying

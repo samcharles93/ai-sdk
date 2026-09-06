@@ -337,12 +337,23 @@ func groqClass() ProviderClass {
 func minimaxClass() ProviderClass {
 	// MiniMax is a reference provider not published in the models.dev catalog,
 	// so it resolves only when the operator supplies a model via the runtime
-	// config (for example provider "minimax" with a model ID such as
-	// "MiniMax-H3" and its API key); see runtime.RegisterClass for the custom
-	// pattern this class demonstrates.
+	// config (for example provider "minimax" with model IDs and its API key);
+	// see runtime.RegisterClass for the custom pattern this class demonstrates.
+	// Its text generation is OpenAI-compatible, so chat is wired through the
+	// OpenAI-compatible path while the other domains use the native minimax
+	// provider (a single *Provider implementing image/speech/video).
 	return simpleClass{
 		name: "minimax",
-		caps: []Capability{CapabilityVideo},
+		caps: []Capability{CapabilityChat, CapabilityImage, CapabilitySpeech, CapabilityVideo},
+		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
+			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildImage: func(apiKey, baseURL string, httpClient *http.Client) (image.Provider, error) {
+			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildSpeech: func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error) {
+			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
 		buildVideo: func(apiKey, baseURL string, httpClient *http.Client) (video.Provider, error) {
 			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
