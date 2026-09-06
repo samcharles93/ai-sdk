@@ -57,21 +57,23 @@ func RegisterBuiltinClasses() {
 // provider class names registered by RegisterBuiltinClasses. This lets
 // the Runtime select a class automatically for known providers.
 //
-// Compatibility rules:
+// Alignment rules:
 //   - "@ai-sdk/google" maps to "gemini" because models.dev publishes Google as
 //     provider "google" with npm package "@ai-sdk/google", while the native
 //     class in this SDK is registered as "gemini".
+//   - Entries are pruned when models.dev stops publishing a package: deepseek
+//     now advertises "@ai-sdk/openai-compatible", ollama-cloud uses
+//     "@ai-sdk/openai-compatible", and Google uses "@ai-sdk/google", so
+//     "@ai-sdk/deepseek", "@ai-sdk/ollama" and "@ai-sdk/gemini" no longer
+//     appear in the catalog and are omitted here.
 var NPMClassMapping = map[string]string{
 	"@ai-sdk/openai":            "openai",
 	"@ai-sdk/anthropic":         "anthropic",
 	"@ai-sdk/azure":             "azure",
 	"@ai-sdk/cohere":            "cohere",
-	"@ai-sdk/deepseek":          "deepseek",
-	"@ai-sdk/gemini":            "gemini",
 	"@ai-sdk/google":            "gemini",
 	"@ai-sdk/groq":              "groq",
 	"@ai-sdk/mistral":           "mistral",
-	"@ai-sdk/ollama":            "ollama",
 	"@ai-sdk/perplexity":        "perplexity",
 	"@ai-sdk/togetherai":        "togetherai",
 	"@ai-sdk/xai":               "xai",

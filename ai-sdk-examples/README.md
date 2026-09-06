@@ -16,7 +16,7 @@ Example programs demonstrating the Go AI SDK.
 | rerank | Document reranking with Cohere for RAG and search quality improvement | `COHERE_API_KEY` | `go run ./ai-sdk-examples/rerank/` |
 | speech-to-text | Audio transcription with OpenAI Whisper — generates test tone and transcribes it | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/speech-to-text/` |
 | streaming-chat | Real-time streaming text generation via `core.StreamText` with token usage reporting | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/streaming-chat/ "prompt"` |
-| video-generation | Video generation with xAI grok-video (`XAI_API_KEY`) or informational without | `XAI_API_KEY` (optional) | `go run ./ai-sdk-examples/video-generation/` |
+| video-generation | Video generation with xAI grok-imagine-video (`XAI_API_KEY`) or informational without | `XAI_API_KEY` (optional) | `go run ./ai-sdk-examples/video-generation/` |
 | web-chat | Full browser chat UI with SSE streaming, handlers, registry, and message rendering | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/web-chat/` |
 
 ## Concepts Demonstrated

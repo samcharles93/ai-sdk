@@ -38,7 +38,7 @@ func run() error {
 
 	ctx := context.Background()
 	resp, err := core.GenerateVideo(ctx, provider, video.GenerateVideoRequest{
-		Model:  "grok-video",
+		Model:  "grok-imagine-video",
 		Prompt: "A drone flyover of a misty mountain valley at sunrise",
 	})
 	if err != nil {
@@ -56,11 +56,11 @@ func printDocs() {
 	fmt.Println("  XAI_API_KEY=... go run ./ai-sdk-examples/video-generation/")
 	fmt.Println()
 	fmt.Println("Providers implementing video.Provider:")
-	fmt.Println("  - provider/xai/ — xAI grok-video")
+	fmt.Println("  - provider/xai/ — xAI grok-imagine-video")
 	fmt.Println()
 	fmt.Println("API pattern:")
 	fmt.Println("  resp, err := core.GenerateVideo(ctx, provider, video.GenerateVideoRequest{")
-	fmt.Println("      Model:  \"grok-video\",")
+	fmt.Println("      Model:  \"grok-imagine-video\",")
 	fmt.Println("      Prompt: \"A drone flyover...\",")
 	fmt.Println("  })")
 	fmt.Println()

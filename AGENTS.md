@@ -215,10 +215,10 @@ what a class/provider can satisfy. Built-in classes are registered by
 `ChatProvider`/`Chat` pattern:
 
 ```go
-rt.Image(ctx, "xai/grok-image", image.GenerateImageRequest{...})      // image.GenerateImageResponse
-rt.Video(ctx, "xai/grok-video", video.GenerateVideoRequest{...})      // video.GenerateVideoResponse
+rt.Image(ctx, "xai/grok-imagine-image", image.GenerateImageRequest{...})      // image.GenerateImageResponse
+rt.Video(ctx, "xai/grok-imagine-video", video.GenerateVideoRequest{...})      // video.GenerateVideoResponse
 rt.Object(ctx, "openaiobject/gpt-4o-mini", object.Request{...})       // object.ObjectResult
-rt.Rerank(ctx, "cohere/rerank-v3.5", rerank.Request{...})             // rerank.Response
+rt.Rerank(ctx, "cohere/rerank-english-v3.0", rerank.Request{...})             // rerank.Response
 rt.Speech(ctx, "openai/tts-1", speech.GenerateSpeechRequest{...})     // speech.GenerateSpeechResponse
 rt.Transcribe(ctx, "openai/whisper-1", transcribe.TranscribeRequest{...})
 ```
