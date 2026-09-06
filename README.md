@@ -40,20 +40,27 @@ imports a provider directly.
 
 ### Supported Providers
 
-| Provider   | Package                   | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
-| ---------- | ------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
-| OpenAI     | `provider/openai`     | ✅   | —     | —     | ✅     | ✅         | —      | —      | —     |
-| Anthropic  | `provider/anthropic`  | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Azure      | `provider/azure`      | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| Cohere     | `provider/cohere`     | ✅   | ✅    | —     | —      | —          | ✅     | —      | —     |
-| DeepSeek   | `provider/deepseek`   | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Gemini     | `provider/gemini`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Groq       | `provider/groq`       | ✅   | —     | —     | —      | ✅         | —      | —      | —     |
-| Mistral    | `provider/mistral`    | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Ollama     | `provider/ollama`     | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Perplexity | `provider/perplexity` | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| TogetherAI | `provider/togetherai` | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| xAI        | `provider/xai`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Provider      | Package                     | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
+| ------------- | --------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
+| OpenAI        | `provider/openai`           | ✅   | —     | —     | ✅     | ✅         | —      | —      | —     |
+| OpenAIObject  | `provider/openaiobject`     | —    | —     | —     | —      | —          | ✅     | —      | —     |
+| Anthropic     | `provider/anthropic`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Azure         | `provider/azure`            | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
+| Cohere        | `provider/cohere`           | ✅   | ✅    | —     | —      | —          | —      | ✅     | —     |
+| DeepSeek      | `provider/deepseek`         | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| Gemini        | `provider/gemini`           | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Groq          | `provider/groq`             | ✅   | —     | —     | —      | ✅         | —      | —      | —     |
+| Mistral       | `provider/mistral`          | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Ollama        | `provider/ollama`           | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
+| Perplexity    | `provider/perplexity`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
+| TogetherAI    | `provider/togetherai`       | ✅   | —     | ✅    | —      | —          | —      | ✅     | —     |
+| xAI           | `provider/xai`              | ✅   | —     | ✅    | —      | —          | —      | —      | ✅     |
+
+Notes:
+- TogetherAI chat routes through the OpenAI-compatible path; its native provider implements image + rerank.
+- Azure chat/embed/image come from a single `provider/azure` provider.
+- xAI implements chat + image + video from a single `*Provider`.
+- `openaiobject` is a standalone object-generation backend (OpenAI Chat Completions with `response_format.json_schema`).
 
 ---
 
