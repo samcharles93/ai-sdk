@@ -250,7 +250,7 @@ Capabilities as resolvable through the runtime (the `Class` column is the
 | Cohere        | `provider/cohere`            | `cohere`       | ✅   | ✅    | —     | —     | —      | ✅     | —      | —          |
 | DeepSeek      | `provider/deepseek`          | `deepseek`     | ✅   | —     | —     | —     | —      | —      | —      | —          |
 | Gemini        | `provider/gemini`            | `gemini`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
-| Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | ✅     | —          |
+| Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | —      | ✅          |
 | Mistral       | `provider/mistral`           | `mistral`      | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
 | Ollama        | `provider/ollama`            | `ollama`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
 | Perplexity    | `provider/perplexity`        | `perplexity`   | ✅   | —     | —     | —     | —      | —      | —      | —          |
