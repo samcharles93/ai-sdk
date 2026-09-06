@@ -370,7 +370,7 @@ func (r *Runtime) Rerank(ctx context.Context, ref string, req rerank.Request) (r
 		return rerank.Response{}, err
 	}
 	req.Model = modelID
-	return provider.Rerank(ctx, req)
+	return core.Rerank(ctx, provider, req)
 }
 
 // Models returns the resolved model information for a provider, merged
