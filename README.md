@@ -21,9 +21,9 @@ imports a provider directly.
 
 ### Features
 
-- **Unified interface** across 8 domains: chat, embedding, image generation,
+- **Unified interface** across 9 domains: chat, embedding, image generation,
   speech synthesis, transcription, object generation, video generation,
-  reranking
+  reranking, and music generation
 - **Pluggable providers** — swap implementations at the wiring layer
 - **Tool use and streaming** built into the chat domain
 - **Agent loops** built on top of `StreamText` — tool-calling agent with
@@ -40,22 +40,22 @@ imports a provider directly.
 
 ### Supported Providers
 
-| Provider      | Package                     | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video |
-| ------------- | --------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- |
-| OpenAI        | `provider/openai`           | ✅   | —     | —     | ✅     | ✅         | —      | —      | —     |
-| OpenAIObject  | `provider/openaiobject`     | —    | —     | —     | —      | —          | ✅     | —      | —     |
-| Anthropic     | `provider/anthropic`        | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Azure         | `provider/azure`            | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     |
-| Cohere        | `provider/cohere`           | ✅   | ✅    | —     | —      | —          | —      | ✅     | —     |
-| DeepSeek      | `provider/deepseek`         | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| Gemini        | `provider/gemini`           | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Groq          | `provider/groq`             | ✅   | —     | —     | —      | ✅         | —      | —      | —     |
-| MiniMax       | `provider/minimax`          | ✅   | —     | ✅    | ✅     | —          | —      | —      | ✅     |
-| Mistral       | `provider/mistral`          | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Ollama        | `provider/ollama`           | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
-| Perplexity    | `provider/perplexity`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
-| TogetherAI    | `provider/togetherai`       | ✅   | —     | ✅    | —      | —          | —      | ✅     | —     |
-| xAI           | `provider/xai`              | ✅   | —     | ✅    | —      | —          | —      | —      | ✅     |
+| Provider      | Package                     | Chat | Embed | Image | Speech | Transcribe | Object | Rerank | Video | Music |
+| ------------- | --------------------------- | ---- | ----- | ----- | ------ | ---------- | ------ | ------ | ----- | ----- |
+| OpenAI        | `provider/openai`           | ✅   | —     | —     | ✅     | ✅         | —      | —      | —     | —     |
+| OpenAIObject  | `provider/openaiobject`     | —    | —     | —     | —      | —          | ✅     | —      | —     | —     |
+| Anthropic     | `provider/anthropic`        | ✅   | —     | —     | —      | —          | —      | —      | —     | —     |
+| Azure         | `provider/azure`            | ✅   | ✅    | ✅    | —      | —          | —      | —      | —     | —     |
+| Cohere        | `provider/cohere`           | ✅   | ✅    | —     | —      | —          | —      | ✅     | —     | —     |
+| DeepSeek      | `provider/deepseek`         | ✅   | —     | —     | —      | —          | —      | —      | —     | —     |
+| Gemini        | `provider/gemini`           | ✅   | ✅    | —     | —      | —          | —      | —      | —     | —     |
+| Groq          | `provider/groq`             | ✅   | —     | —     | —      | ✅         | —      | —      | —     | —     |
+| MiniMax       | `provider/minimax`          | ✅   | —     | ✅    | ✅     | —          | —      | —      | ✅     | ✅    |
+| Mistral       | `provider/mistral`          | ✅   | ✅    | —     | —      | —          | —      | —      | —     | —     |
+| Ollama        | `provider/ollama`           | ✅   | ✅    | —     | —      | —          | —      | —      | —     | —     |
+| Perplexity    | `provider/perplexity`       | ✅   | —     | —     | —      | —          | —      | —      | —     | —     |
+| TogetherAI    | `provider/togetherai`       | ✅   | —     | ✅    | —      | —          | —      | ✅     | —     | —     |
+| xAI           | `provider/xai`              | ✅   | —     | ✅    | —      | —          | —      | —      | ✅     | —     |
 
 Notes:
 - TogetherAI chat routes through the OpenAI-compatible path; its native provider implements image + rerank.
@@ -63,7 +63,7 @@ Notes:
 - xAI implements chat + image + video from a single `*Provider`.
 - `openaiobject` is a standalone object-generation backend (OpenAI Chat Completions with `response_format.json_schema`).
 - MiniMax is a reference provider not published in the models.dev catalog, so it resolves through the runtime only when an operator supplies a provider config (class `minimax`) with model IDs and an API key — the config-driven custom-provider pattern it demonstrates. `runtime.RegisterClass` is the escape hatch for a provider not shipped as a built-in class.
-- MiniMax chat routes through the OpenAI-compatible path (its text API is OpenAI-compatible); its native provider implements image + speech + video. MiniMax also exposes music generation, but there is no first-class `music.Provider` domain, so it isn't surfaced through the runtime.
+- MiniMax chat routes through the OpenAI-compatible path (its text API is OpenAI-compatible); its native provider implements image + speech + music + video across four domain interfaces.
 
 ---
 

@@ -8,6 +8,7 @@ import (
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
 	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/music"
 	"github.com/samcharles93/ai-sdk/object"
 	"github.com/samcharles93/ai-sdk/rerank"
 	"github.com/samcharles93/ai-sdk/speech"
@@ -28,6 +29,7 @@ const (
 	CapabilityRerank     Capability = "rerank"
 	CapabilitySpeech     Capability = "speech"
 	CapabilityTranscribe Capability = "transcribe"
+	CapabilityMusic      Capability = "music"
 )
 
 // ProviderConfig is the minimal information needed to construct a
@@ -134,6 +136,7 @@ type ProviderSet struct {
 	Rerank     rerank.Provider
 	Speech     speech.Provider
 	Transcribe transcribe.Provider
+	Music      music.Provider
 }
 
 // Has reports whether the set satisfies cap.
@@ -155,6 +158,8 @@ func (s ProviderSet) Has(cap Capability) bool {
 		return s.Speech != nil
 	case CapabilityTranscribe:
 		return s.Transcribe != nil
+	case CapabilityMusic:
+		return s.Music != nil
 	default:
 		return false
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/core"
 	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/music"
 	"github.com/samcharles93/ai-sdk/object"
 	"github.com/samcharles93/ai-sdk/rerank"
 	"github.com/samcharles93/ai-sdk/speech"
@@ -371,6 +372,39 @@ func (r *Runtime) Rerank(ctx context.Context, ref string, req rerank.Request) (r
 	}
 	req.Model = modelID
 	return core.Rerank(ctx, provider, req)
+}
+
+// MusicProvider resolves a model reference to a music.Provider. It returns
+// the provider instance and the resolved model ID that should be passed to
+// requests.
+func (r *Runtime) MusicProvider(ctx context.Context, ref string) (music.Provider, string, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return nil, "", err
+	}
+	model, err := r.resolveModel(mref)
+	if err != nil {
+		return nil, "", err
+	}
+	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
+	if err != nil {
+		return nil, "", err
+	}
+	if set.Music == nil {
+		return nil, "", fmt.Errorf("%w: provider %q does not support music generation", ErrCapabilityNotSupported, mref.ProviderID)
+	}
+	return set.Music, model.ID, nil
+}
+
+// Music generates a music track for the given model reference. The model
+// field inside req is overwritten with the resolved model ID.
+func (r *Runtime) Music(ctx context.Context, ref string, req music.GenerateMusicRequest) (music.GenerateMusicResponse, error) {
+	provider, modelID, err := r.MusicProvider(ctx, ref)
+	if err != nil {
+		return music.GenerateMusicResponse{}, err
+	}
+	req.Model = modelID
+	return core.GenerateMusic(ctx, provider, req)
 }
 
 // Models returns the resolved model information for a provider, merged

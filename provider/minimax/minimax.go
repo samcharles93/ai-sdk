@@ -26,6 +26,7 @@ import (
 	"github.com/samcharles93/ai-sdk/chat"
 	errx "github.com/samcharles93/ai-sdk/error"
 	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/music"
 	"github.com/samcharles93/ai-sdk/speech"
 	"github.com/samcharles93/ai-sdk/video"
 )
@@ -432,6 +433,7 @@ var (
 	videoSentinels  = sentinelSet{video.ErrAuthFailed, video.ErrRateLimited, video.ErrProviderUnavailable}
 	speechSentinels = sentinelSet{speech.ErrAuthFailed, speech.ErrRateLimited, speech.ErrProviderUnavailable}
 	imageSentinels  = sentinelSet{image.ErrAuthFailed, image.ErrRateLimited, image.ErrProviderUnavailable}
+	musicSentinels  = sentinelSet{music.ErrAuthFailed, music.ErrRateLimited, music.ErrProviderUnavailable}
 )
 
 // retryable reports whether a status code represents a transient failure

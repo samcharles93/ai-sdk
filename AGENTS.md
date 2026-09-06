@@ -20,10 +20,11 @@ a specific sub-command).
 
 ## What this is
 
-**ai-sdk** is a provider-agnostic Go SDK that unifies eight domains — chat, embedding, image
+**ai-sdk** is a provider-agnostic Go SDK that unifies nine domains — chat, embedding, image
 generation (and image editing), speech synthesis, transcription, object
-(structure) generation, video generation, and reranking — behind typed domain
-interfaces (`chat.Provider`, `image.Provider`, `video.Provider`, ...). A pluggable
+(structure) generation, video generation, reranking, and music generation —
+behind typed domain
+interfaces (`chat.Provider`, `image.Provider`, `video.Provider`, `music.Provider`, ...). A pluggable
 `runtime` resolves `provider/model` references into working providers so
 applications (such as `archied`) can consume AI backends without hardcoding any
 implementation.
@@ -207,7 +208,7 @@ Following
 
 The `runtime` package is the provider-resolution layer. `ProviderSet` carries
 one optional field per domain (Chat, Embed, Image, Video, Object, Rerank,
-Speech, Transcribe); `Capability` constants name each; `Supports`/`Has` report
+Speech, Transcribe, Music); `Capability` constants name each; `Supports`/`Has` report
 what a class/provider can satisfy. Built-in classes are registered by
 `runtime.RegisterBuiltinClasses()`.
 
@@ -221,6 +222,7 @@ rt.Object(ctx, "openaiobject/gpt-4o-mini", object.Request{...})       // object.
 rt.Rerank(ctx, "cohere/rerank-english-v3.0", rerank.Request{...})             // rerank.Response
 rt.Speech(ctx, "openai/tts-1", speech.GenerateSpeechRequest{...})     // speech.GenerateSpeechResponse
 rt.Transcribe(ctx, "openai/whisper-1", transcribe.TranscribeRequest{...})
+rt.Music(ctx, "minimax/music-3.0", music.GenerateMusicRequest{...})       // music.GenerateMusicResponse
 ```
 
 Each domain also exposes a `*Provider` resolver
@@ -241,22 +243,22 @@ providers not covered by the built-in classes.
 Capabilities as resolvable through the runtime (the `Class` column is the
 `ProviderConfig.Class` value):
 
-| Provider      | Package                      | Class          | Chat | Embed | Image | Video | Object | Rerank | Speech | Transcribe |
-| ------------- | ---------------------------- | -------------- | ---- | ----- | ----- | ----- | ------ | ------ | ------ | ---------- |
-| OpenAI        | `provider/openai`            | `openai`       | ✅   | —     | —     | —     | —      | —      | ✅     | ✅         |
-| OpenAIObject  | `provider/openaiobject`      | `openaiobject` | —    | —     | —     | —     | ✅     | —      | —      | —          |
-| Anthropic     | `provider/anthropic`         | `anthropic`    | ✅   | —     | —     | —     | —      | —      | —      | —          |
-| Azure         | `provider/azure`             | `azure`        | ✅   | ✅    | ✅    | —     | —      | —      | —      | —          |
-| Cohere        | `provider/cohere`            | `cohere`       | ✅   | ✅    | —     | —     | —      | ✅     | —      | —          |
-| DeepSeek      | `provider/deepseek`          | `deepseek`     | ✅   | —     | —     | —     | —      | —      | —      | —          |
-| Gemini        | `provider/gemini`            | `gemini`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
-| Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | —      | ✅          |
-| MiniMax       | `provider/minimax`           | `minimax`      | ✅   | —     | ✅    | ✅    | —      | —      | ✅      | —          |
-| Mistral       | `provider/mistral`           | `mistral`      | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
-| Ollama        | `provider/ollama`            | `ollama`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
-| Perplexity    | `provider/perplexity`        | `perplexity`   | ✅   | —     | —     | —     | —      | —      | —      | —          |
-| TogetherAI    | `provider/togetherai`        | `togetherai`   | ✅   | —     | ✅    | —     | —      | ✅     | —      | —          |
-| xAI           | `provider/xai`               | `xai`          | ✅   | —     | ✅    | ✅    | —      | —      | —      | —          |
+| Provider      | Package                      | Class          | Chat | Embed | Image | Video | Object | Rerank | Speech | Transcribe | Music |
+| ------------- | ---------------------------- | -------------- | ---- | ----- | ----- | ----- | ------ | ------ | ------ | ---------- | ----- |
+| OpenAI        | `provider/openai`            | `openai`       | ✅   | —     | —     | —     | —      | —      | ✅     | ✅         | —     |
+| OpenAIObject  | `provider/openaiobject`      | `openaiobject` | —    | —     | —     | —     | ✅     | —      | —      | —          | —     |
+| Anthropic     | `provider/anthropic`         | `anthropic`    | ✅   | —     | —     | —     | —      | —      | —      | —          | —     |
+| Azure         | `provider/azure`             | `azure`        | ✅   | ✅    | ✅    | —     | —      | —      | —      | —          | —     |
+| Cohere        | `provider/cohere`            | `cohere`       | ✅   | ✅    | —     | —     | —      | ✅     | —      | —          | —     |
+| DeepSeek      | `provider/deepseek`          | `deepseek`     | ✅   | —     | —     | —     | —      | —      | —      | —          | —     |
+| Gemini        | `provider/gemini`            | `gemini`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
+| Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | —      | ✅          | —     |
+| MiniMax       | `provider/minimax`           | `minimax`      | ✅   | —     | ✅    | ✅    | —      | —      | ✅      | —          | ✅     |
+| Mistral       | `provider/mistral`           | `mistral`      | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
+| Ollama        | `provider/ollama`            | `ollama`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
+| Perplexity    | `provider/perplexity`        | `perplexity`   | ✅   | —     | —     | —     | —      | —      | —      | —          | —     |
+| TogetherAI    | `provider/togetherai`        | `togetherai`   | ✅   | —     | ✅    | —     | —      | ✅     | —      | —          | —     |
+| xAI           | `provider/xai`               | `xai`          | ✅   | —     | ✅    | ✅    | —      | —      | —      | —          | —     |
 
 Notes:
 - TogetherAI chat routes through the OpenAI-compatible path; its native provider
@@ -267,15 +269,14 @@ Notes:
   Completions with `response_format.json_schema`).
 - MiniMax is a reference provider not published in the models.dev catalog, so
   it resolves only when the operator supplies a provider config (class
-  `minimax`) with model IDs (e.g. `MiniMax-H3`, `image-01`, `speech-2.8-hd`)
+  `minimax`) with model IDs (e.g. `MiniMax-H3`, `image-01`, `speech-2.8-hd`, `music-3.0`)
   and its API key. It is the worked example of the custom-class/config pattern:
   a non-catalog provider is wired as a `ProviderClass` and resolved through the
   runtime with per-model config, exactly as an operator would for their own
   provider.
 - MiniMax chat routes through the OpenAI-compatible path (its text API is
-  OpenAI-compatible); its native provider implements image + speech + video.
-  MiniMax also exposes music generation, but there is no first-class
-  `music.Provider` domain, so it isn't surfaced through the runtime.
+  OpenAI-compatible); its native provider implements image + speech + music +
+  video across four domain interfaces.
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via

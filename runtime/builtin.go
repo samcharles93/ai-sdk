@@ -11,6 +11,7 @@ import (
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/embed"
 	"github.com/samcharles93/ai-sdk/image"
+	"github.com/samcharles93/ai-sdk/music"
 	"github.com/samcharles93/ai-sdk/object"
 	"github.com/samcharles93/ai-sdk/provider/anthropic"
 	"github.com/samcharles93/ai-sdk/provider/azure"
@@ -131,6 +132,7 @@ type simpleClass struct {
 	buildRerank     func(apiKey, baseURL string, httpClient *http.Client) (rerank.Provider, error)
 	buildSpeech     func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error)
 	buildTranscribe func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error)
+	buildMusic      func(apiKey, baseURL string, httpClient *http.Client) (music.Provider, error)
 	build           func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error)
 }
 
@@ -191,6 +193,11 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 				set.Rerank = rk
 			}
 		}
+		if c.Supports(CapabilityMusic) {
+			if m, ok := p.(music.Provider); ok {
+				set.Music = m
+			}
+		}
 		return set, nil
 	}
 	if c.buildChat != nil {
@@ -241,6 +248,13 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
 		}
 		set.Transcribe = p
+	}
+	if c.buildMusic != nil {
+		p, err := c.buildMusic(apiKey, baseURL, httpClient)
+		if err != nil {
+			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
+		}
+		set.Music = p
 	}
 	return set, nil
 }
@@ -340,11 +354,13 @@ func minimaxClass() ProviderClass {
 	// config (for example provider "minimax" with model IDs and its API key);
 	// see runtime.RegisterClass for the custom pattern this class demonstrates.
 	// Its text generation is OpenAI-compatible, so chat is wired through the
-	// OpenAI-compatible path while the other domains use the native minimax
-	// provider (a single *Provider implementing image/speech/video).
+	// OpenAI-compatible path while image/speech/music/video use the native
+	// minimax provider. The native minimax.Provider does not implement
+	// chat/embed, so the granular builders are used (one stateless instance
+	// per domain) rather than a combined builder.
 	return simpleClass{
 		name: "minimax",
-		caps: []Capability{CapabilityChat, CapabilityImage, CapabilitySpeech, CapabilityVideo},
+		caps: []Capability{CapabilityChat, CapabilityImage, CapabilitySpeech, CapabilityVideo, CapabilityMusic},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
 			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
@@ -352,6 +368,9 @@ func minimaxClass() ProviderClass {
 			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 		buildSpeech: func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error) {
+			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildMusic: func(apiKey, baseURL string, httpClient *http.Client) (music.Provider, error) {
 			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 		buildVideo: func(apiKey, baseURL string, httpClient *http.Client) (video.Provider, error) {
