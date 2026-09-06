@@ -18,6 +18,7 @@ import (
 	"github.com/samcharles93/ai-sdk/provider/deepseek"
 	"github.com/samcharles93/ai-sdk/provider/gemini"
 	"github.com/samcharles93/ai-sdk/provider/groq"
+	"github.com/samcharles93/ai-sdk/provider/minimax"
 	"github.com/samcharles93/ai-sdk/provider/mistral"
 	"github.com/samcharles93/ai-sdk/provider/ollama"
 	"github.com/samcharles93/ai-sdk/provider/openai"
@@ -44,6 +45,7 @@ func RegisterBuiltinClasses() {
 	MustRegisterClass(deepseekClass())
 	MustRegisterClass(geminiClass())
 	MustRegisterClass(groqClass())
+	MustRegisterClass(minimaxClass())
 	MustRegisterClass(mistralClass())
 	MustRegisterClass(ollamaClass())
 	MustRegisterClass(openaiClass())
@@ -328,6 +330,21 @@ func groqClass() ProviderClass {
 		},
 		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {
 			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+	}
+}
+
+func minimaxClass() ProviderClass {
+	// MiniMax is a reference provider not published in the models.dev catalog,
+	// so it resolves only when the operator supplies a model via the runtime
+	// config (for example provider "minimax" with a model ID such as
+	// "MiniMax-H3" and its API key); see runtime.RegisterClass for the custom
+	// pattern this class demonstrates.
+	return simpleClass{
+		name: "minimax",
+		caps: []Capability{CapabilityVideo},
+		buildVideo: func(apiKey, baseURL string, httpClient *http.Client) (video.Provider, error) {
+			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 	}
 }

@@ -50,6 +50,7 @@ imports a provider directly.
 | DeepSeek      | `provider/deepseek`         | ✅   | —     | —     | —      | —          | —      | —      | —     |
 | Gemini        | `provider/gemini`           | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
 | Groq          | `provider/groq`             | ✅   | —     | —     | —      | ✅         | —      | —      | —     |
+| MiniMax       | `provider/minimax`          | —    | —     | —     | —      | —          | —      | —      | ✅     |
 | Mistral       | `provider/mistral`          | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
 | Ollama        | `provider/ollama`           | ✅   | ✅    | —     | —      | —          | —      | —      | —     |
 | Perplexity    | `provider/perplexity`       | ✅   | —     | —     | —      | —          | —      | —      | —     |
@@ -61,6 +62,7 @@ Notes:
 - Azure chat/embed/image come from a single `provider/azure` provider.
 - xAI implements chat + image + video from a single `*Provider`.
 - `openaiobject` is a standalone object-generation backend (OpenAI Chat Completions with `response_format.json_schema`).
+- MiniMax is a reference provider not published in the models.dev catalog, so it resolves through the runtime only when an operator supplies a provider config (class `minimax`) with a model ID (e.g. `MiniMax-H3`) and an API key — the config-driven custom-provider pattern it demonstrates. `runtime.RegisterClass` is the escape hatch for a provider not shipped as a built-in class.
 
 ---
 

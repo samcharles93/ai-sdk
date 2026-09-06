@@ -251,6 +251,7 @@ Capabilities as resolvable through the runtime (the `Class` column is the
 | DeepSeek      | `provider/deepseek`          | `deepseek`     | ✅   | —     | —     | —     | —      | —      | —      | —          |
 | Gemini        | `provider/gemini`            | `gemini`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
 | Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | —      | ✅          |
+| MiniMax       | `provider/minimax`           | `minimax`      | —    | —     | —     | ✅    | —      | —      | —      | —          |
 | Mistral       | `provider/mistral`           | `mistral`      | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
 | Ollama        | `provider/ollama`            | `ollama`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          |
 | Perplexity    | `provider/perplexity`        | `perplexity`   | ✅   | —     | —     | —     | —      | —      | —      | —          |
@@ -264,6 +265,12 @@ Notes:
 - xAI implements chat + image + video from a single `*Provider`.
 - `openaiobject` is a standalone object-generation backend (OpenAI Chat
   Completions with `response_format.json_schema`).
+- MiniMax is a reference provider not published in the models.dev catalog, so
+  it resolves only when the operator supplies a provider config (class
+  `minimax`) with a model ID (e.g. `MiniMax-H3`) and its API key. It is the
+  worked example of the custom-class/config pattern: a non-catalog provider is
+  wired as a `ProviderClass` and resolved through the runtime with per-model
+  config, exactly as an operator would for their own provider.
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via

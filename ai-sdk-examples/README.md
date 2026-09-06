@@ -16,6 +16,7 @@ Example programs demonstrating the Go AI SDK.
 | rerank | Document reranking with Cohere for RAG and search quality improvement | `COHERE_API_KEY` | `go run ./ai-sdk-examples/rerank/` |
 | speech-to-text | Audio transcription with OpenAI Whisper — generates test tone and transcribes it | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/speech-to-text/` |
 | streaming-chat | Real-time streaming text generation via `core.StreamText` with token usage reporting | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/streaming-chat/ "prompt"` |
+| minimax-video | Video generation with the reference MiniMax provider via the runtime config pattern (`MINIMAX_API_KEY`) or informational without | `MINIMAX_API_KEY` (optional) | `go run ./ai-sdk-examples/minimax-video/` |
 | video-generation | Video generation with xAI grok-imagine-video (`XAI_API_KEY`) or informational without | `XAI_API_KEY` (optional) | `go run ./ai-sdk-examples/video-generation/` |
 | web-chat | Full browser chat UI with SSE streaming, handlers, registry, and message rendering | `OPENAI_API_KEY` | `go run ./ai-sdk-examples/web-chat/` |
 
@@ -23,7 +24,7 @@ Example programs demonstrating the Go AI SDK.
 
 - **`core.GenerateText`** — Non-streaming text generation with optional tool calling (openai-chat, production-setup)
 - **`core.StreamText`** — Real-time streaming with deltas, usage futures, and finish reasons (streaming-chat, anthropic-agent)
-- **`core.GenerateVideo`** — Provider-agnostic video generation (video-generation)
+- **`core.GenerateVideo`** — Provider-agnostic video generation (video-generation, minimax-video)
 - **`core.GenerateImage`** — Provider-agnostic image generation (image-generation)
 - **`core.GenerateObject`** — Structured JSON output via schema (object-generation)
 - **embedding** — Vector embeddings with cosine similarity, dot product, and vector norm (embedding, multi-provider)
@@ -32,7 +33,8 @@ Example programs demonstrating the Go AI SDK.
 - **UI layer** — Server-side chat state manager, HTTP handlers, SSE streaming, browser-based UI (web-chat)
 - **registry** — Multi-provider registration, retrieval, and capability switching (multi-provider, web-chat)
 - **middleware** — Retry with exponential backoff, circuit breaker, and telemetry tracing (production-setup)
-- **informational examples** — API pattern documentation when providers or keys are unavailable (image-generation, object-generation, video-generation)
+- **informational examples** — API pattern documentation when providers or keys are unavailable (image-generation, object-generation, video-generation, minimax-video)
+- **runtime config / custom class** — Wiring a non-catalog provider (minimax) through the runtime config (minimax-video, runtime-custom-provider)
 
 ## Provider Support
 
@@ -46,3 +48,4 @@ Example programs demonstrating the Go AI SDK.
 | rerank | Cohere |
 | streaming-chat | OpenAI |
 | web-chat | OpenAI |
+| minimax-video | MiniMax |
