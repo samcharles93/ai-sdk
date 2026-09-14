@@ -374,3 +374,14 @@ func TestGenerateSpeech_MaxInputChars(t *testing.T) {
 		t.Fatalf("requests = %d, want 1 at the limit", requests)
 	}
 }
+
+func TestListVoices_NotSupported(t *testing.T) {
+	p, err := New(Config{APIKey: "k", BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = p.ListVoices(context.Background(), "canopylabs/orpheus-v1-english")
+	if !errors.Is(err, speech.ErrVoiceListingNotSupported) {
+		t.Fatalf("error = %v, want ErrVoiceListingNotSupported", err)
+	}
+}

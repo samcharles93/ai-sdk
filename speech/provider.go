@@ -13,3 +13,17 @@ type Provider interface {
 	// GenerateSpeech generates speech audio from the given text.
 	GenerateSpeech(ctx context.Context, req GenerateSpeechRequest) (GenerateSpeechResponse, error)
 }
+
+// VoiceLister is implemented by providers that can enumerate their available
+// voices. It is an OPTIONAL capability: callers type-assert a Provider to
+// VoiceLister, or use Client.ListVoices, which returns
+// ErrVoiceListingNotSupported for providers that do not implement it.
+type VoiceLister interface {
+	// Name returns the provider identifier, matching Provider.Name.
+	Name() string
+
+	// ListVoices returns the voices the provider offers for model. The model
+	// scopes the result when voices are model-specific and may be ignored by
+	// backends with a global voice set.
+	ListVoices(ctx context.Context, model string) ([]Voice, error)
+}

@@ -38,6 +38,11 @@ type Config struct {
 	// longer than the limit with speech.ErrInvalidRequest before any call.
 	// Zero disables the client-side check.
 	MaxInputChars int
+	// DiscoverVoices selects dynamic voice listing: when true, ListVoices
+	// queries the server's /audio/voices endpoint instead of returning the
+	// static OpenAI set. The runtime enables it for the generic
+	// openai-compatible class.
+	DiscoverVoices bool
 }
 
 // SpeechConfig overrides the defaults used by GenerateSpeech when a request
@@ -50,11 +55,12 @@ type SpeechConfig struct {
 
 // Provider implements chat.Provider over OpenAI wire protocols.
 type Provider struct {
-	apiKey        string
-	baseURL       string
-	client        *http.Client
-	speech        *SpeechConfig
-	maxInputChars int
+	apiKey         string
+	baseURL        string
+	client         *http.Client
+	speech         *SpeechConfig
+	maxInputChars  int
+	discoverVoices bool
 }
 
 var _ chat.Provider = (*Provider)(nil)
@@ -80,7 +86,14 @@ func New(cfg Config) (*Provider, error) {
 	if client == nil {
 		client = &http.Client{}
 	}
-	return &Provider{apiKey: cfg.APIKey, baseURL: normaliseBaseURL(base), client: client, speech: cfg.Speech, maxInputChars: cfg.MaxInputChars}, nil
+	return &Provider{
+		apiKey:         cfg.APIKey,
+		baseURL:        normaliseBaseURL(base),
+		client:         client,
+		speech:         cfg.Speech,
+		maxInputChars:  cfg.MaxInputChars,
+		discoverVoices: cfg.DiscoverVoices,
+	}, nil
 }
 
 func normaliseBaseURL(base string) string {

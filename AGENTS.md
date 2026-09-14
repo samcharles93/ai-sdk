@@ -304,6 +304,11 @@ Notes:
   like Kokoro make the limit deployment-configurable). Override with
   `max_input_chars` in provider `options` or model `extra`; oversized text
   fails with `ErrInvalidRequest` before any request.
+- Voice discovery is an optional capability: `speech.VoiceLister` (and the
+  `speech.Client.ListVoices` facade) enumerates voices through the provider's
+  `/audio/voices` endpoint where one exists, normalising the string and object
+  response shapes; providers without an endpoint return
+  `ErrVoiceListingNotSupported`.
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via

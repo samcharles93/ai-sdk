@@ -30,3 +30,19 @@ type GenerateSpeechResponse struct {
 	// Format is the audio format (e.g. "mp3", "wav").
 	Format string `json:"format,omitempty"`
 }
+
+// Voice describes one voice a speech backend offers. Fields other than ID may
+// be empty when the backend does not publish them.
+type Voice struct {
+	// ID is the value to send in GenerateSpeechRequest.Voice.
+	ID string `json:"id"`
+	// Name is a human-readable display name; it defaults to ID when the
+	// backend does not distinguish the two.
+	Name string `json:"name,omitempty"`
+	// Language is the voice language (for example "en-us", "ja").
+	Language string `json:"language,omitempty"`
+	// Gender is the voice gender when the backend publishes it.
+	Gender string `json:"gender,omitempty"`
+	// Model scopes the voice when voices are model-specific.
+	Model string `json:"model,omitempty"`
+}

@@ -24,4 +24,8 @@ var (
 	// ErrUnsupported indicates the provider does not support a requested
 	// capability (for example, a specific voice or format).
 	ErrUnsupported = errors.New("speech: unsupported operation")
+
+	// ErrVoiceListingNotSupported indicates the provider does not expose a
+	// voice-listing endpoint, so its voices cannot be enumerated.
+	ErrVoiceListingNotSupported = errors.New("speech: voice listing not supported")
 )

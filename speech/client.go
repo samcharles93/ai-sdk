@@ -35,3 +35,18 @@ func (c *Client) GenerateSpeech(ctx context.Context, req GenerateSpeechRequest) 
 	}
 	return c.p.GenerateSpeech(ctx, req)
 }
+
+// ListVoices enumerates the voices the underlying Provider offers for model.
+// It returns ErrNoProvider when the Client or its Provider is nil and
+// ErrVoiceListingNotSupported when the provider does not implement
+// [VoiceLister].
+func (c *Client) ListVoices(ctx context.Context, model string) ([]Voice, error) {
+	if c == nil || c.p == nil {
+		return nil, ErrNoProvider
+	}
+	vl, ok := c.p.(VoiceLister)
+	if !ok {
+		return nil, ErrVoiceListingNotSupported
+	}
+	return vl.ListVoices(ctx, model)
+}

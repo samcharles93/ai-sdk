@@ -114,11 +114,12 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 	// "alloy" to a backend that does not have that voice.
 	voice, format := speechDefaults(cfg.Options, model.Extra, "", "")
 	p, err := openai.New(openai.Config{
-		APIKey:        apiKey,
-		BaseURL:       model.providerURL(cfg.BaseURL),
-		HTTPClient:    httpClient,
-		Speech:        &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
-		MaxInputChars: speechMaxInputChars(cfg.Options, model.Extra, 0),
+		APIKey:         apiKey,
+		BaseURL:        model.providerURL(cfg.BaseURL),
+		HTTPClient:     httpClient,
+		Speech:         &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
+		MaxInputChars:  speechMaxInputChars(cfg.Options, model.Extra, 0),
+		DiscoverVoices: true,
 	})
 	if err != nil {
 		return ProviderSet{}, fmt.Errorf("runtime/%s: %w", cfg.Class, err)

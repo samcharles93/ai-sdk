@@ -71,3 +71,12 @@ func classifySpeechHTTPError(resp *http.Response, snippet string) error {
 
 // Compile-time assertion that *Provider satisfies speech.Provider.
 var _ speech.Provider = (*Provider)(nil)
+
+// ListVoices reports that Groq exposes no voice-listing endpoint: its Orpheus
+// voices are documented per model and are not available through the API.
+func (p *Provider) ListVoices(ctx context.Context, model string) ([]speech.Voice, error) {
+	return nil, speech.ErrVoiceListingNotSupported
+}
+
+// Compile-time assertion that *Provider satisfies speech.VoiceLister.
+var _ speech.VoiceLister = (*Provider)(nil)

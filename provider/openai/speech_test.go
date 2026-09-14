@@ -231,3 +231,64 @@ func TestGenerateSpeech_MaxInputChars(t *testing.T) {
 		t.Fatalf("requests = %d, want 1 at the limit", requests)
 	}
 }
+
+func TestListVoices_Static(t *testing.T) {
+	p, err := New(Config{APIKey: "k", BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	voices, err := p.ListVoices(context.Background(), "gpt-4o-mini-tts")
+	if err != nil {
+		t.Fatalf("ListVoices: %v", err)
+	}
+	if len(voices) == 0 {
+		t.Fatal("expected a non-empty static voice list")
+	}
+	found := false
+	for _, v := range voices {
+		if v.ID == "alloy" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("static voices %+v do not include alloy", voices)
+	}
+}
+
+func TestListVoices_Discovery(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"voices":[{"id":"af_heart","name":"af_heart","language":"en-us","gender":"female"}]}`))
+	}))
+	defer srv.Close()
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL, DiscoverVoices: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	voices, err := p.ListVoices(context.Background(), "kokoro")
+	if err != nil {
+		t.Fatalf("ListVoices: %v", err)
+	}
+	if gotPath != "/v1/audio/voices" {
+		t.Fatalf("path = %q, want /v1/audio/voices", gotPath)
+	}
+	if len(voices) != 1 || voices[0].ID != "af_heart" || voices[0].Language != "en-us" {
+		t.Fatalf("voices = %+v, want the discovered af_heart", voices)
+	}
+	if voices[0].Model != "kokoro" {
+		t.Fatalf("model = %q, want kokoro", voices[0].Model)
+	}
+}
+
+func TestListVoices_DiscoveryUnsupported(t *testing.T) {
+	srv := newSpeechServer(t, http.StatusNotFound, "", nil)
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL, DiscoverVoices: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = p.ListVoices(context.Background(), "kokoro")
+	if !errors.Is(err, speech.ErrVoiceListingNotSupported) {
+		t.Fatalf("error = %v, want ErrVoiceListingNotSupported", err)
+	}
+}
