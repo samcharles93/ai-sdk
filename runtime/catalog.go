@@ -453,6 +453,12 @@ func mergeCatalogModel(base, override CatalogModel) CatalogModel {
 	if override.Temperature {
 		result.Temperature = true
 	}
+	if len(override.Modalities.Input) > 0 {
+		result.Modalities.Input = override.Modalities.Input
+	}
+	if len(override.Modalities.Output) > 0 {
+		result.Modalities.Output = override.Modalities.Output
+	}
 	if override.Cost.Input != 0 {
 		result.Cost.Input = override.Cost.Input
 	}

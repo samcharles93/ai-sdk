@@ -293,6 +293,12 @@ Notes:
   input text; OpenAI's current TTS model is `gpt-4o-mini-tts` (it recommends
   `marin`/`cedar` voices and supports `instructions`, which `tts-1`/`tts-1-hd`
   do not).
+- Speech resolution is metadata-gated: `rt.Speech` refuses a model whose
+  published modalities (or explicit `ModelConfig.Capabilities`) exclude speech
+  output with `ErrCapabilityNotSupported`, before any request is sent. Models
+  without published metadata are attempted best-effort, so the generic class
+  can still surface a provider-side error; declaring `capabilities: ["speech"]`
+  makes the intent explicit.
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via

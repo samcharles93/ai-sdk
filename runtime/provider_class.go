@@ -75,17 +75,22 @@ type ProviderConfig struct {
 // ModelConfig is a configured model entry for a provider. It is merged
 // with catalog metadata by the runtime.
 type ModelConfig struct {
-	ID               string         `json:"id"`
-	Name             string         `json:"name,omitempty"`
-	URL              string         `json:"url,omitempty"`
-	ContextWindow    int            `json:"context_window,omitempty"`
-	MaxOutputTokens  int            `json:"max_output_tokens,omitempty"`
-	Reasoning        bool           `json:"reasoning,omitempty"`
-	ToolCall         bool           `json:"tool_call,omitempty"`
-	StructuredOutput bool           `json:"structured_output,omitempty"`
-	Temperature      bool           `json:"temperature,omitempty"`
-	Cost             CostConfig     `json:"cost"`
-	Extra            map[string]any `json:"extra,omitempty"`
+	ID               string `json:"id"`
+	Name             string `json:"name,omitempty"`
+	URL              string `json:"url,omitempty"`
+	ContextWindow    int    `json:"context_window,omitempty"`
+	MaxOutputTokens  int    `json:"max_output_tokens,omitempty"`
+	Reasoning        bool   `json:"reasoning,omitempty"`
+	ToolCall         bool   `json:"tool_call,omitempty"`
+	StructuredOutput bool   `json:"structured_output,omitempty"`
+	Temperature      bool   `json:"temperature,omitempty"`
+	// Capabilities optionally declares the model's capabilities, overriding
+	// metadata-derived ones. When non-empty it is authoritative: a capability
+	// absent from the list is treated as unsupported even when catalog
+	// modalities would imply it.
+	Capabilities []Capability   `json:"capabilities,omitempty"`
+	Cost         CostConfig     `json:"cost"`
+	Extra        map[string]any `json:"extra,omitempty"`
 }
 
 // CostConfig carries per-token pricing metadata.
@@ -110,8 +115,16 @@ type ModelInfo struct {
 	ToolCall         bool
 	StructuredOutput bool
 	Temperature      bool
-	Cost             CostConfig
-	Extra            map[string]any
+	// InputModalities and OutputModalities mirror the provider's published
+	// modalities (for example models.dev's audio/speech, text, image, video).
+	// Empty means unknown.
+	InputModalities  []string
+	OutputModalities []string
+	// Capabilities, when non-empty, is the authoritative capability list and
+	// overrides the modality-derived inference.
+	Capabilities []Capability
+	Cost         CostConfig
+	Extra        map[string]any
 }
 
 // providerURL returns the most specific URL known for the model.

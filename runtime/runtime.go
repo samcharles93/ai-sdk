@@ -183,6 +183,9 @@ func (r *Runtime) SpeechProvider(ctx context.Context, ref string) (speech.Provid
 	if err != nil {
 		return nil, "", err
 	}
+	if supported, known := modelSupports(model, CapabilitySpeech); known && !supported {
+		return nil, "", fmt.Errorf("%w: model %q on provider %q does not declare speech output", ErrCapabilityNotSupported, model.ID, mref.ProviderID)
+	}
 	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
 	if err != nil {
 		return nil, "", err
@@ -620,6 +623,8 @@ func catalogToModelInfo(providerID string, cm CatalogModel) ModelInfo {
 		ToolCall:         cm.ToolCall,
 		StructuredOutput: cm.Structured,
 		Temperature:      cm.Temperature,
+		InputModalities:  cm.Modalities.Input,
+		OutputModalities: cm.Modalities.Output,
 		ContextWindow:    cm.Limit.Context,
 		MaxOutputTokens:  cm.Limit.Output,
 		Cost: CostConfig{
@@ -643,6 +648,7 @@ func configToModelInfo(providerID string, mc ModelConfig) ModelInfo {
 		Temperature:      mc.Temperature,
 		ContextWindow:    mc.ContextWindow,
 		MaxOutputTokens:  mc.MaxOutputTokens,
+		Capabilities:     mc.Capabilities,
 		Cost:             mc.Cost,
 		Extra:            mc.Extra,
 	}
@@ -672,6 +678,9 @@ func mergeModelInfoWithConfig(base ModelInfo, mc ModelConfig) ModelInfo {
 	}
 	if mc.Temperature {
 		base.Temperature = true
+	}
+	if len(mc.Capabilities) > 0 {
+		base.Capabilities = mc.Capabilities
 	}
 	if mc.Cost.Input != 0 {
 		base.Cost.Input = mc.Cost.Input
