@@ -1,0 +1,13 @@
+{
+  "name": "kokoro-tts-openai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spike: OpenAI-compatible TTS sidecar using kokoro-js / Transformers.js",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "kokoro-js": "^1.2.1"
+  }
+}

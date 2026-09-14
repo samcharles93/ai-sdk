@@ -7,7 +7,8 @@ it to the ai-sdk runtime as a custom `ProviderClass`.
 
 It exists to answer bead **ai-sdk-2z0**: can TTS run in Go without an external
 server? Yes — with a native engine, not with pure Go. Details in the bead's
-design notes.
+design notes. `node-tts/` contains the competing Node/Transformers.js sidecar
+built for comparison.
 
 ## Why a separate module
 
