@@ -62,6 +62,11 @@ tasks:
     cmds:
       - go test -race ./...
 
+  test:live:tts:
+    desc: Run the live self-hosted OpenAI-compatible TTS test (requires AI_SDK_TTS_BASE_URL)
+    cmds:
+      - go test -tags live -run TestOpenAICompatibleSpeechLive ./runtime/ -count=1 -v
+
   test:cover:
     desc: Run tests with coverage
     cmds:

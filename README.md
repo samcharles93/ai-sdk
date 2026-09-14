@@ -247,6 +247,28 @@ task test:race  # run the suite with the race detector
 task check      # format, vet, staticcheck, lint, dead-code check, and tests
 ```
 
+### Live tests
+
+Provider calls against real services are build-tag gated and never run under
+`task check` or CI. The self-hosted TTS test exercises the generic
+`openai-compatible` class end-to-end and skips unless `AI_SDK_TTS_BASE_URL` is
+set. Bring up a server first, for example Kokoro-FastAPI:
+
+```bash
+docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
+
+export AI_SDK_TTS_BASE_URL=http://localhost:8880/v1
+export AI_SDK_TTS_MODEL=kokoro      # optional, defaults to kokoro
+export AI_SDK_TTS_VOICE=af_heart    # optional, defaults to af_heart
+export AI_SDK_TTS_FORMAT=mp3        # optional, defaults to mp3
+
+task test:live:tts
+```
+
+The `AI_SDK_TTS_TEXT` override changes the synthesised phrase. The Groq speech
+live test (`go test -tags live ./provider/groq/`) is gated the same way and
+additionally skips until the org accepts the Orpheus model terms.
+
 The project uses `gofumpt` for formatting and `golangci-lint` with `govet`,
 `staticcheck`, `unused`, `nilerr`, and `misspell` enabled.
 
