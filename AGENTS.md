@@ -281,7 +281,9 @@ Notes:
   endpoint shape as OpenAI, so both providers share the generic helper in
   `internal/tts` (mirroring `internal/whisper` for transcription) and each
   stays a thin wrapper. Groq voices are model-scoped, so a voice-less request is
-  rejected rather than defaulted.
+  rejected rather than defaulted; the current Orpheus models are wav-only, so
+  that is the wrapper's default and sole client-side format, and they need a
+  one-time org-level terms acceptance in the Groq console.
 - Self-hosted OpenAI-compatible TTS servers (Kokoro-FastAPI, speaches,
   openedai-speech, LocalAI) resolve through the generic `openai-compatible`
   class with the server `BaseURL` and `auth.type: none` for keyless servers.

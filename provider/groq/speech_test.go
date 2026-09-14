@@ -34,9 +34,9 @@ func TestGenerateSpeech_Success(t *testing.T) {
 	}
 
 	resp, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
-		Model: "playai-tts",
+		Model: "canopylabs/orpheus-v1-english",
 		Text:  "hello world",
-		Voice: "Fritz-PlayAI",
+		Voice: "hannah",
 	})
 	if err != nil {
 		t.Fatalf("GenerateSpeech: %v", err)
@@ -47,17 +47,17 @@ func TestGenerateSpeech_Success(t *testing.T) {
 	if gotAuth != "Bearer test-key" {
 		t.Errorf("auth = %q, want Bearer test-key", gotAuth)
 	}
-	if gotBody["model"] != "playai-tts" || gotBody["input"] != "hello world" || gotBody["voice"] != "Fritz-PlayAI" {
+	if gotBody["model"] != "canopylabs/orpheus-v1-english" || gotBody["input"] != "hello world" || gotBody["voice"] != "hannah" {
 		t.Errorf("body = %v, want model/input/voice set", gotBody)
 	}
-	if gotBody["response_format"] != "mp3" {
-		t.Errorf("response_format = %v, want default mp3", gotBody["response_format"])
+	if gotBody["response_format"] != "wav" {
+		t.Errorf("response_format = %v, want default wav", gotBody["response_format"])
 	}
 	if string(resp.Audio) != "groq-audio-bytes" {
 		t.Errorf("audio = %q, want groq-audio-bytes", resp.Audio)
 	}
-	if resp.Format != "mp3" {
-		t.Errorf("format = %q, want mp3", resp.Format)
+	if resp.Format != "wav" {
+		t.Errorf("format = %q, want wav", resp.Format)
 	}
 }
 
@@ -67,7 +67,7 @@ func TestGenerateSpeech_RequiresVoice(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	_, err = p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
-		Model: "playai-tts",
+		Model: "canopylabs/orpheus-v1-english",
 		Text:  "hello",
 	})
 	if !errors.Is(err, speech.ErrInvalidRequest) {
@@ -84,10 +84,10 @@ func TestGenerateSpeech_Validation(t *testing.T) {
 		req  speech.GenerateSpeechRequest
 	}{
 		{name: "missing model", req: speech.GenerateSpeechRequest{Text: "hello", Voice: "v"}},
-		{name: "missing text", req: speech.GenerateSpeechRequest{Model: "playai-tts", Voice: "v"}},
+		{name: "missing text", req: speech.GenerateSpeechRequest{Model: "canopylabs/orpheus-v1-english", Voice: "v"}},
 		{
-			name: "openai-only format rejected",
-			req:  speech.GenerateSpeechRequest{Model: "playai-tts", Text: "hello", Voice: "v", Format: "opus"},
+			name: "non-wav format rejected",
+			req:  speech.GenerateSpeechRequest{Model: "canopylabs/orpheus-v1-english", Text: "hello", Voice: "v", Format: "opus"},
 		},
 	}
 	for _, tc := range tests {
@@ -104,34 +104,45 @@ func TestGenerateSpeech_Validation(t *testing.T) {
 	}
 }
 
-func TestGenerateSpeech_AcceptedFormats(t *testing.T) {
-	for _, format := range []string{"mp3", "wav", "flac", "mulaw", "ogg"} {
-		t.Run(format, func(t *testing.T) {
-			var gotBody map[string]any
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
-					t.Fatalf("decode body: %v", err)
-				}
-				w.WriteHeader(http.StatusOK)
-				_, _ = io.WriteString(w, "audio")
-			}))
-			defer srv.Close()
-			p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+func TestGenerateSpeech_FormatPolicy(t *testing.T) {
+	// Groq's current Orpheus models are wav-only: wav must reach the wire, and
+	// every other format must be rejected before any network call.
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "audio")
+	}))
+	defer srv.Close()
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+	ctx := context.Background()
+	baseReq := speech.GenerateSpeechRequest{
+		Model: "canopylabs/orpheus-v1-english",
+		Text:  "hello",
+		Voice: "hannah",
+	}
 
-			resp, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
-				Model:  "playai-tts",
-				Text:   "hello",
-				Voice:  "Fritz-PlayAI",
-				Format: format,
-			})
-			if err != nil {
-				t.Fatalf("GenerateSpeech(%s): %v", format, err)
-			}
-			if gotBody["response_format"] != format {
-				t.Errorf("response_format = %v, want %s", gotBody["response_format"], format)
-			}
-			if resp.Format != format {
-				t.Errorf("format = %q, want %q", resp.Format, format)
+	accepted := baseReq
+	accepted.Format = "wav"
+	resp, err := p.GenerateSpeech(ctx, accepted)
+	if err != nil {
+		t.Fatalf("GenerateSpeech(wav): %v", err)
+	}
+	if gotBody["response_format"] != "wav" {
+		t.Errorf("response_format = %v, want wav", gotBody["response_format"])
+	}
+	if resp.Format != "wav" {
+		t.Errorf("format = %q, want wav", resp.Format)
+	}
+
+	for _, format := range []string{"mp3", "opus", "flac", "mulaw", "ogg"} {
+		t.Run("rejects_"+format, func(t *testing.T) {
+			req := baseReq
+			req.Format = format
+			if _, err := p.GenerateSpeech(ctx, req); !errors.Is(err, speech.ErrInvalidRequest) {
+				t.Errorf("GenerateSpeech(%s) error = %v, want ErrInvalidRequest", format, err)
 			}
 		})
 	}
@@ -146,7 +157,7 @@ func TestGenerateSpeech_InvalidVoice_TypedProviderError(t *testing.T) {
 	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
 
 	_, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
-		Model: "playai-tts",
+		Model: "canopylabs/orpheus-v1-english",
 		Text:  "hello",
 		Voice: "not-a-voice",
 	})
@@ -180,9 +191,9 @@ func TestGenerateSpeech_RateLimit_TypedProviderError(t *testing.T) {
 	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
 
 	_, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
-		Model: "playai-tts",
+		Model: "canopylabs/orpheus-v1-english",
 		Text:  "hello",
-		Voice: "Fritz-PlayAI",
+		Voice: "hannah",
 	})
 
 	var perr *errx.ProviderError
@@ -230,9 +241,9 @@ func TestGenerateSpeech_AuthAndServerErrors_TypedProviderError(t *testing.T) {
 			p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
 
 			_, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
-				Model: "playai-tts",
+				Model: "canopylabs/orpheus-v1-english",
 				Text:  "hello",
-				Voice: "Fritz-PlayAI",
+				Voice: "hannah",
 			})
 
 			var perr *errx.ProviderError

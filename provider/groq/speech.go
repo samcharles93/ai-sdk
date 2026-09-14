@@ -9,21 +9,20 @@ import (
 	"github.com/samcharles93/ai-sdk/speech"
 )
 
-const defaultSpeechFormat = "mp3"
+const defaultSpeechFormat = "wav"
 
-// groqSpeechFormats is the response_format set Groq's OpenAI-compatible
-// speech endpoint accepts.
+// groqSpeechFormats is the response_format set Groq's current Orpheus speech
+// models accept. canopylabs/orpheus-v1-english and -arabic-saudi are wav-only;
+// the decommissioned PlayAI models were the ones that accepted
+// flac/mp3/mulaw/ogg/wav.
 var groqSpeechFormats = map[string]bool{
-	"flac":  true,
-	"mp3":   true,
-	"mulaw": true,
-	"ogg":   true,
-	"wav":   true,
+	"wav": true,
 }
 
 // GenerateSpeech synthesises speech using Groq's OpenAI-compatible speech
-// endpoint. Groq has no cross-model default voice (PlayAI voices are
-// model-scoped and Orpheus uses a different naming scheme), so a request that
+// endpoint, which currently serves the canopylabs/orpheus-v1-english and
+// canopylabs/orpheus-arabic-saudi models. Voices are model-scoped (the English
+// and Arabic models have different voice sets) and required, so a request that
 // omits Voice is rejected rather than guessed. It satisfies speech.Provider.
 func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
 	return tts.Generate(ctx, tts.Config{
