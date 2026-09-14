@@ -30,7 +30,7 @@ func TestGroqClassSurfacesSpeech(t *testing.T) {
 		BaseURL: "https://api.groq.com/openai/v1",
 		Auth:    AuthConfig{Type: AuthTypeAPIKey, APIKey: "test-key"},
 	}
-	model := ModelInfo{ID: "playai-tts", ProviderID: "groq", URL: cfg.BaseURL}
+	model := ModelInfo{ID: "canopylabs/orpheus-v1-english", ProviderID: "groq", URL: cfg.BaseURL}
 
 	set, err := cls.New(context.Background(), cfg, model)
 	if err != nil {
