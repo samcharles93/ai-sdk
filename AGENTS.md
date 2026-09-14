@@ -357,13 +357,14 @@ using Datastar attributes for reactivity:
 ## File Organization
 
 ```tree
-ai-sdk-examples/            # Example programs demonstrating SDK usage
+ai-sdk-examples/            # Example programs demonstrating SDK usage (separate module)
   openai-chat/              #   Simple chat CLI with OpenAI
   anthropic-agent/          #   Agent with tool-use and streaming
   object-generation/        #   Structured object generation
   speech-to-text/           #   Audio transcription example
   image-generation/         #   Image generation example
   video-generation/         #   Video generation example
+ai-sdk-local/               # Experimental local-engine providers (separate module, CGO)
 cmd/ai-sdk/                 # Entrypoint — wires dependencies, starts server
 chat/                     # Domain: chat types & interface
 embed/                    # Domain: embedding types & interface
