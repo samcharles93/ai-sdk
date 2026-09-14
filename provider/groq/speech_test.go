@@ -262,3 +262,79 @@ func TestGenerateSpeech_AuthAndServerErrors_TypedProviderError(t *testing.T) {
 		})
 	}
 }
+
+func TestGenerateSpeech_SampleRate(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "audio")
+	}))
+	defer srv.Close()
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL})
+
+	if _, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model:      "canopylabs/orpheus-v1-english",
+		Text:       "hello",
+		Voice:      "hannah",
+		SampleRate: 24000,
+	}); err != nil {
+		t.Fatalf("GenerateSpeech: %v", err)
+	}
+	if gotBody["sample_rate"] != float64(24000) {
+		t.Errorf("sample_rate = %v, want 24000", gotBody["sample_rate"])
+	}
+}
+
+func TestGenerateSpeech_RejectsInstructions(t *testing.T) {
+	p, err := New(Config{APIKey: "k", BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model:        "canopylabs/orpheus-v1-english",
+		Text:         "hello",
+		Voice:        "hannah",
+		Instructions: "whisper",
+	})
+	if !errors.Is(err, speech.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestGenerateSpeech_DefaultFormatOverride(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "audio")
+	}))
+	defer srv.Close()
+
+	p, _ := New(Config{APIKey: "k", BaseURL: srv.URL, DefaultFormat: "wav"})
+	if _, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model: "canopylabs/orpheus-v1-english",
+		Text:  "hello",
+		Voice: "hannah",
+	}); err != nil {
+		t.Fatalf("GenerateSpeech: %v", err)
+	}
+	if gotBody["response_format"] != "wav" {
+		t.Errorf("response_format = %v, want wav", gotBody["response_format"])
+	}
+
+	// An override outside the allowed set is rejected client-side.
+	p, _ = New(Config{APIKey: "k", BaseURL: srv.URL, DefaultFormat: "mp3"})
+	_, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model: "canopylabs/orpheus-v1-english",
+		Text:  "hello",
+		Voice: "hannah",
+	})
+	if !errors.Is(err, speech.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest for an unsupported override, got %v", err)
+	}
+}

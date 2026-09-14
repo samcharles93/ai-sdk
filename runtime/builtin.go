@@ -109,10 +109,15 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 		return ProviderSet{}, fmt.Errorf("runtime/%s: no bearer token resolved for provider %q", cfg.Class, cfg.ID)
 	}
 	httpClient := cfg.httpClient()
+	// Self-hosted speech defaults come from config only: with none set, a
+	// voice-less request is rejected rather than silently sending OpenAI's
+	// "alloy" to a backend that does not have that voice.
+	voice, format := speechDefaults(cfg.Options, model.Extra, "", "")
 	p, err := openai.New(openai.Config{
 		APIKey:     apiKey,
 		BaseURL:    model.providerURL(cfg.BaseURL),
 		HTTPClient: httpClient,
+		Speech:     &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
 	})
 	if err != nil {
 		return ProviderSet{}, fmt.Errorf("runtime/%s: %w", cfg.Class, err)
@@ -122,6 +127,17 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 	// speaches, openedai-speech, LocalAI) implements, and openai.New already
 	// accepts an empty key for a non-OpenAI base URL.
 	return ProviderSet{Chat: p, Speech: p}, nil
+}
+
+// speechBuildArgs carries everything a speech builder needs: credentials, the
+// resolved model (including per-model Extra overrides), and the provider-level
+// Options map.
+type speechBuildArgs struct {
+	apiKey     string
+	baseURL    string
+	httpClient *http.Client
+	model      ModelInfo
+	options    map[string]any
 }
 
 // simpleClass wraps a provider constructor that returns a value
@@ -134,7 +150,7 @@ type simpleClass struct {
 	buildVideo      func(apiKey, baseURL string, httpClient *http.Client) (video.Provider, error)
 	buildObject     func(apiKey, baseURL string, httpClient *http.Client) (object.Provider, error)
 	buildRerank     func(apiKey, baseURL string, httpClient *http.Client) (rerank.Provider, error)
-	buildSpeech     func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error)
+	buildSpeech     func(speechBuildArgs) (speech.Provider, error)
 	buildTranscribe func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error)
 	buildMusic      func(apiKey, baseURL string, httpClient *http.Client) (music.Provider, error)
 	build           func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error)
@@ -240,7 +256,13 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 		set.Rerank = p
 	}
 	if c.buildSpeech != nil {
-		p, err := c.buildSpeech(apiKey, baseURL, httpClient)
+		p, err := c.buildSpeech(speechBuildArgs{
+			apiKey:     apiKey,
+			baseURL:    baseURL,
+			httpClient: httpClient,
+			model:      model,
+			options:    cfg.Options,
+		})
 		if err != nil {
 			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
 		}
@@ -270,8 +292,12 @@ func openaiClass() ProviderClass {
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
 			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
-		buildSpeech: func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error) {
-			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		buildSpeech: func(a speechBuildArgs) (speech.Provider, error) {
+			voice, format := speechDefaults(a.options, a.model.Extra, "alloy", "mp3")
+			return openai.New(openai.Config{
+				APIKey: a.apiKey, BaseURL: a.baseURL, HTTPClient: a.httpClient,
+				Speech: &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
+			})
 		},
 		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {
 			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
@@ -346,8 +372,9 @@ func groqClass() ProviderClass {
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
 			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
-		buildSpeech: func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error) {
-			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		buildSpeech: func(a speechBuildArgs) (speech.Provider, error) {
+			_, format := speechDefaults(a.options, a.model.Extra, "", "wav")
+			return groq.New(groq.Config{APIKey: a.apiKey, BaseURL: a.baseURL, HTTPClient: a.httpClient, DefaultFormat: format})
 		},
 		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {
 			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
@@ -374,8 +401,8 @@ func minimaxClass() ProviderClass {
 		buildImage: func(apiKey, baseURL string, httpClient *http.Client) (image.Provider, error) {
 			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
-		buildSpeech: func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error) {
-			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		buildSpeech: func(a speechBuildArgs) (speech.Provider, error) {
+			return minimax.New(minimax.Config{APIKey: a.apiKey, BaseURL: a.baseURL, HTTPClient: a.httpClient})
 		},
 		buildMusic: func(apiKey, baseURL string, httpClient *http.Client) (music.Provider, error) {
 			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
@@ -446,6 +473,29 @@ func togetheraiClass() ProviderClass {
 			return togetherai.New(togetherai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 	}
+}
+
+// speechDefaults resolves the generic speech defaults for a provider/model.
+// A per-model Extra entry wins over the provider-level Options entry;
+// fallbacks apply when neither source sets a value.
+func speechDefaults(options, extra map[string]any, fallbackVoice, fallbackFormat string) (voice, format string) {
+	pick := func(key string) string {
+		for _, m := range []map[string]any{extra, options} {
+			if v, ok := m[key].(string); ok && strings.TrimSpace(v) != "" {
+				return v
+			}
+		}
+		return ""
+	}
+	voice = pick("speech_default_voice")
+	if voice == "" {
+		voice = fallbackVoice
+	}
+	format = pick("speech_default_format")
+	if format == "" {
+		format = fallbackFormat
+	}
+	return voice, format
 }
 
 func (cfg ProviderConfig) httpClient() *http.Client {

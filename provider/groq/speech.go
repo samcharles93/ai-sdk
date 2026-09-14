@@ -25,14 +25,19 @@ var groqSpeechFormats = map[string]bool{
 // and Arabic models have different voice sets) and required, so a request that
 // omits Voice is rejected rather than guessed. It satisfies speech.Provider.
 func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
+	format := p.defaultFormat
+	if format == "" {
+		format = defaultSpeechFormat
+	}
 	return tts.Generate(ctx, tts.Config{
-		Provider:       "groq",
-		BaseURL:        p.baseURL,
-		APIKey:         p.apiKey,
-		HTTPClient:     p.client,
-		AllowedFormats: groqSpeechFormats,
-		DefaultFormat:  defaultSpeechFormat,
-		ClassifyError:  classifySpeechHTTPError,
+		Provider:           "groq",
+		BaseURL:            p.baseURL,
+		APIKey:             p.apiKey,
+		HTTPClient:         p.client,
+		AllowedFormats:     groqSpeechFormats,
+		DefaultFormat:      format,
+		SupportsSampleRate: true,
+		ClassifyError:      classifySpeechHTTPError,
 	}, req)
 }
 

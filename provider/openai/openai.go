@@ -29,6 +29,19 @@ type Config struct {
 	// HTTPClient overrides the client used for requests. If nil, requests are
 	// bounded only by their caller contexts.
 	HTTPClient *http.Client
+	// Speech configures the TTS defaults. When nil the provider keeps its
+	// historical defaults (voice "alloy", format "mp3"), which direct
+	// constructor callers rely on. Runtime classes set it explicitly so a
+	// self-hosted OpenAI-compatible backend never inherits an OpenAI voice.
+	Speech *SpeechConfig
+}
+
+// SpeechConfig overrides the defaults used by GenerateSpeech when a request
+// does not resolve a voice or format. An empty DefaultVoice makes Voice
+// required; an empty DefaultFormat keeps "mp3".
+type SpeechConfig struct {
+	DefaultVoice  string
+	DefaultFormat string
 }
 
 // Provider implements chat.Provider over OpenAI wire protocols.
@@ -36,6 +49,7 @@ type Provider struct {
 	apiKey  string
 	baseURL string
 	client  *http.Client
+	speech  *SpeechConfig
 }
 
 var _ chat.Provider = (*Provider)(nil)
@@ -61,7 +75,7 @@ func New(cfg Config) (*Provider, error) {
 	if client == nil {
 		client = &http.Client{}
 	}
-	return &Provider{apiKey: cfg.APIKey, baseURL: normaliseBaseURL(base), client: client}, nil
+	return &Provider{apiKey: cfg.APIKey, baseURL: normaliseBaseURL(base), client: client, speech: cfg.Speech}, nil
 }
 
 func normaliseBaseURL(base string) string {

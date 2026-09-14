@@ -215,18 +215,124 @@ func TestGenerate_ClassifyErrorOverride(t *testing.T) {
 	}
 }
 
-func TestGenerate_ApplyOptions(t *testing.T) {
+func TestGenerate_ProviderOptions(t *testing.T) {
 	var gotBody map[string]any
 	srv := newSpeechServer(t, http.StatusOK, "audio", func(body map[string]any) { gotBody = body })
 	cfg := testConfig(srv)
-	cfg.ApplyOptions = func(body map[string]any, req speech.GenerateSpeechRequest) {
-		body["instructions"] = "speak slowly"
-	}
+	cfg.SupportsInstructions = true
+	cfg.SupportsSampleRate = true
 
-	if _, err := Generate(context.Background(), cfg, speech.GenerateSpeechRequest{Model: "m", Text: "t"}); err != nil {
+	if _, err := Generate(context.Background(), cfg, speech.GenerateSpeechRequest{
+		Model: "m",
+		Text:  "t",
+		ProviderOptions: map[string]any{"testprov": map[string]any{
+			"voice":        "option-voice",
+			"format":       "wav",
+			"speed":        1.75,
+			"instructions": "speak slowly",
+			"sample_rate":  24000,
+		}},
+	}); err != nil {
 		t.Fatalf("Generate: %v", err)
+	}
+	if gotBody["voice"] != "option-voice" {
+		t.Errorf("voice = %v, want option-voice", gotBody["voice"])
+	}
+	if gotBody["response_format"] != "wav" {
+		t.Errorf("response_format = %v, want wav", gotBody["response_format"])
+	}
+	if gotBody["speed"] != 1.75 {
+		t.Errorf("speed = %v, want 1.75", gotBody["speed"])
 	}
 	if gotBody["instructions"] != "speak slowly" {
 		t.Errorf("instructions = %v, want speak slowly", gotBody["instructions"])
+	}
+	if gotBody["sample_rate"] != float64(24000) {
+		t.Errorf("sample_rate = %v, want 24000", gotBody["sample_rate"])
+	}
+}
+
+func TestGenerate_TypedFieldsWinOverProviderOptions(t *testing.T) {
+	var gotBody map[string]any
+	srv := newSpeechServer(t, http.StatusOK, "audio", func(body map[string]any) { gotBody = body })
+	cfg := testConfig(srv)
+	cfg.SupportsInstructions = true
+	cfg.SupportsSampleRate = true
+
+	if _, err := Generate(context.Background(), cfg, speech.GenerateSpeechRequest{
+		Model:        "m",
+		Text:         "t",
+		Voice:        "typed-voice",
+		Format:       "mp3",
+		Speed:        1.25,
+		Instructions: "typed instructions",
+		SampleRate:   16000,
+		ProviderOptions: map[string]any{"testprov": map[string]any{
+			"voice":        "option-voice",
+			"format":       "wav",
+			"speed":        4.0,
+			"instructions": "option instructions",
+			"sample_rate":  24000,
+		}},
+	}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if gotBody["voice"] != "typed-voice" || gotBody["response_format"] != "mp3" {
+		t.Errorf("voice/format = %v/%v, want typed-voice/mp3", gotBody["voice"], gotBody["response_format"])
+	}
+	if gotBody["speed"] != 1.25 {
+		t.Errorf("speed = %v, want 1.25", gotBody["speed"])
+	}
+	if gotBody["instructions"] != "typed instructions" {
+		t.Errorf("instructions = %v, want typed instructions", gotBody["instructions"])
+	}
+	if gotBody["sample_rate"] != float64(16000) {
+		t.Errorf("sample_rate = %v, want 16000", gotBody["sample_rate"])
+	}
+}
+
+func TestGenerate_RejectsUnsupportedOptionalFields(t *testing.T) {
+	tests := []struct {
+		name string
+		req  speech.GenerateSpeechRequest
+	}{
+		{
+			name: "typed instructions",
+			req:  speech.GenerateSpeechRequest{Model: "m", Text: "t", Instructions: "x"},
+		},
+		{
+			name: "option instructions",
+			req: speech.GenerateSpeechRequest{Model: "m", Text: "t", ProviderOptions: map[string]any{
+				"testprov": map[string]any{"instructions": "x"},
+			}},
+		},
+		{
+			name: "typed sample rate",
+			req:  speech.GenerateSpeechRequest{Model: "m", Text: "t", SampleRate: 24000},
+		},
+		{
+			name: "option sample rate",
+			req: speech.GenerateSpeechRequest{Model: "m", Text: "t", ProviderOptions: map[string]any{
+				"testprov": map[string]any{"sample_rate": 24000},
+			}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			_, err := Generate(context.Background(), testConfig(srv), tc.req)
+			if !errors.Is(err, speech.ErrInvalidRequest) {
+				t.Fatalf("expected ErrInvalidRequest, got %v", err)
+			}
+			if requests != 0 {
+				t.Fatalf("requests = %d, want 0 for a rejected optional field", requests)
+			}
+		})
 	}
 }

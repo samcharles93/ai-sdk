@@ -287,8 +287,12 @@ Notes:
 - Self-hosted OpenAI-compatible TTS servers (Kokoro-FastAPI, speaches,
   openedai-speech, LocalAI) resolve through the generic `openai-compatible`
   class with the server `BaseURL` and `auth.type: none` for keyless servers.
-  Set `Voice` explicitly: the generic path inherits OpenAI's `alloy` default,
-  and server voice IDs usually differ (for example Kokoro's `af_heart`).
+  The generic path has no built-in voice: set `Voice` per request or configure
+  `speech_default_voice` / `speech_default_format` in provider `options`
+  (per-model `extra` wins). Orpheus uses in-band `[direction]` tags in the
+  input text; OpenAI's current TTS model is `gpt-4o-mini-tts` (it recommends
+  `marin`/`cedar` voices and supports `instructions`, which `tts-1`/`tts-1-hd`
+  do not).
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via

@@ -148,3 +148,51 @@ func TestGenerateSpeech_ErrorClassification(t *testing.T) {
 		t.Fatalf("expected ErrAuthFailed, got %v", err)
 	}
 }
+
+func TestGenerateSpeech_SpeechConfigRequiresVoice(t *testing.T) {
+	p, err := New(Config{APIKey: "k", BaseURL: "http://127.0.0.1:1", Speech: &SpeechConfig{}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model: "tts-1",
+		Text:  "hello",
+	})
+	if !errors.Is(err, speech.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestGenerateSpeech_TypedInstructions(t *testing.T) {
+	var gotBody map[string]any
+	srv := newSpeechServer(t, http.StatusOK, "audio", func(body map[string]any) { gotBody = body })
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model:        "gpt-4o-mini-tts",
+		Text:         "hello",
+		Instructions: "speak slowly",
+	}); err != nil {
+		t.Fatalf("GenerateSpeech: %v", err)
+	}
+	if gotBody["instructions"] != "speak slowly" {
+		t.Fatalf("instructions = %v, want speak slowly", gotBody["instructions"])
+	}
+}
+
+func TestGenerateSpeech_RejectsSampleRate(t *testing.T) {
+	p, err := New(Config{APIKey: "k", BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model:      "gpt-4o-mini-tts",
+		Text:       "hello",
+		SampleRate: 24000,
+	})
+	if !errors.Is(err, speech.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+}

@@ -28,13 +28,18 @@ type Config struct {
 	// HTTPClient overrides the client used for requests. If nil, requests are
 	// bounded only by their caller contexts.
 	HTTPClient *http.Client
+	// DefaultFormat overrides the response_format used when a request does
+	// not resolve one. Empty keeps the built-in "wav" (the current Orpheus
+	// models are wav-only).
+	DefaultFormat string
 }
 
 // Provider is a chat.Provider backed by the Groq chat completions API.
 type Provider struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
+	apiKey        string
+	baseURL       string
+	client        *http.Client
+	defaultFormat string
 }
 
 // Compile-time assertion that *Provider implements chat.Provider.
@@ -54,7 +59,7 @@ func New(cfg Config) (*Provider, error) {
 	if hc == nil {
 		hc = &http.Client{}
 	}
-	return &Provider{apiKey: cfg.APIKey, baseURL: base, client: hc}, nil
+	return &Provider{apiKey: cfg.APIKey, baseURL: base, client: hc, defaultFormat: cfg.DefaultFormat}, nil
 }
 
 // Name returns the provider identifier.

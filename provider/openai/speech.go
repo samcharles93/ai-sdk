@@ -36,32 +36,24 @@ var validSpeechFormats = map[string]bool{
 // GenerateSpeech generates speech audio from the given text using OpenAI's
 // TTS API. It satisfies speech.Provider.
 func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
+	voice := defaultSpeechVoice
+	format := defaultSpeechFormat
+	if p.speech != nil {
+		voice = p.speech.DefaultVoice
+		if p.speech.DefaultFormat != "" {
+			format = p.speech.DefaultFormat
+		}
+	}
 	return tts.Generate(ctx, tts.Config{
-		Provider:       "openai",
-		BaseURL:        p.baseURL,
-		APIKey:         p.apiKey,
-		HTTPClient:     p.client,
-		AllowedFormats: validSpeechFormats,
-		DefaultVoice:   defaultSpeechVoice,
-		DefaultFormat:  defaultSpeechFormat,
-		ApplyOptions:   applySpeechOptions,
+		Provider:             "openai",
+		BaseURL:              p.baseURL,
+		APIKey:               p.apiKey,
+		HTTPClient:           p.client,
+		AllowedFormats:       validSpeechFormats,
+		DefaultVoice:         voice,
+		DefaultFormat:        format,
+		SupportsInstructions: true,
 	}, req)
-}
-
-// applySpeechOptions merges OpenAI-specific provider options into the request
-// body: an instructions string and a speed override used only when the
-// request itself did not set a speed.
-func applySpeechOptions(body map[string]any, req speech.GenerateSpeechRequest) {
-	opts, ok := req.ProviderOptions["openai"].(map[string]any)
-	if !ok {
-		return
-	}
-	if v, ok := opts["instructions"].(string); ok && v != "" {
-		body["instructions"] = v
-	}
-	if v, ok := opts["speed"].(float64); ok && v != 0 && req.Speed == 0 {
-		body["speed"] = v
-	}
 }
 
 // Compile-time assertion that *Provider satisfies speech.Provider.

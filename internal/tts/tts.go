@@ -5,7 +5,7 @@
 //
 // It lives outside the domain layers so those packages stay stdlib-only, and
 // is parameterised by the provider-specific bits (allowed output formats,
-// default voice/format, request body customisation, error classification) so
+// default voice/format, supported optional fields, error classification) so
 // each provider becomes a thin wrapper rather than a near-copy of the same
 // request/response logic.
 package tts
@@ -28,7 +28,8 @@ const endpoint = "/audio/speech"
 // specific provider backend.
 type Config struct {
 	// Provider is the provider name. It is used in every error message that
-	// would otherwise be provider-specific (for example "openai" or "groq").
+	// would otherwise be provider-specific (for example "openai" or "groq"),
+	// and as the ProviderOptions bucket key.
 	Provider string
 	// BaseURL is the API root; /audio/speech is appended.
 	BaseURL string
@@ -40,16 +41,22 @@ type Config struct {
 	// format. A request whose resolved format is absent is rejected with
 	// speech.ErrInvalidRequest before any network call.
 	AllowedFormats map[string]bool
-	// DefaultVoice is used when the request does not name a voice. When it is
-	// empty and the request omits Voice, the request is rejected: providers
-	// whose voices are model-scoped have no safe cross-model default.
+	// DefaultVoice is used when neither the request nor the provider options
+	// name a voice. When it is empty and no voice is resolved, the request is
+	// rejected: providers whose voices are model-scoped have no safe default.
 	DefaultVoice string
-	// DefaultFormat is used when the request does not name a format. It must
-	// be a member of AllowedFormats.
+	// DefaultFormat is used when neither the request nor the provider options
+	// name a format. It must be a member of AllowedFormats.
 	DefaultFormat string
-	// ApplyOptions, when non-nil, customises the request body with
-	// provider-specific options after the standard fields are set.
-	ApplyOptions func(body map[string]any, req speech.GenerateSpeechRequest)
+	// SupportsInstructions reports whether the backend accepts the
+	// OpenAI-compatible instructions field. When false, a request that
+	// resolves a non-empty instructions value is rejected with
+	// speech.ErrInvalidRequest instead of silently dropping it.
+	SupportsInstructions bool
+	// SupportsSampleRate reports whether the backend accepts the
+	// OpenAI-compatible sample_rate field, with the same rejection contract
+	// as SupportsInstructions.
+	SupportsSampleRate bool
 	// ClassifyError, when non-nil, builds the error returned for a non-2xx
 	// response. It receives the HTTP response (for headers such as
 	// Retry-After / X-Request-Id) and the sanitised body snippet. When nil a
@@ -58,9 +65,11 @@ type Config struct {
 	ClassifyError func(resp *http.Response, snippet string) error
 }
 
-// Generate performs an OpenAI-compatible speech synthesis call. It validates
-// the request, builds the JSON body, executes it against cfg.BaseURL +
-// /audio/speech, classifies non-2xx responses, and returns the raw audio.
+// Generate performs an OpenAI-compatible speech synthesis call. It resolves
+// the voice, format, speed, instructions and sample rate from the request and
+// its provider options, builds the JSON body, executes it against
+// cfg.BaseURL + /audio/speech, classifies non-2xx responses, and returns the
+// raw audio.
 func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
 	if req.Model == "" {
 		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: model is required: %w", cfg.Provider, speech.ErrInvalidRequest)
@@ -69,7 +78,15 @@ func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest)
 		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: text is required: %w", cfg.Provider, speech.ErrInvalidRequest)
 	}
 
+	opts, err := speech.ProviderOptionsFor[speech.Options](req.ProviderOptions, cfg.Provider)
+	if err != nil {
+		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: read provider options: %w", cfg.Provider, err)
+	}
+
 	voice := req.Voice
+	if voice == "" {
+		voice = opts.Voice
+	}
 	if voice == "" {
 		voice = cfg.DefaultVoice
 	}
@@ -78,6 +95,9 @@ func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest)
 	}
 
 	format := req.Format
+	if format == "" {
+		format = opts.Format
+	}
 	if format == "" {
 		format = cfg.DefaultFormat
 	}
@@ -91,11 +111,14 @@ func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest)
 		"voice":           voice,
 		"response_format": format,
 	}
-	if req.Speed != 0 {
-		body["speed"] = req.Speed
+	if speed := resolveSpeed(req, opts); speed != 0 {
+		body["speed"] = speed
 	}
-	if cfg.ApplyOptions != nil {
-		cfg.ApplyOptions(body, req)
+	if err := applyInstructions(cfg, body, req, opts); err != nil {
+		return speech.GenerateSpeechResponse{}, err
+	}
+	if err := applySampleRate(cfg, body, req, opts); err != nil {
+		return speech.GenerateSpeechResponse{}, err
 	}
 
 	buf, err := json.Marshal(body)
@@ -135,6 +158,49 @@ func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest)
 		Audio:  audio,
 		Format: format,
 	}, nil
+}
+
+// resolveSpeed returns the speaking rate, preferring the request field over
+// the provider option.
+func resolveSpeed(req speech.GenerateSpeechRequest, opts speech.Options) float64 {
+	if req.Speed != 0 {
+		return req.Speed
+	}
+	return opts.Speed
+}
+
+// applyInstructions writes the resolved instructions into body, rejecting the
+// request when the backend does not support the field.
+func applyInstructions(cfg Config, body map[string]any, req speech.GenerateSpeechRequest, opts speech.Options) error {
+	instructions := req.Instructions
+	if instructions == "" {
+		instructions = opts.Instructions
+	}
+	if instructions == "" {
+		return nil
+	}
+	if !cfg.SupportsInstructions {
+		return fmt.Errorf("%s: instructions are not supported: %w", cfg.Provider, speech.ErrInvalidRequest)
+	}
+	body["instructions"] = instructions
+	return nil
+}
+
+// applySampleRate writes the resolved sample rate into body, rejecting the
+// request when the backend does not support the field.
+func applySampleRate(cfg Config, body map[string]any, req speech.GenerateSpeechRequest, opts speech.Options) error {
+	sampleRate := req.SampleRate
+	if sampleRate == 0 {
+		sampleRate = opts.SampleRate
+	}
+	if sampleRate <= 0 {
+		return nil
+	}
+	if !cfg.SupportsSampleRate {
+		return fmt.Errorf("%s: sample_rate is not supported: %w", cfg.Provider, speech.ErrInvalidRequest)
+	}
+	body["sample_rate"] = sampleRate
+	return nil
 }
 
 // ErrorForStatus maps an OpenAI-compatible speech HTTP status code to the
