@@ -252,7 +252,7 @@ Capabilities as resolvable through the runtime (the `Class` column is the
 | Cohere        | `provider/cohere`            | `cohere`       | ✅   | ✅    | —     | —     | —      | ✅     | —      | —          | —     |
 | DeepSeek      | `provider/deepseek`          | `deepseek`     | ✅   | —     | —     | —     | —      | —      | —      | —          | —     |
 | Gemini        | `provider/gemini`            | `gemini`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
-| Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | —      | ✅          | —     |
+| Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | ✅     | ✅          | —     |
 | MiniMax       | `provider/minimax`           | `minimax`      | ✅   | —     | ✅    | ✅    | —      | —      | ✅      | —          | ✅     |
 | Mistral       | `provider/mistral`           | `mistral`      | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
 | Ollama        | `provider/ollama`            | `ollama`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
@@ -277,6 +277,16 @@ Notes:
 - MiniMax chat routes through the OpenAI-compatible path (its text API is
   OpenAI-compatible); its native provider implements image + speech + music +
   video across four domain interfaces.
+- Groq speech synthesis uses the same OpenAI-compatible `/audio/speech`
+  endpoint shape as OpenAI, so both providers share the generic helper in
+  `internal/tts` (mirroring `internal/whisper` for transcription) and each
+  stays a thin wrapper. Groq voices are model-scoped, so a voice-less request is
+  rejected rather than defaulted.
+- Self-hosted OpenAI-compatible TTS servers (Kokoro-FastAPI, speaches,
+  openedai-speech, LocalAI) resolve through the generic `openai-compatible`
+  class with the server `BaseURL` and `auth.type: none` for keyless servers.
+  Set `Voice` explicitly: the generic path inherits OpenAI's `alloy` default,
+  and server voice IDs usually differ (for example Kokoro's `af_heart`).
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via

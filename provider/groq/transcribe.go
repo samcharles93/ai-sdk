@@ -1,5 +1,6 @@
-// Package groq provides access to Groq's Whisper transcription API
-// via the transcribe.Provider interface.
+// Package groq provides access to Groq's APIs through the ai-sdk domain
+// interfaces: chat completions, Whisper transcription, and OpenAI-compatible
+// speech synthesis.
 package groq
 
 import (

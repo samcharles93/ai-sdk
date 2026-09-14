@@ -92,7 +92,7 @@ func (openAICompatibleClass) Name() string { return "openai-compatible" }
 
 func (openAICompatibleClass) Supports(cap Capability) bool {
 	switch cap {
-	case CapabilityChat:
+	case CapabilityChat, CapabilitySpeech:
 		return true
 	default:
 		return false
@@ -117,7 +117,11 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 	if err != nil {
 		return ProviderSet{}, fmt.Errorf("runtime/%s: %w", cfg.Class, err)
 	}
-	return ProviderSet{Chat: p}, nil
+	// Speech is wired unconditionally: the OpenAI-compatible speech endpoint is
+	// the standard surface every self-hosted TTS server (Kokoro-FastAPI,
+	// speaches, openedai-speech, LocalAI) implements, and openai.New already
+	// accepts an empty key for a non-OpenAI base URL.
+	return ProviderSet{Chat: p, Speech: p}, nil
 }
 
 // simpleClass wraps a provider constructor that returns a value
@@ -338,8 +342,11 @@ func geminiClass() ProviderClass {
 func groqClass() ProviderClass {
 	return simpleClass{
 		name: "groq",
-		caps: []Capability{CapabilityChat, CapabilityTranscribe},
+		caps: []Capability{CapabilityChat, CapabilitySpeech, CapabilityTranscribe},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
+			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+		buildSpeech: func(apiKey, baseURL string, httpClient *http.Client) (speech.Provider, error) {
 			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {
