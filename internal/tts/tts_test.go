@@ -168,9 +168,11 @@ func TestGenerate_DefaultErrorClassification(t *testing.T) {
 	}{
 		{http.StatusUnauthorized, speech.ErrAuthFailed},
 		{http.StatusForbidden, speech.ErrAuthFailed},
+		{http.StatusBadRequest, speech.ErrInvalidRequest},
+		{http.StatusNotFound, speech.ErrInvalidRequest},
+		{http.StatusUnprocessableEntity, speech.ErrInvalidRequest},
 		{http.StatusTooManyRequests, speech.ErrRateLimited},
 		{http.StatusInternalServerError, speech.ErrProviderUnavailable},
-		{http.StatusBadRequest, speech.ErrProviderUnavailable},
 	}
 	for _, tc := range tests {
 		t.Run(http.StatusText(tc.status), func(t *testing.T) {

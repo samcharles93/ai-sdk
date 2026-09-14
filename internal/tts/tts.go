@@ -140,12 +140,17 @@ func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest)
 // ErrorForStatus maps an OpenAI-compatible speech HTTP status code to the
 // corresponding speech sentinel error. It is shared by every provider so the
 // classification switch lives in one place rather than being duplicated.
+// 400/404/422 are terminal request errors (unknown model, invalid voice or
+// format), 429 is retryable rate limiting, 401/403 are authentication
+// failures, and everything else is a transient provider failure.
 func ErrorForStatus(code int) error {
 	switch code {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return speech.ErrAuthFailed
 	case http.StatusTooManyRequests:
 		return speech.ErrRateLimited
+	case http.StatusBadRequest, http.StatusNotFound, http.StatusUnprocessableEntity:
+		return speech.ErrInvalidRequest
 	default:
 		return speech.ErrProviderUnavailable
 	}
