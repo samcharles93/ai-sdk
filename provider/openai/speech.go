@@ -4,6 +4,7 @@ package openai
 
 import (
 	"context"
+	"strings"
 
 	"github.com/samcharles93/ai-sdk/internal/tts"
 	"github.com/samcharles93/ai-sdk/speech"
@@ -36,6 +37,12 @@ var validSpeechFormats = map[string]bool{
 // GenerateSpeech generates speech audio from the given text using OpenAI's
 // TTS API. It satisfies speech.Provider.
 func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
+	return tts.Generate(ctx, p.ttsConfig(), req)
+}
+
+// ttsConfig builds the shared helper configuration for this provider,
+// resolving the voice and format defaults configured at construction time.
+func (p *Provider) ttsConfig() tts.Config {
 	voice := defaultSpeechVoice
 	format := defaultSpeechFormat
 	if p.speech != nil {
@@ -44,7 +51,7 @@ func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeech
 			format = p.speech.DefaultFormat
 		}
 	}
-	return tts.Generate(ctx, tts.Config{
+	return tts.Config{
 		Provider:             "openai",
 		BaseURL:              p.baseURL,
 		APIKey:               p.apiKey,
@@ -54,11 +61,35 @@ func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeech
 		DefaultFormat:        format,
 		MaxInputChars:        p.maxInputChars,
 		SupportsInstructions: true,
-	}, req)
+	}
 }
 
-// Compile-time assertion that *Provider satisfies speech.Provider.
-var _ speech.Provider = (*Provider)(nil)
+// StreamSpeech starts a streaming synthesis. Models that do not support SSE
+// (tts-1, tts-1-hd and their dated variants) use raw chunked audio instead.
+// It satisfies speech.Streamer.
+func (p *Provider) StreamSpeech(ctx context.Context, req speech.GenerateSpeechRequest) (speech.SpeechStream, error) {
+	if !p.streaming {
+		return nil, speech.ErrStreamNotSupported
+	}
+	mode := tts.StreamFormatSSE
+	if !supportsSSESpeech(req.Model) {
+		mode = tts.StreamFormatAudio
+	}
+	stream, _, err := tts.Stream(ctx, p.ttsConfig(), req, mode)
+	return stream, err
+}
+
+// supportsSSESpeech reports whether the model accepts stream_format=sse.
+// OpenAI documents that tts-1 and tts-1-hd (and their dated variants) do not.
+func supportsSSESpeech(model string) bool {
+	return !strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), SpeechModelTTS1)
+}
+
+// Compile-time assertions that *Provider satisfies the speech capabilities.
+var (
+	_ speech.Provider = (*Provider)(nil)
+	_ speech.Streamer = (*Provider)(nil)
+)
 
 // openAI voices is the documented OpenAI voice set. It is static: OpenAI has
 // no voice-listing endpoint, and model support varies (tts-1/tts-1-hd support

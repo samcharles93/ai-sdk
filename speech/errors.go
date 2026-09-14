@@ -28,4 +28,8 @@ var (
 	// ErrVoiceListingNotSupported indicates the provider does not expose a
 	// voice-listing endpoint, so its voices cannot be enumerated.
 	ErrVoiceListingNotSupported = errors.New("speech: voice listing not supported")
+
+	// ErrStreamNotSupported indicates the provider cannot stream speech
+	// synthesis and only supports the buffered path.
+	ErrStreamNotSupported = errors.New("speech: streaming not supported")
 )

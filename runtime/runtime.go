@@ -208,6 +208,33 @@ func (r *Runtime) Speech(ctx context.Context, ref string, req speech.GenerateSpe
 	return core.GenerateSpeech(ctx, provider, req)
 }
 
+// SpeechStreamProvider resolves a model reference to a speech.Streamer. It
+// returns ErrCapabilityNotSupported when the resolved provider cannot stream.
+func (r *Runtime) SpeechStreamProvider(ctx context.Context, ref string) (speech.Streamer, string, error) {
+	provider, modelID, err := r.SpeechProvider(ctx, ref)
+	if err != nil {
+		return nil, "", err
+	}
+	streamer, ok := provider.(speech.Streamer)
+	if !ok {
+		return nil, "", fmt.Errorf("%w: provider for %q does not support streaming speech", ErrCapabilityNotSupported, ref)
+	}
+	return streamer, modelID, nil
+}
+
+// SpeechStream starts a streaming text-to-speech generation for the given
+// model reference. The model field inside req is overwritten with the
+// resolved model ID, and the caller must Close the returned stream when
+// finished.
+func (r *Runtime) SpeechStream(ctx context.Context, ref string, req speech.GenerateSpeechRequest) (speech.SpeechStream, error) {
+	provider, modelID, err := r.SpeechProvider(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	req.Model = modelID
+	return core.StreamSpeech(ctx, provider, req)
+}
+
 // TranscribeProvider resolves a model reference to a transcribe.Provider.
 // It returns the provider instance and the resolved model ID that should
 // be passed to requests.

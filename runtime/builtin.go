@@ -300,6 +300,7 @@ func openaiClass() ProviderClass {
 				APIKey: a.apiKey, BaseURL: a.baseURL, HTTPClient: a.httpClient,
 				Speech:        &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
 				MaxInputChars: speechMaxInputChars(a.options, a.model.Extra, 4096),
+				Streaming:     true,
 			})
 		},
 		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {

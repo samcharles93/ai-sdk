@@ -309,6 +309,13 @@ Notes:
   `/audio/voices` endpoint where one exists, normalising the string and object
   response shapes; providers without an endpoint return
   `ErrVoiceListingNotSupported`.
+- Streaming synthesis is an optional capability (`speech.Streamer`, surfaced
+  as `speech.Client.StreamSpeech` and `Runtime.SpeechStream`): chunks carry
+  audio bytes, then a Done chunk with optional usage, then `io.EOF`.
+  Establishment failures use the same sentinels as the buffered path; failures
+  after the first chunk surface from `Next`. Middleware mirrors the optional
+  pattern (`ChainSpeechStream`, telemetry span ended on Close, circuit breaker
+  guarding establishment only, no retry).
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via

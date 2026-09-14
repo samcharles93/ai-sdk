@@ -43,6 +43,10 @@ type Config struct {
 	// static OpenAI set. The runtime enables it for the generic
 	// openai-compatible class.
 	DiscoverVoices bool
+	// Streaming enables StreamSpeech. OpenAI's endpoint supports it, but a
+	// generic OpenAI-compatible server may not, so the runtime only enables it
+	// for the named openai class.
+	Streaming bool
 }
 
 // SpeechConfig overrides the defaults used by GenerateSpeech when a request
@@ -61,6 +65,7 @@ type Provider struct {
 	speech         *SpeechConfig
 	maxInputChars  int
 	discoverVoices bool
+	streaming      bool
 }
 
 var _ chat.Provider = (*Provider)(nil)
@@ -93,6 +98,7 @@ func New(cfg Config) (*Provider, error) {
 		speech:         cfg.Speech,
 		maxInputChars:  cfg.MaxInputChars,
 		discoverVoices: cfg.DiscoverVoices,
+		streaming:      cfg.Streaming,
 	}, nil
 }
 

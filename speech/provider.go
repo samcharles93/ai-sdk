@@ -27,3 +27,19 @@ type VoiceLister interface {
 	// backends with a global voice set.
 	ListVoices(ctx context.Context, model string) ([]Voice, error)
 }
+
+// Streamer is implemented by providers that can stream audio as it is
+// synthesised. It is an OPTIONAL capability: callers type-assert a Provider to
+// Streamer, or use Client.StreamSpeech, which returns ErrStreamNotSupported
+// for providers that do not implement it. A provider either supports
+// streaming or does not; there is no partial mode.
+type Streamer interface {
+	// Name returns the provider identifier, matching Provider.Name.
+	Name() string
+
+	// StreamSpeech starts a streaming synthesis. It returns an error before
+	// any audio is produced when the request cannot be streamed; failures
+	// after the first chunk surface from SpeechStream.Next instead. The
+	// caller must Close the returned stream when finished.
+	StreamSpeech(ctx context.Context, req GenerateSpeechRequest) (SpeechStream, error)
+}

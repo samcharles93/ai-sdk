@@ -46,3 +46,23 @@ type Voice struct {
 	// Model scopes the voice when voices are model-specific.
 	Model string `json:"model,omitempty"`
 }
+
+// Usage reports token accounting for a completed streaming synthesis, when
+// the provider publishes it.
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+	TotalTokens  int
+}
+
+// SpeechChunk is one piece of a streaming speech synthesis.
+type SpeechChunk struct {
+	// Data is the decoded audio bytes for this chunk; empty on the Done chunk.
+	Data []byte `json:"data,omitempty"`
+	// Format is the audio format Data belongs to (e.g. "mp3", "pcm").
+	Format string `json:"format,omitempty"`
+	// Done marks the final chunk, which carries no Data.
+	Done bool `json:"done"`
+	// Usage is populated on the Done chunk when the provider reports it.
+	Usage *Usage `json:"usage,omitempty"`
+}

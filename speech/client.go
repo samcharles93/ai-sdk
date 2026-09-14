@@ -50,3 +50,22 @@ func (c *Client) ListVoices(ctx context.Context, model string) ([]Voice, error) 
 	}
 	return vl.ListVoices(ctx, model)
 }
+
+// StreamSpeech starts a streaming speech synthesis through the underlying
+// Provider. It returns ErrNoProvider when the Client or its Provider is nil,
+// ErrInvalidRequest for an empty Text, and ErrStreamNotSupported when the
+// provider does not implement [Streamer]. The caller must Close the returned
+// stream when finished.
+func (c *Client) StreamSpeech(ctx context.Context, req GenerateSpeechRequest) (SpeechStream, error) {
+	if c == nil || c.p == nil {
+		return nil, ErrNoProvider
+	}
+	if req.Text == "" {
+		return nil, ErrInvalidRequest
+	}
+	streamer, ok := c.p.(Streamer)
+	if !ok {
+		return nil, ErrStreamNotSupported
+	}
+	return streamer.StreamSpeech(ctx, req)
+}

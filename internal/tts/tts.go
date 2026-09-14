@@ -78,58 +78,8 @@ type Config struct {
 // cfg.BaseURL + /audio/speech, classifies non-2xx responses, and returns the
 // raw audio.
 func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest) (speech.GenerateSpeechResponse, error) {
-	if req.Model == "" {
-		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: model is required: %w", cfg.Provider, speech.ErrInvalidRequest)
-	}
-	if req.Text == "" {
-		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: text is required: %w", cfg.Provider, speech.ErrInvalidRequest)
-	}
-	if cfg.MaxInputChars > 0 {
-		if n := utf8.RuneCountInString(req.Text); n > cfg.MaxInputChars {
-			return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: input is %d characters, the limit is %d: %w", cfg.Provider, n, cfg.MaxInputChars, speech.ErrInvalidRequest)
-		}
-	}
-
-	opts, err := speech.ProviderOptionsFor[speech.Options](req.ProviderOptions, cfg.Provider)
+	body, format, err := prepare(cfg, req)
 	if err != nil {
-		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: read provider options: %w", cfg.Provider, err)
-	}
-
-	voice := req.Voice
-	if voice == "" {
-		voice = opts.Voice
-	}
-	if voice == "" {
-		voice = cfg.DefaultVoice
-	}
-	if voice == "" {
-		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: voice is required: %w", cfg.Provider, speech.ErrInvalidRequest)
-	}
-
-	format := req.Format
-	if format == "" {
-		format = opts.Format
-	}
-	if format == "" {
-		format = cfg.DefaultFormat
-	}
-	if !cfg.AllowedFormats[format] {
-		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: invalid output format %q: %w", cfg.Provider, format, speech.ErrInvalidRequest)
-	}
-
-	body := map[string]any{
-		"model":           req.Model,
-		"input":           req.Text,
-		"voice":           voice,
-		"response_format": format,
-	}
-	if speed := resolveSpeed(req, opts); speed != 0 {
-		body["speed"] = speed
-	}
-	if err := applyInstructions(cfg, body, req, opts); err != nil {
-		return speech.GenerateSpeechResponse{}, err
-	}
-	if err := applySampleRate(cfg, body, req, opts); err != nil {
 		return speech.GenerateSpeechResponse{}, err
 	}
 
@@ -170,6 +120,67 @@ func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest)
 		Audio:  audio,
 		Format: format,
 	}, nil
+}
+
+// prepare validates a speech request and builds the JSON body plus the
+// resolved output format. It is shared by the buffered and streaming paths so
+// both enforce identical validation and provider-option precedence.
+func prepare(cfg Config, req speech.GenerateSpeechRequest) (map[string]any, string, error) {
+	if req.Model == "" {
+		return nil, "", fmt.Errorf("%s: model is required: %w", cfg.Provider, speech.ErrInvalidRequest)
+	}
+	if req.Text == "" {
+		return nil, "", fmt.Errorf("%s: text is required: %w", cfg.Provider, speech.ErrInvalidRequest)
+	}
+	if cfg.MaxInputChars > 0 {
+		if n := utf8.RuneCountInString(req.Text); n > cfg.MaxInputChars {
+			return nil, "", fmt.Errorf("%s: input is %d characters, the limit is %d: %w", cfg.Provider, n, cfg.MaxInputChars, speech.ErrInvalidRequest)
+		}
+	}
+
+	opts, err := speech.ProviderOptionsFor[speech.Options](req.ProviderOptions, cfg.Provider)
+	if err != nil {
+		return nil, "", fmt.Errorf("%s: read provider options: %w", cfg.Provider, err)
+	}
+
+	voice := req.Voice
+	if voice == "" {
+		voice = opts.Voice
+	}
+	if voice == "" {
+		voice = cfg.DefaultVoice
+	}
+	if voice == "" {
+		return nil, "", fmt.Errorf("%s: voice is required: %w", cfg.Provider, speech.ErrInvalidRequest)
+	}
+
+	format := req.Format
+	if format == "" {
+		format = opts.Format
+	}
+	if format == "" {
+		format = cfg.DefaultFormat
+	}
+	if !cfg.AllowedFormats[format] {
+		return nil, "", fmt.Errorf("%s: invalid output format %q: %w", cfg.Provider, format, speech.ErrInvalidRequest)
+	}
+
+	body := map[string]any{
+		"model":           req.Model,
+		"input":           req.Text,
+		"voice":           voice,
+		"response_format": format,
+	}
+	if speed := resolveSpeed(req, opts); speed != 0 {
+		body["speed"] = speed
+	}
+	if err := applyInstructions(cfg, body, req, opts); err != nil {
+		return nil, "", err
+	}
+	if err := applySampleRate(cfg, body, req, opts); err != nil {
+		return nil, "", err
+	}
+	return body, format, nil
 }
 
 // resolveSpeed returns the speaking rate, preferring the request field over
