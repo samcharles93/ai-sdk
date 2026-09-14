@@ -52,6 +52,7 @@ func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeech
 		AllowedFormats:       validSpeechFormats,
 		DefaultVoice:         voice,
 		DefaultFormat:        format,
+		MaxInputChars:        p.maxInputChars,
 		SupportsInstructions: true,
 	}, req)
 }

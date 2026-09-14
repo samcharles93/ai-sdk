@@ -299,6 +299,11 @@ Notes:
   without published metadata are attempted best-effort, so the generic class
   can still surface a provider-side error; declaring `capabilities: ["speech"]`
   makes the intent explicit.
+- Speech input limits are enforced client-side where known (OpenAI 4096
+  characters, Groq Orpheus 200; the generic class is uncapped because servers
+  like Kokoro make the limit deployment-configurable). Override with
+  `max_input_chars` in provider `options` or model `extra`; oversized text
+  fails with `ErrInvalidRequest` before any request.
 
 **Extended Thinking Support:** Anthropic provider supports Claude extended
 thinking (`reasoning_effort`/`thinking_budget_tokens`) via

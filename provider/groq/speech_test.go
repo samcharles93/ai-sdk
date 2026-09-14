@@ -338,3 +338,39 @@ func TestGenerateSpeech_DefaultFormatOverride(t *testing.T) {
 		t.Fatalf("expected ErrInvalidRequest for an unsupported override, got %v", err)
 	}
 }
+
+func TestGenerateSpeech_MaxInputChars(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		_, _ = io.WriteString(w, "audio")
+	}))
+	defer srv.Close()
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL, MaxInputChars: 200})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model: "canopylabs/orpheus-v1-english",
+		Text:  strings.Repeat("a", 201),
+		Voice: "hannah",
+	})
+	if !errors.Is(err, speech.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest for 201 characters, got %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d, want 0 for an oversized input", requests)
+	}
+
+	if _, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model: "canopylabs/orpheus-v1-english",
+		Text:  strings.Repeat("a", 200),
+		Voice: "hannah",
+	}); err != nil {
+		t.Fatalf("GenerateSpeech at the limit: %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1 at the limit", requests)
+	}
+}

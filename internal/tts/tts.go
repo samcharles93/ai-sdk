@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"unicode/utf8"
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/speech"
@@ -48,6 +49,12 @@ type Config struct {
 	// DefaultFormat is used when neither the request nor the provider options
 	// name a format. It must be a member of AllowedFormats.
 	DefaultFormat string
+	// MaxInputChars, when greater than zero, is the largest input length the
+	// backend accepts, counted in Unicode code points. Longer requests are
+	// rejected with speech.ErrInvalidRequest before any network call. Zero
+	// disables the client-side check (a valid choice for servers whose limit
+	// is deployment-configurable, such as Kokoro).
+	MaxInputChars int
 	// SupportsInstructions reports whether the backend accepts the
 	// OpenAI-compatible instructions field. When false, a request that
 	// resolves a non-empty instructions value is rejected with
@@ -76,6 +83,11 @@ func Generate(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest)
 	}
 	if req.Text == "" {
 		return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: text is required: %w", cfg.Provider, speech.ErrInvalidRequest)
+	}
+	if cfg.MaxInputChars > 0 {
+		if n := utf8.RuneCountInString(req.Text); n > cfg.MaxInputChars {
+			return speech.GenerateSpeechResponse{}, fmt.Errorf("%s: input is %d characters, the limit is %d: %w", cfg.Provider, n, cfg.MaxInputChars, speech.ErrInvalidRequest)
+		}
 	}
 
 	opts, err := speech.ProviderOptionsFor[speech.Options](req.ProviderOptions, cfg.Provider)

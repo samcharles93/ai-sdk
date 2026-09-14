@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/samcharles93/ai-sdk/speech"
@@ -194,5 +195,39 @@ func TestGenerateSpeech_RejectsSampleRate(t *testing.T) {
 	})
 	if !errors.Is(err, speech.ErrInvalidRequest) {
 		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+}
+
+func TestGenerateSpeech_MaxInputChars(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		_, _ = w.Write([]byte("audio"))
+	}))
+	defer srv.Close()
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL, MaxInputChars: 4096})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model: "tts-1",
+		Text:  strings.Repeat("a", 4097),
+	})
+	if !errors.Is(err, speech.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest for 4097 characters, got %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d, want 0 for an oversized input", requests)
+	}
+
+	if _, err := p.GenerateSpeech(context.Background(), speech.GenerateSpeechRequest{
+		Model: "tts-1",
+		Text:  strings.Repeat("a", 4096),
+	}); err != nil {
+		t.Fatalf("GenerateSpeech at the limit: %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1 at the limit", requests)
 	}
 }

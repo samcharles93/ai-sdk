@@ -32,6 +32,10 @@ type Config struct {
 	// not resolve one. Empty keeps the built-in "wav" (the current Orpheus
 	// models are wav-only).
 	DefaultFormat string
+	// MaxInputChars, when greater than zero, rejects requests whose text is
+	// longer than the limit with speech.ErrInvalidRequest before any call.
+	// Zero disables the client-side check.
+	MaxInputChars int
 }
 
 // Provider is a chat.Provider backed by the Groq chat completions API.
@@ -40,6 +44,7 @@ type Provider struct {
 	baseURL       string
 	client        *http.Client
 	defaultFormat string
+	maxInputChars int
 }
 
 // Compile-time assertion that *Provider implements chat.Provider.
@@ -59,7 +64,7 @@ func New(cfg Config) (*Provider, error) {
 	if hc == nil {
 		hc = &http.Client{}
 	}
-	return &Provider{apiKey: cfg.APIKey, baseURL: base, client: hc, defaultFormat: cfg.DefaultFormat}, nil
+	return &Provider{apiKey: cfg.APIKey, baseURL: base, client: hc, defaultFormat: cfg.DefaultFormat, maxInputChars: cfg.MaxInputChars}, nil
 }
 
 // Name returns the provider identifier.

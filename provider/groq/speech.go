@@ -36,6 +36,7 @@ func (p *Provider) GenerateSpeech(ctx context.Context, req speech.GenerateSpeech
 		HTTPClient:         p.client,
 		AllowedFormats:     groqSpeechFormats,
 		DefaultFormat:      format,
+		MaxInputChars:      p.maxInputChars,
 		SupportsSampleRate: true,
 		ClassifyError:      classifySpeechHTTPError,
 	}, req)

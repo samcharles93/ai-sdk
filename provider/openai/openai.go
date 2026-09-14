@@ -34,6 +34,10 @@ type Config struct {
 	// constructor callers rely on. Runtime classes set it explicitly so a
 	// self-hosted OpenAI-compatible backend never inherits an OpenAI voice.
 	Speech *SpeechConfig
+	// MaxInputChars, when greater than zero, rejects requests whose text is
+	// longer than the limit with speech.ErrInvalidRequest before any call.
+	// Zero disables the client-side check.
+	MaxInputChars int
 }
 
 // SpeechConfig overrides the defaults used by GenerateSpeech when a request
@@ -46,10 +50,11 @@ type SpeechConfig struct {
 
 // Provider implements chat.Provider over OpenAI wire protocols.
 type Provider struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
-	speech  *SpeechConfig
+	apiKey        string
+	baseURL       string
+	client        *http.Client
+	speech        *SpeechConfig
+	maxInputChars int
 }
 
 var _ chat.Provider = (*Provider)(nil)
@@ -75,7 +80,7 @@ func New(cfg Config) (*Provider, error) {
 	if client == nil {
 		client = &http.Client{}
 	}
-	return &Provider{apiKey: cfg.APIKey, baseURL: normaliseBaseURL(base), client: client, speech: cfg.Speech}, nil
+	return &Provider{apiKey: cfg.APIKey, baseURL: normaliseBaseURL(base), client: client, speech: cfg.Speech, maxInputChars: cfg.MaxInputChars}, nil
 }
 
 func normaliseBaseURL(base string) string {

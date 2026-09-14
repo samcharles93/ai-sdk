@@ -114,10 +114,11 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 	// "alloy" to a backend that does not have that voice.
 	voice, format := speechDefaults(cfg.Options, model.Extra, "", "")
 	p, err := openai.New(openai.Config{
-		APIKey:     apiKey,
-		BaseURL:    model.providerURL(cfg.BaseURL),
-		HTTPClient: httpClient,
-		Speech:     &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
+		APIKey:        apiKey,
+		BaseURL:       model.providerURL(cfg.BaseURL),
+		HTTPClient:    httpClient,
+		Speech:        &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
+		MaxInputChars: speechMaxInputChars(cfg.Options, model.Extra, 0),
 	})
 	if err != nil {
 		return ProviderSet{}, fmt.Errorf("runtime/%s: %w", cfg.Class, err)
@@ -296,7 +297,8 @@ func openaiClass() ProviderClass {
 			voice, format := speechDefaults(a.options, a.model.Extra, "alloy", "mp3")
 			return openai.New(openai.Config{
 				APIKey: a.apiKey, BaseURL: a.baseURL, HTTPClient: a.httpClient,
-				Speech: &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
+				Speech:        &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
+				MaxInputChars: speechMaxInputChars(a.options, a.model.Extra, 4096),
 			})
 		},
 		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {
@@ -374,7 +376,11 @@ func groqClass() ProviderClass {
 		},
 		buildSpeech: func(a speechBuildArgs) (speech.Provider, error) {
 			_, format := speechDefaults(a.options, a.model.Extra, "", "wav")
-			return groq.New(groq.Config{APIKey: a.apiKey, BaseURL: a.baseURL, HTTPClient: a.httpClient, DefaultFormat: format})
+			return groq.New(groq.Config{
+				APIKey: a.apiKey, BaseURL: a.baseURL, HTTPClient: a.httpClient,
+				DefaultFormat: format,
+				MaxInputChars: speechMaxInputChars(a.options, a.model.Extra, 200),
+			})
 		},
 		buildTranscribe: func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error) {
 			return groq.New(groq.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
@@ -496,6 +502,31 @@ func speechDefaults(options, extra map[string]any, fallbackVoice, fallbackFormat
 		format = fallbackFormat
 	}
 	return voice, format
+}
+
+// speechMaxInputChars resolves the per-model input limit, preferring a
+// per-model Extra entry over the provider-level Options entry. fallback
+// applies when neither is set; 0 disables the client-side check.
+func speechMaxInputChars(options, extra map[string]any, fallback int) int {
+	pick := func(key string) (int, bool) {
+		for _, m := range []map[string]any{extra, options} {
+			switch v := m[key].(type) {
+			case int:
+				if v > 0 {
+					return v, true
+				}
+			case float64:
+				if v > 0 {
+					return int(v), true
+				}
+			}
+		}
+		return 0, false
+	}
+	if v, ok := pick("max_input_chars"); ok {
+		return v
+	}
+	return fallback
 }
 
 func (cfg ProviderConfig) httpClient() *http.Client {

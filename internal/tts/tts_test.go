@@ -336,3 +336,51 @@ func TestGenerate_RejectsUnsupportedOptionalFields(t *testing.T) {
 		})
 	}
 }
+
+func TestGenerate_MaxInputChars(t *testing.T) {
+	tests := []struct {
+		name    string
+		limit   int
+		text    string
+		wantErr bool
+	}{
+		{name: "zero limit disables the check", limit: 0, text: strings.Repeat("a", 5000)},
+		{name: "under the limit", limit: 10, text: "hello"},
+		{name: "at the limit", limit: 5, text: "hello"},
+		{name: "over the limit", limit: 5, text: "hello!", wantErr: true},
+		{name: "multibyte at the rune limit", limit: 5, text: "h\u00e9llo"},
+		{name: "multibyte over the rune limit", limit: 4, text: "h\u00e9llo", wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				_, _ = io.WriteString(w, "audio")
+			}))
+			defer srv.Close()
+
+			cfg := testConfig(srv)
+			cfg.MaxInputChars = tc.limit
+			_, err := Generate(context.Background(), cfg, speech.GenerateSpeechRequest{Model: "m", Text: tc.text})
+			if tc.wantErr {
+				if !errors.Is(err, speech.ErrInvalidRequest) {
+					t.Fatalf("expected ErrInvalidRequest, got %v", err)
+				}
+				if !strings.Contains(err.Error(), "the limit is") {
+					t.Fatalf("error %q should name the limit", err)
+				}
+				if requests != 0 {
+					t.Fatalf("requests = %d, want 0 for an oversized input", requests)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Generate: %v", err)
+			}
+			if requests != 1 {
+				t.Fatalf("requests = %d, want 1 for an accepted input", requests)
+			}
+		})
+	}
+}
