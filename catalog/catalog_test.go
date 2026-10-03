@@ -1,4 +1,4 @@
-package runtime
+package catalog
 
 import (
 	"testing"
@@ -62,7 +62,7 @@ func TestParseCatalogProviders(t *testing.T) {
 }
 
 func TestCatalogProviderAPIKeyEnv(t *testing.T) {
-	c := NewCatalog(CatalogOptions{})
+	c := New(Options{})
 	if err := c.LoadFromJSON([]byte(`{
 		"anthropic": {
 			"id": "anthropic",
@@ -87,17 +87,17 @@ func TestCatalogProviderAPIKeyEnv(t *testing.T) {
 }
 
 func TestCatalogMergeProviders(t *testing.T) {
-	c := NewCatalog(CatalogOptions{})
+	c := New(Options{})
 	if err := c.LoadFromJSON([]byte(`{
 		"openai": {"id": "openai", "npm": "@ai-sdk/openai"}
 	}`)); err != nil {
 		t.Fatal(err)
 	}
 
-	c.MergeProviders(map[string]CatalogProvider{
+	c.MergeProviders(map[string]Provider{
 		"openai": {
 			API: "https://custom.example.com/v1",
-			Models: map[string]CatalogModel{
+			Models: map[string]Model{
 				"custom-model": {ID: "custom-model"},
 			},
 		},
@@ -125,7 +125,7 @@ func TestCatalogMergeProviders(t *testing.T) {
 }
 
 func TestCatalogModelsDeterministicOrder(t *testing.T) {
-	c := NewCatalog(CatalogOptions{})
+	c := New(Options{})
 	if err := c.LoadFromJSON([]byte(`{
 		"openai": {
 			"models": {
@@ -150,5 +150,29 @@ func TestCatalogModelsDeterministicOrder(t *testing.T) {
 		if m.ID != want[i] {
 			t.Fatalf("models[%d] = %q, want %q", i, m.ID, want[i])
 		}
+	}
+}
+
+func TestMergeCatalogModelKeepsModalities(t *testing.T) {
+	var base Model
+	base.ID = "m"
+	base.Modalities.Input = []string{"text"}
+	base.Modalities.Output = []string{"audio"}
+
+	var override Model
+	override.ID = "m"
+
+	merged := mergeCatalogModel(base, override)
+	if len(merged.Modalities.Output) != 1 || merged.Modalities.Output[0] != "audio" {
+		t.Fatalf("merged output modalities = %v, want [audio]", merged.Modalities.Output)
+	}
+
+	var replacement Model
+	replacement.ID = "m"
+	replacement.Modalities.Output = []string{"text"}
+
+	replaced := mergeCatalogModel(base, replacement)
+	if len(replaced.Modalities.Output) != 1 || replaced.Modalities.Output[0] != "text" {
+		t.Fatalf("replaced output modalities = %v, want [text]", replaced.Modalities.Output)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/samcharles93/ai-sdk/catalog"
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/core"
 	"github.com/samcharles93/ai-sdk/image"
@@ -70,7 +71,7 @@ func (r *Runtime) LoadCatalog(ctx context.Context) error {
 	if r.catalog == nil {
 		r.catalog = NewCatalog(opts)
 	} else {
-		r.catalog.opts = opts
+		r.catalog.SetOptions(opts)
 	}
 	return r.catalog.Load(ctx)
 }
@@ -440,7 +441,7 @@ func (r *Runtime) Music(ctx context.Context, ref string, req music.GenerateMusic
 // Models returns the resolved model information for a provider, merged
 // from configured overrides and the catalog.
 func (r *Runtime) Models(providerID string) ([]ModelInfo, error) {
-	id := normaliseProviderID(providerID)
+	id := catalog.NormaliseProviderID(providerID)
 	cfg, cfgOK := r.config.ProviderByID(id)
 
 	configured := make(map[string]ModelConfig)
@@ -524,7 +525,7 @@ func (r *Runtime) resolveModel(ref ModelRef) (ModelInfo, error) {
 // per-model endpoints (e.g. MaaS) get distinct HTTP clients.
 func (r *Runtime) providerSetFor(ctx context.Context, providerID string, model ModelInfo) (ProviderSet, error) {
 	url := model.providerURL("")
-	key := fmt.Sprintf("%s\x00%s\x00%s", normaliseProviderID(providerID), model.ID, url)
+	key := fmt.Sprintf("%s\x00%s\x00%s", catalog.NormaliseProviderID(providerID), model.ID, url)
 
 	r.mu.RLock()
 	set, ok := r.instances[key]
@@ -560,7 +561,7 @@ func (r *Runtime) providerSetFor(ctx context.Context, providerID string, model M
 // buildProviderConfig constructs a ProviderConfig for a provider ID using
 // the runtime configuration first, then falling back to the catalog.
 func (r *Runtime) buildProviderConfig(providerID string) (ProviderConfig, error) {
-	id := normaliseProviderID(providerID)
+	id := catalog.NormaliseProviderID(providerID)
 	if cfg, ok := r.config.ProviderByID(id); ok {
 		return r.enrichFromCatalog(cfg), nil
 	}

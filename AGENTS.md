@@ -376,7 +376,8 @@ video/                    # Domain: video generation types & interface
 rerank/                   # Domain: reranking types & interface
 core/                     # Services: GenerateText, StreamText orchestration
 agent/                    # Agent: tool-loop agent over StreamText
-runtime/                  # Provider resolution, catalog, provider classes
+runtime/                  # Provider resolution, provider classes
+catalog/                  # models.dev catalog: types, loader, npm class mapping (stdlib only)
 middleware/               # Middleware: wraps domain interfaces (logging, telemetry)
 registry/                 # Infrastructure: provider registry
 schema/                   # Infrastructure: JSON Schema builder
@@ -420,7 +421,7 @@ want to consume AI providers without hardcoding every implementation.
 runtime/
   doc.go            Package-level documentation
   provider_class.go ProviderClass interface + class registry
-  catalog.go        models.dev catalog loader + merge/overrides
+  catalog.go        aliases for the catalog package
   config.go         Declarative runtime configuration
   runtime.go        Runtime: Chat/ChatStream + per-domain entrypoints
   builtin.go        Built-in classes (openai-compatible, openai, anthropic, ...)

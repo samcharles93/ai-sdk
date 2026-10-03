@@ -268,27 +268,3 @@ func TestChatResolutionIgnoresModalities(t *testing.T) {
 		t.Fatalf("provider/modelID = %v/%q, want a provider and the resolved model", provider, modelID)
 	}
 }
-
-func TestMergeCatalogModelKeepsModalities(t *testing.T) {
-	var base CatalogModel
-	base.ID = "m"
-	base.Modalities.Input = []string{"text"}
-	base.Modalities.Output = []string{"audio"}
-
-	var override CatalogModel
-	override.ID = "m"
-
-	merged := mergeCatalogModel(base, override)
-	if len(merged.Modalities.Output) != 1 || merged.Modalities.Output[0] != "audio" {
-		t.Fatalf("merged output modalities = %v, want [audio]", merged.Modalities.Output)
-	}
-
-	var replacement CatalogModel
-	replacement.ID = "m"
-	replacement.Modalities.Output = []string{"text"}
-
-	replaced := mergeCatalogModel(base, replacement)
-	if len(replaced.Modalities.Output) != 1 || replaced.Modalities.Output[0] != "text" {
-		t.Fatalf("replaced output modalities = %v, want [text]", replaced.Modalities.Output)
-	}
-}
