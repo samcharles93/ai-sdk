@@ -83,7 +83,10 @@ type ModelConfig struct {
 	Reasoning        bool   `json:"reasoning,omitempty"`
 	ToolCall         bool   `json:"tool_call,omitempty"`
 	StructuredOutput bool   `json:"structured_output,omitempty"`
-	Temperature      bool   `json:"temperature,omitempty"`
+	// Temperature reports whether the model accepts a temperature parameter.
+	// nil means unspecified (unknown), true/false override catalog metadata
+	// explicitly.
+	Temperature *bool `json:"temperature,omitempty"`
 	// Capabilities optionally declares the model's capabilities, overriding
 	// metadata-derived ones. When non-empty it is authoritative: a capability
 	// absent from the list is treated as unsupported even when catalog
@@ -114,7 +117,10 @@ type ModelInfo struct {
 	ReasoningOptions []ReasoningOption
 	ToolCall         bool
 	StructuredOutput bool
-	Temperature      bool
+	// Temperature reports whether the model accepts a temperature parameter.
+	// nil means unknown (the catalog published no flag and no override set
+	// one), false means the model rejects it.
+	Temperature *bool
 	// InputModalities and OutputModalities mirror the provider's published
 	// modalities (for example models.dev's audio/speech, text, image, video).
 	// Empty means unknown.

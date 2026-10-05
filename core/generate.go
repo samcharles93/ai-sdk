@@ -35,6 +35,11 @@ type GenerateOptions struct {
 	Temperature float32
 	// MaxTokens limits the total output tokens.
 	MaxTokens int
+	// ModelInfo carries the resolved model's request-shaping capabilities
+	// (reasoning model, temperature support). The runtime fills it from
+	// catalog and provider metadata; a zero value means unknown and leaves
+	// provider defaults in place.
+	ModelInfo chat.ModelInfo
 	// StopWhen is an optional stop condition. Defaults to StepCountIs(1).
 	StopWhen StopCondition
 	// ProviderOptions carries provider-specific options keyed by
@@ -113,6 +118,7 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 			Tools:           wireTools,
 			ToolChoice:      opts.ToolChoice,
 			ProviderOptions: opts.ProviderOptions,
+			ModelInfo:       opts.ModelInfo,
 		}
 
 		fireModelStarted(ctx, opts.ModelHooks, req)

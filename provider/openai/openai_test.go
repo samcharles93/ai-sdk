@@ -943,6 +943,162 @@ func TestChat_CachedTokens_ChatCompletions(t *testing.T) {
 	}
 }
 
+// TestChat_CachedTokens_ChatCompletions_DeepSeekFallback covers DeepSeek's
+// prompt_cache_hit_tokens, which that API reports instead of OpenAI's nested
+// prompt_tokens_details shape.
+func TestChat_CachedTokens_ChatCompletions_DeepSeekFallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"ds-cached",
+			"model":"deepseek-chat",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":1000,"completion_tokens":10,"total_tokens":1010,"prompt_cache_hit_tokens":768}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.Chat(context.Background(), chat.Request{
+		Model:    "deepseek-chat",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.Usage.CachedTokens != 768 {
+		t.Errorf("CachedTokens = %d, want 768", resp.Usage.CachedTokens)
+	}
+}
+
+// TestChatCompletions_ModelInfoParameters covers the Chat Completions body
+// shaping driven by the resolved model flags: reasoning models take
+// max_completion_tokens, and a model that rejects temperature does not get
+// it. A classic/unknown model keeps max_tokens and temperature.
+func TestChatCompletions_ModelInfoParameters(t *testing.T) {
+	trueValue, falseValue := true, false
+	tests := []struct {
+		name            string
+		info            chat.ModelInfo
+		wantMaxKey      string
+		wantTemperature bool
+	}{
+		{
+			name:            "classic model keeps max_tokens and temperature",
+			info:            chat.ModelInfo{},
+			wantMaxKey:      "max_tokens",
+			wantTemperature: true,
+		},
+		{
+			name:            "reasoning model uses max_completion_tokens and keeps temperature when supported",
+			info:            chat.ModelInfo{Reasoning: true, Temperature: &trueValue},
+			wantMaxKey:      "max_completion_tokens",
+			wantTemperature: true,
+		},
+		{
+			name:            "reasoning model drops temperature when unsupported",
+			info:            chat.ModelInfo{Reasoning: true, Temperature: &falseValue},
+			wantMaxKey:      "max_completion_tokens",
+			wantTemperature: false,
+		},
+		{
+			name:            "unknown temperature is sent",
+			info:            chat.ModelInfo{Reasoning: true},
+			wantMaxKey:      "max_completion_tokens",
+			wantTemperature: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _, err := (chatCompletionsAPI{}).buildBody(chat.Request{
+				Model:       "test-model",
+				Messages:    []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+				MaxTokens:   64,
+				Temperature: 0.7,
+				ModelInfo:   tt.info,
+			}, false)
+			if err != nil {
+				t.Fatalf("buildBody: %v", err)
+			}
+			if body[tt.wantMaxKey] != 64 {
+				t.Errorf("%s = %v, want 64; body=%v", tt.wantMaxKey, body[tt.wantMaxKey], body)
+			}
+			otherKey := "max_tokens"
+			if tt.wantMaxKey == "max_tokens" {
+				otherKey = "max_completion_tokens"
+			}
+			if _, ok := body[otherKey]; ok {
+				t.Errorf("body unexpectedly carries %s: %v", otherKey, body)
+			}
+			_, hasTemperature := body["temperature"]
+			if hasTemperature != tt.wantTemperature {
+				t.Errorf("temperature present = %v, want %v; body=%v", hasTemperature, tt.wantTemperature, body)
+			}
+		})
+	}
+}
+
+// TestChat_ReasoningModelRequestParams exercises the full provider request path
+// for a classic and a reasoning model and asserts the wire body.
+func TestChat_ReasoningModelRequestParams(t *testing.T) {
+	falseValue := false
+	tests := []struct {
+		name            string
+		info            chat.ModelInfo
+		wantMaxKey      string
+		wantTemperature bool
+	}{
+		{
+			name:            "classic",
+			info:            chat.ModelInfo{},
+			wantMaxKey:      "max_tokens",
+			wantTemperature: true,
+		},
+		{
+			name:            "reasoning",
+			info:            chat.ModelInfo{Reasoning: true, Temperature: &falseValue},
+			wantMaxKey:      "max_completion_tokens",
+			wantTemperature: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id":"x","model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+			}))
+			defer srv.Close()
+
+			p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.Chat(context.Background(), chat.Request{
+				Model:       "test-model",
+				Messages:    []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+				MaxTokens:   64,
+				Temperature: 0.7,
+				ModelInfo:   tt.info,
+			}); err != nil {
+				t.Fatalf("Chat: %v", err)
+			}
+			if gotBody[tt.wantMaxKey] != float64(64) {
+				t.Errorf("%s = %v, want 64; body=%v", tt.wantMaxKey, gotBody[tt.wantMaxKey], gotBody)
+			}
+			if _, ok := gotBody["temperature"]; ok != tt.wantTemperature {
+				t.Errorf("temperature present = %v, want %v; body=%v", ok, tt.wantTemperature, gotBody)
+			}
+		})
+	}
+}
+
 // TestChat_CachedTokens_ResponsesAPI covers parsing
 // input_tokens_details.cached_tokens from the Responses API.
 func TestChat_CachedTokens_ResponsesAPI(t *testing.T) {

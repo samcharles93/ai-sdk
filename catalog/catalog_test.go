@@ -176,3 +176,42 @@ func TestMergeCatalogModelKeepsModalities(t *testing.T) {
 		t.Fatalf("replaced output modalities = %v, want [text]", replaced.Modalities.Output)
 	}
 }
+
+// TestCatalogTemperatureTriState guards the distinction between an absent
+// temperature flag (unknown, nil) and an explicit false (unsupported).
+func TestCatalogTemperatureTriState(t *testing.T) {
+	c := New(Options{})
+	if err := c.LoadFromJSON([]byte(`{
+		"openai": {
+			"models": {
+				"no-flag": {"id": "no-flag"},
+				"unsupported": {"id": "unsupported", "temperature": false},
+				"supported": {"id": "supported", "temperature": true}
+			}
+		}
+	}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	if m, ok := c.Model("openai", "no-flag"); !ok || m.Temperature != nil {
+		t.Errorf("no-flag temperature = %v, want nil", m.Temperature)
+	}
+	if m, ok := c.Model("openai", "unsupported"); !ok || m.Temperature == nil || *m.Temperature {
+		t.Errorf("unsupported temperature = %v, want pointer to false", m.Temperature)
+	}
+	if m, ok := c.Model("openai", "supported"); !ok || m.Temperature == nil || !*m.Temperature {
+		t.Errorf("supported temperature = %v, want pointer to true", m.Temperature)
+	}
+
+	// An override may explicitly flip a catalog true to false.
+	supported := true
+	unsupported := false
+	base := Model{ID: "m", Temperature: &supported}
+	if merged := mergeCatalogModel(base, Model{ID: "m", Temperature: &unsupported}); merged.Temperature == nil || *merged.Temperature {
+		t.Errorf("merged temperature = %v, want pointer to false", merged.Temperature)
+	}
+	// An absent override leaves the catalog value intact.
+	if merged := mergeCatalogModel(base, Model{ID: "m"}); merged.Temperature == nil || !*merged.Temperature {
+		t.Errorf("merged temperature = %v, want pointer to true", merged.Temperature)
+	}
+}

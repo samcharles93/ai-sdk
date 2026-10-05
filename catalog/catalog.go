@@ -38,14 +38,18 @@ type Provider struct {
 // The runtime uses these as metadata; it does not enforce that every
 // provider exposes every advertised model.
 type Model struct {
-	ID          string `json:"id"`
-	Name        string `json:"name,omitzero"`
-	Family      string `json:"family,omitzero"`
-	Attachment  bool   `json:"attachment,omitzero"`
-	Reasoning   bool   `json:"reasoning,omitzero"`
-	ToolCall    bool   `json:"tool_call,omitzero"`
-	Structured  bool   `json:"structured_output,omitzero"`
-	Temperature bool   `json:"temperature,omitzero"`
+	ID         string `json:"id"`
+	Name       string `json:"name,omitzero"`
+	Family     string `json:"family,omitzero"`
+	Attachment bool   `json:"attachment,omitzero"`
+	Reasoning  bool   `json:"reasoning,omitzero"`
+	ToolCall   bool   `json:"tool_call,omitzero"`
+	Structured bool   `json:"structured_output,omitzero"`
+	// Temperature is models.dev's sampling-capability flag. It is a pointer so
+	// an absent key is distinguishable from an explicit false: nil means the
+	// catalog published no flag (unknown), false means the model rejects a
+	// temperature parameter.
+	Temperature *bool `json:"temperature,omitzero"`
 	Modalities  struct {
 		Input  []string `json:"input,omitzero"`
 		Output []string `json:"output,omitzero"`
@@ -454,8 +458,8 @@ func mergeCatalogModel(base, override Model) Model {
 	if override.Structured {
 		result.Structured = true
 	}
-	if override.Temperature {
-		result.Temperature = true
+	if override.Temperature != nil {
+		result.Temperature = override.Temperature
 	}
 	if len(override.Modalities.Input) > 0 {
 		result.Modalities.Input = override.Modalities.Input

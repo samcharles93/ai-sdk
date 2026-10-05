@@ -126,6 +126,33 @@ type ToolChoice struct {
 	Name string         `json:"name,omitempty"`
 }
 
+// ModelInfo describes the resolved target model's request-shaping
+// capabilities. The runtime populates it from catalog and provider
+// metadata; a zero value means "unknown", so providers fall back to
+// their historic defaults. It is a snapshot of the runtime's model facts,
+// carried on the request so providers never need to import the runtime
+// package (onion model: runtime sits above the domain layer).
+type ModelInfo struct {
+	// Reasoning reports whether the model is a reasoning model. Providers
+	// that distinguish parameter names for reasoning models (OpenAI's
+	// max_completion_tokens vs max_tokens) honour it. false means
+	// classic/non-reasoning, or unknown.
+	Reasoning bool `json:"reasoning,omitempty"`
+
+	// Temperature reports whether the model accepts a temperature
+	// parameter. nil means unknown: callers may set Temperature and the
+	// provider sends it. false means the model rejects it and the provider
+	// must omit it.
+	Temperature *bool `json:"temperature,omitempty"`
+}
+
+// TemperatureSupported reports whether a temperature parameter may be sent
+// to the model. Unknown (nil) counts as supported so providers preserve
+// their historic behaviour for models with no metadata.
+func (m ModelInfo) TemperatureSupported() bool {
+	return m.Temperature == nil || *m.Temperature
+}
+
 // Request is a provider-agnostic chat completion request.
 //
 // Only Model and Messages are required; all other fields are optional and
@@ -150,6 +177,11 @@ type Request struct {
 	ToolChoice      *ToolChoice       `json:"tool_choice,omitempty"`
 	Metadata        map[string]string `json:"metadata,omitempty"`
 	ProviderOptions map[string]any    `json:"provider_options,omitempty"`
+
+	// ModelInfo carries the resolved model's capabilities. The runtime
+	// fills it before dispatching; direct provider callers may leave it
+	// zero (unknown).
+	ModelInfo ModelInfo `json:"model_info,omitzero"`
 }
 
 // Usage reports token accounting for a chat completion.

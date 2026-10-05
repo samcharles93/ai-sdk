@@ -138,11 +138,15 @@ func (chatCompletionsAPI) buildBody(req chat.Request, stream bool) (map[string]a
 	if opts.ReasoningEffort != "" {
 		body["reasoning_effort"] = opts.ReasoningEffort
 	}
-	if req.Temperature != 0 {
+	if req.Temperature != 0 && req.ModelInfo.TemperatureSupported() {
 		body["temperature"] = req.Temperature
 	}
 	if req.MaxTokens != 0 {
-		body["max_tokens"] = req.MaxTokens
+		if req.ModelInfo.Reasoning {
+			body["max_completion_tokens"] = req.MaxTokens
+		} else {
+			body["max_tokens"] = req.MaxTokens
+		}
 	}
 	if req.TopP != 0 {
 		body["top_p"] = req.TopP

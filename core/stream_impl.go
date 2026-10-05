@@ -124,6 +124,7 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 				Tools:           wireTools,
 				ToolChoice:      opts.ToolChoice,
 				ProviderOptions: opts.ProviderOptions,
+				ModelInfo:       opts.ModelInfo,
 			}
 
 			fireModelStarted(ctx, opts.ModelHooks, req)

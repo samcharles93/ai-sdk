@@ -131,44 +131,66 @@ func (r *Runtime) ParseModelRef(ref string) (ModelRef, error) {
 // the provider instance and the resolved model ID that should be passed
 // to requests.
 func (r *Runtime) ChatProvider(ctx context.Context, ref string) (chat.Provider, string, error) {
-	mref, err := r.ParseModelRef(ref)
+	provider, model, err := r.chatProvider(ctx, ref)
 	if err != nil {
 		return nil, "", err
+	}
+	return provider, model.ID, nil
+}
+
+// chatProvider resolves a model reference to both the chat provider and
+// the resolved model metadata, so callers can carry the model's
+// request-shaping capabilities onto the request.
+func (r *Runtime) chatProvider(ctx context.Context, ref string) (chat.Provider, ModelInfo, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return nil, ModelInfo{}, err
 	}
 	model, err := r.resolveModel(mref)
 	if err != nil {
-		return nil, "", err
+		return nil, ModelInfo{}, err
 	}
 	set, err := r.providerSetFor(ctx, mref.ProviderID, model)
 	if err != nil {
-		return nil, "", err
+		return nil, ModelInfo{}, err
 	}
 	if set.Chat == nil {
-		return nil, "", fmt.Errorf("%w: provider %q does not support chat", ErrCapabilityNotSupported, mref.ProviderID)
+		return nil, ModelInfo{}, fmt.Errorf("%w: provider %q does not support chat", ErrCapabilityNotSupported, mref.ProviderID)
 	}
-	return set.Chat, model.ID, nil
+	return set.Chat, model, nil
+}
+
+// chatModelInfo snapshots the request-shaping subset of the runtime's
+// resolved model metadata for the domain-layer request.
+func chatModelInfo(model ModelInfo) chat.ModelInfo {
+	return chat.ModelInfo{
+		Reasoning:   model.Reasoning,
+		Temperature: model.Temperature,
+	}
 }
 
 // Chat performs a non-streaming chat completion for the given model
 // reference. The model field inside opts is overwritten with the
 // resolved model ID.
 func (r *Runtime) Chat(ctx context.Context, ref string, opts core.GenerateOptions) (core.GenerateResult, error) {
-	provider, modelID, err := r.ChatProvider(ctx, ref)
+	provider, model, err := r.chatProvider(ctx, ref)
 	if err != nil {
 		return core.GenerateResult{}, err
 	}
-	opts.Model = modelID
+	opts.Model = model.ID
+	opts.ModelInfo = chatModelInfo(model)
 	return core.GenerateText(ctx, provider, opts)
 }
 
 // ChatStream performs a streaming chat completion for the given model
 // reference.
 func (r *Runtime) ChatStream(ctx context.Context, ref string, opts core.GenerateOptions) (core.StreamResult, error) {
-	provider, modelID, err := r.ChatProvider(ctx, ref)
+	provider, model, err := r.chatProvider(ctx, ref)
 	if err != nil {
 		return core.StreamResult{}, err
 	}
-	opts.Model = modelID
+	opts.Model = model.ID
+	opts.ModelInfo = chatModelInfo(model)
 	return core.StreamText(ctx, provider, opts)
 }
 
@@ -704,8 +726,8 @@ func mergeModelInfoWithConfig(base ModelInfo, mc ModelConfig) ModelInfo {
 	if mc.StructuredOutput {
 		base.StructuredOutput = true
 	}
-	if mc.Temperature {
-		base.Temperature = true
+	if mc.Temperature != nil {
+		base.Temperature = mc.Temperature
 	}
 	if len(mc.Capabilities) > 0 {
 		base.Capabilities = mc.Capabilities
