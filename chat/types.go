@@ -133,16 +133,19 @@ type ToolChoice struct {
 // carried on the request so providers never need to import the runtime
 // package (onion model: runtime sits above the domain layer).
 type ModelInfo struct {
-	// Reasoning reports whether the model is a reasoning model. Providers
-	// that distinguish parameter names for reasoning models (OpenAI's
-	// max_completion_tokens vs max_tokens) honour it. false means
+	// Reasoning reports whether the model is a reasoning model. A provider
+	// that targets OpenAI's own API distinguishes the parameter name for
+	// reasoning models (max_completion_tokens vs max_tokens) and honours
+	// it; an OpenAI-compatible endpoint keeps max_tokens because such
+	// servers ignore or reject the rename. false means
 	// classic/non-reasoning, or unknown.
 	Reasoning bool `json:"reasoning,omitempty"`
 
 	// Temperature reports whether the model accepts a temperature
 	// parameter. nil means unknown: callers may set Temperature and the
-	// provider sends it. false means the model rejects it and the provider
-	// must omit it.
+	// provider sends it. false means OpenAI's own API rejects it and the
+	// provider must omit it there; an OpenAI-compatible endpoint keeps
+	// sending the caller's temperature.
 	Temperature *bool `json:"temperature,omitempty"`
 }
 

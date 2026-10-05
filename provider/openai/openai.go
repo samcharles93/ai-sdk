@@ -26,6 +26,13 @@ type Config struct {
 	APIKey string
 	// BaseURL overrides the API root.
 	BaseURL string
+	// Compatible marks a third-party OpenAI-compatible endpoint rather than
+	// OpenAI's own API. Such a server keeps the classic Chat Completions wire
+	// shape: max_tokens for every model and temperature whenever the caller set
+	// one, ignoring the resolved model's OpenAI-specific request-shaping flags.
+	// The runtime sets it for the openai-compatible, togetherai, and minimax
+	// chat transports; OpenAI's own API leaves it false.
+	Compatible bool
 	// HTTPClient overrides the client used for requests. If nil, requests are
 	// bounded only by their caller contexts.
 	HTTPClient *http.Client
@@ -61,6 +68,7 @@ type SpeechConfig struct {
 type Provider struct {
 	apiKey         string
 	baseURL        string
+	compatible     bool
 	client         *http.Client
 	speech         *SpeechConfig
 	maxInputChars  int
@@ -94,6 +102,7 @@ func New(cfg Config) (*Provider, error) {
 	return &Provider{
 		apiKey:         cfg.APIKey,
 		baseURL:        normaliseBaseURL(base),
+		compatible:     cfg.Compatible,
 		client:         client,
 		speech:         cfg.Speech,
 		maxInputChars:  cfg.MaxInputChars,
@@ -130,15 +139,16 @@ type openaiMessageOptions struct {
 	ResponseOutput []json.RawMessage `json:"response_output,omitempty"`
 }
 
-func selectWireAPI(req chat.Request) wireAPI {
+func (p *Provider) selectWireAPI(req chat.Request) wireAPI {
+	chatCompletions := chatCompletionsAPI{compatible: p.compatible}
 	options, _ := chat.ProviderOptionsFor[openaiProviderOptions](req.ProviderOptions, "openai")
 	if len(req.Tools) == 0 || options.ReasoningEffort == "none" {
-		return chatCompletionsAPI{}
+		return chatCompletions
 	}
 	if options.ReasoningEffort != "" || modelDefaultsToReasoning(req.Model) {
 		return responsesAPI{}
 	}
-	return chatCompletionsAPI{}
+	return chatCompletions
 }
 
 func modelDefaultsToReasoning(model string) bool {
@@ -205,7 +215,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 	if err := validateRequest(req); err != nil {
 		return chat.Response{}, err
 	}
-	api := selectWireAPI(req)
+	api := p.selectWireAPI(req)
 	body, warnings, err := api.buildBody(req, false)
 	if err != nil {
 		return chat.Response{}, err
@@ -229,7 +239,7 @@ func (p *Provider) ChatStream(ctx context.Context, req chat.Request) (chat.Strea
 	if err := validateRequest(req); err != nil {
 		return nil, err
 	}
-	api := selectWireAPI(req)
+	api := p.selectWireAPI(req)
 	body, warnings, err := api.buildBody(req, true)
 	if err != nil {
 		return nil, err

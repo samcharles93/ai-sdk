@@ -9,7 +9,12 @@ import (
 	"github.com/samcharles93/ai-sdk/chat"
 )
 
-type chatCompletionsAPI struct{}
+type chatCompletionsAPI struct {
+	// compatible marks a third-party OpenAI-compatible endpoint. Such a server
+	// keeps the classic wire shape (max_tokens, temperature as given) instead of
+	// the request-shaping flags resolved for OpenAI's own models.
+	compatible bool
+}
 
 func (chatCompletionsAPI) path() string { return "/chat/completions" }
 
@@ -111,7 +116,7 @@ type chatCompletionsStreamChunk struct {
 	Usage   *chatCompletionsUsage         `json:"usage,omitempty"`
 }
 
-func (chatCompletionsAPI) buildBody(req chat.Request, stream bool) (map[string]any, []chat.Warning, error) {
+func (api chatCompletionsAPI) buildBody(req chat.Request, stream bool) (map[string]any, []chat.Warning, error) {
 	messages, warnings, err := buildChatCompletionsMessages(req.Messages)
 	if err != nil {
 		return nil, nil, err
@@ -138,11 +143,11 @@ func (chatCompletionsAPI) buildBody(req chat.Request, stream bool) (map[string]a
 	if opts.ReasoningEffort != "" {
 		body["reasoning_effort"] = opts.ReasoningEffort
 	}
-	if req.Temperature != 0 && req.ModelInfo.TemperatureSupported() {
+	if req.Temperature != 0 && (api.compatible || req.ModelInfo.TemperatureSupported()) {
 		body["temperature"] = req.Temperature
 	}
 	if req.MaxTokens != 0 {
-		if req.ModelInfo.Reasoning {
+		if !api.compatible && req.ModelInfo.Reasoning {
 			body["max_completion_tokens"] = req.MaxTokens
 		} else {
 			body["max_tokens"] = req.MaxTokens

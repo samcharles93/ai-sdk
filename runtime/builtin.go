@@ -90,6 +90,7 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 		APIKey:         apiKey,
 		BaseURL:        model.providerURL(cfg.BaseURL),
 		HTTPClient:     httpClient,
+		Compatible:     true,
 		Speech:         &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
 		MaxInputChars:  speechMaxInputChars(cfg.Options, model.Extra, 0),
 		DiscoverVoices: true,
@@ -377,7 +378,8 @@ func minimaxClass() ProviderClass {
 		name: "minimax",
 		caps: []Capability{CapabilityChat, CapabilityImage, CapabilitySpeech, CapabilityVideo, CapabilityMusic},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
-			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+			// MiniMax's text API is OpenAI-compatible: keep max_tokens.
+			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient, Compatible: true})
 		},
 		buildImage: func(apiKey, baseURL string, httpClient *http.Client) (image.Provider, error) {
 			return minimax.New(minimax.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
@@ -445,7 +447,8 @@ func togetheraiClass() ProviderClass {
 		name: "togetherai",
 		caps: []Capability{CapabilityChat, CapabilityImage, CapabilityRerank},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
-			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+			// TogetherAI's chat API is OpenAI-compatible: keep max_tokens.
+			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient, Compatible: true})
 		},
 		buildImage: func(apiKey, baseURL string, httpClient *http.Client) (image.Provider, error) {
 			return togetherai.New(togetherai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})

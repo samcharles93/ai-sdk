@@ -849,7 +849,7 @@ func TestSelectWireAPI(t *testing.T) {
 					"openai": openaiProviderOptions{ReasoningEffort: tt.effort},
 				}
 			}
-			_, gotResponses := selectWireAPI(request).(responsesAPI)
+			_, gotResponses := (&Provider{}).selectWireAPI(request).(responsesAPI)
 			if gotResponses != tt.responses {
 				t.Fatalf("selectWireAPI(%q, effort %q, tools %v) responses = %v, want %v",
 					tt.model, tt.effort, tt.withTools, gotResponses, tt.responses)
@@ -975,14 +975,17 @@ func TestChat_CachedTokens_ChatCompletions_DeepSeekFallback(t *testing.T) {
 }
 
 // TestChatCompletions_ModelInfoParameters covers the Chat Completions body
-// shaping driven by the resolved model flags: reasoning models take
-// max_completion_tokens, and a model that rejects temperature does not get
-// it. A classic/unknown model keeps max_tokens and temperature.
+// shaping driven by the resolved model flags: against OpenAI's own API a
+// reasoning model takes max_completion_tokens and a model that rejects
+// temperature does not get it, while a classic/unknown model keeps max_tokens
+// and temperature. An OpenAI-compatible endpoint ignores those flags: it keeps
+// max_tokens and sends temperature whenever the caller set one.
 func TestChatCompletions_ModelInfoParameters(t *testing.T) {
 	trueValue, falseValue := true, false
 	tests := []struct {
 		name            string
 		info            chat.ModelInfo
+		compatible      bool
 		wantMaxKey      string
 		wantTemperature bool
 	}{
@@ -1010,11 +1013,25 @@ func TestChatCompletions_ModelInfoParameters(t *testing.T) {
 			wantMaxKey:      "max_completion_tokens",
 			wantTemperature: true,
 		},
+		{
+			name:            "compatible endpoint keeps max_tokens for a reasoning model",
+			info:            chat.ModelInfo{Reasoning: true, Temperature: &trueValue},
+			compatible:      true,
+			wantMaxKey:      "max_tokens",
+			wantTemperature: true,
+		},
+		{
+			name:            "compatible endpoint keeps temperature when the model flags it unsupported",
+			info:            chat.ModelInfo{Reasoning: true, Temperature: &falseValue},
+			compatible:      true,
+			wantMaxKey:      "max_tokens",
+			wantTemperature: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body, _, err := (chatCompletionsAPI{}).buildBody(chat.Request{
+			body, _, err := (chatCompletionsAPI{compatible: tt.compatible}).buildBody(chat.Request{
 				Model:       "test-model",
 				Messages:    []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
 				MaxTokens:   64,
@@ -1043,12 +1060,14 @@ func TestChatCompletions_ModelInfoParameters(t *testing.T) {
 }
 
 // TestChat_ReasoningModelRequestParams exercises the full provider request path
-// for a classic and a reasoning model and asserts the wire body.
+// for a classic and a reasoning model and asserts the wire body. The compatible
+// endpoint keeps the classic wire shape no matter what the model flags say.
 func TestChat_ReasoningModelRequestParams(t *testing.T) {
 	falseValue := false
 	tests := []struct {
 		name            string
 		info            chat.ModelInfo
+		compatible      bool
 		wantMaxKey      string
 		wantTemperature bool
 	}{
@@ -1064,6 +1083,13 @@ func TestChat_ReasoningModelRequestParams(t *testing.T) {
 			wantMaxKey:      "max_completion_tokens",
 			wantTemperature: false,
 		},
+		{
+			name:            "compatible reasoning",
+			info:            chat.ModelInfo{Reasoning: true, Temperature: &falseValue},
+			compatible:      true,
+			wantMaxKey:      "max_tokens",
+			wantTemperature: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1076,7 +1102,7 @@ func TestChat_ReasoningModelRequestParams(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+			p, err := New(Config{APIKey: "k", BaseURL: srv.URL, Compatible: tt.compatible})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1091,6 +1117,13 @@ func TestChat_ReasoningModelRequestParams(t *testing.T) {
 			}
 			if gotBody[tt.wantMaxKey] != float64(64) {
 				t.Errorf("%s = %v, want 64; body=%v", tt.wantMaxKey, gotBody[tt.wantMaxKey], gotBody)
+			}
+			otherKey := "max_tokens"
+			if tt.wantMaxKey == "max_tokens" {
+				otherKey = "max_completion_tokens"
+			}
+			if _, ok := gotBody[otherKey]; ok {
+				t.Errorf("body unexpectedly carries %s: %v", otherKey, gotBody)
 			}
 			if _, ok := gotBody["temperature"]; ok != tt.wantTemperature {
 				t.Errorf("temperature present = %v, want %v; body=%v", ok, tt.wantTemperature, gotBody)

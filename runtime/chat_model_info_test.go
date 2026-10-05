@@ -2,7 +2,10 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/samcharles93/ai-sdk/chat"
@@ -159,5 +162,77 @@ func TestRuntimeCatalogModelInfoReachesRequest(t *testing.T) {
 	}
 	if info.Temperature == nil || *info.Temperature {
 		t.Errorf("request ModelInfo.Temperature = %v, want pointer to false", info.Temperature)
+	}
+}
+
+// TestChatCompletionsDialectIsClassScoped pins the wire shape produced by the
+// same resolved model flags across provider classes. Only OpenAI's own API may
+// turn a reasoning flag into max_completion_tokens and drop a temperature the
+// model rejects; an OpenAI-compatible server (the generic class, but also the
+// openai transport used by the togetherai and minimax classes) either ignores
+// max_completion_tokens — silently losing the output bound — or rejects it with
+// a 400, and keeps temperature exactly as the caller set it.
+func TestChatCompletionsDialectIsClassScoped(t *testing.T) {
+	RegisterBuiltinClasses()
+
+	tests := []struct {
+		class           string
+		wantMaxKey      string
+		wantTemperature bool
+	}{
+		{class: "openai", wantMaxKey: "max_completion_tokens", wantTemperature: false},
+		{class: "openai-compatible", wantMaxKey: "max_tokens", wantTemperature: true},
+		{class: "togetherai", wantMaxKey: "max_tokens", wantTemperature: true},
+		{class: "minimax", wantMaxKey: "max_tokens", wantTemperature: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.class, func(t *testing.T) {
+			var gotBody map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id":"x","model":"reasoner","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+			}))
+			defer srv.Close()
+
+			noTemperature := false
+			rt := NewRuntime(Config{
+				Providers: map[string]ProviderConfig{
+					"p": {
+						ID:      "p",
+						Class:   tt.class,
+						BaseURL: srv.URL,
+						Auth:    AuthConfig{Type: AuthTypeAPIKey, APIKey: "k"},
+						Models: []ModelConfig{{
+							ID:          "reasoner",
+							Reasoning:   true,
+							Temperature: &noTemperature,
+						}},
+					},
+				},
+			})
+
+			if _, err := rt.Chat(context.Background(), "p/reasoner", core.GenerateOptions{
+				Messages:    []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+				MaxTokens:   64,
+				Temperature: 0.7,
+			}); err != nil {
+				t.Fatalf("Chat: %v", err)
+			}
+			if gotBody[tt.wantMaxKey] != float64(64) {
+				t.Errorf("%s = %v, want 64; body=%v", tt.wantMaxKey, gotBody[tt.wantMaxKey], gotBody)
+			}
+			otherKey := "max_tokens"
+			if tt.wantMaxKey == "max_tokens" {
+				otherKey = "max_completion_tokens"
+			}
+			if _, ok := gotBody[otherKey]; ok {
+				t.Errorf("body unexpectedly carries %s: %v", otherKey, gotBody)
+			}
+			if _, ok := gotBody["temperature"]; ok != tt.wantTemperature {
+				t.Errorf("temperature present = %v, want %v; body=%v", ok, tt.wantTemperature, gotBody)
+			}
+		})
 	}
 }
