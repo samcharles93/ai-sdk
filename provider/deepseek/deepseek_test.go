@@ -258,5 +258,96 @@ func TestChat_EmptyModel(t *testing.T) {
 	}
 }
 
+// TestChat_CachedTokens verifies DeepSeek's prompt_cache_hit_tokens is
+// surfaced as chat.Usage.CachedTokens on the non-streaming path.
+func TestChat_CachedTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"id":"c1",
+			"model":"deepseek-chat",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":100,"completion_tokens":10,"total_tokens":110,"prompt_cache_hit_tokens":64,"prompt_cache_miss_tokens":36}
+		}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.Chat(context.Background(), chat.Request{
+		Model:    "deepseek-chat",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.Usage.CachedTokens != 64 {
+		t.Errorf("CachedTokens = %d, want 64", resp.Usage.CachedTokens)
+	}
+	if resp.Usage.PromptTokens != 100 {
+		t.Errorf("PromptTokens = %d, want 100", resp.Usage.PromptTokens)
+	}
+}
+
+// TestChatStream_CachedTokens verifies the streaming usage-only chunk also
+// surfaces prompt_cache_hit_tokens as CachedTokens.
+func TestChatStream_CachedTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fl, _ := w.(http.Flusher)
+		writes := []string{
+			`data: {"id":"s1","model":"deepseek-chat","choices":[{"index":0,"delta":{"role":"assistant","content":"hi"}}]}` + "\n\n",
+			`data: {"id":"s1","model":"deepseek-chat","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n",
+			`data: {"id":"s1","model":"deepseek-chat","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":10,"total_tokens":110,"prompt_cache_hit_tokens":64}}` + "\n\n",
+			`data: [DONE]` + "\n\n",
+		}
+		for _, s := range writes {
+			_, _ = io.WriteString(w, s)
+			if fl != nil {
+				fl.Flush()
+			}
+		}
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := p.ChatStream(context.Background(), chat.Request{
+		Model:    "deepseek-chat",
+		Messages: []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	defer st.Close()
+
+	var doneChunk *chat.Chunk
+	for {
+		c, err := st.Next(context.Background())
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		if c.Done {
+			cc := c
+			doneChunk = &cc
+			break
+		}
+	}
+	if doneChunk == nil || doneChunk.Usage == nil {
+		t.Fatalf("done chunk usage missing: %+v", doneChunk)
+	}
+	if doneChunk.Usage.CachedTokens != 64 {
+		t.Errorf("CachedTokens = %d, want 64", doneChunk.Usage.CachedTokens)
+	}
+}
+
 // guard against accidental import of fmt only — keep linter quiet
 var _ = fmt.Sprintf

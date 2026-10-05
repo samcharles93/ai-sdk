@@ -98,6 +98,10 @@ type wireUsage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	// PromptCacheHitTokens is DeepSeek's cache-use field: the number of
+	// prompt tokens served from its context cache. It replaces OpenAI's
+	// nested prompt_tokens_details.cached_tokens shape.
+	PromptCacheHitTokens int `json:"prompt_cache_hit_tokens"`
 }
 
 type wireChoice struct {
@@ -348,6 +352,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 			PromptTokens:     wr.Usage.PromptTokens,
 			CompletionTokens: wr.Usage.CompletionTokens,
 			TotalTokens:      wr.Usage.TotalTokens,
+			CachedTokens:     wr.Usage.PromptCacheHitTokens,
 		},
 	}
 	if len(wr.Choices) > 0 {
@@ -520,6 +525,7 @@ func (s *stream) Next(ctx context.Context) (chat.Chunk, error) {
 				PromptTokens:     ch.Usage.PromptTokens,
 				CompletionTokens: ch.Usage.CompletionTokens,
 				TotalTokens:      ch.Usage.TotalTokens,
+				CachedTokens:     ch.Usage.PromptCacheHitTokens,
 			}
 		}
 		if len(ch.Choices) == 0 {

@@ -49,13 +49,18 @@ type chatCompletionsUsage struct {
 	PromptTokensDetails *struct {
 		CachedTokens int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details,omitempty"`
+	// PromptCacheHitTokens is DeepSeek's cache-use field. Its API reports
+	// cache hits as prompt_cache_hit_tokens/prompt_cache_miss_tokens rather
+	// than OpenAI's nested prompt_tokens_details, so DeepSeek reached through
+	// this OpenAI-compatible provider reads it as a fallback.
+	PromptCacheHitTokens int `json:"prompt_cache_hit_tokens,omitempty"`
 }
 
 func (u chatCompletionsUsage) cachedTokens() int {
-	if u.PromptTokensDetails == nil {
-		return 0
+	if u.PromptTokensDetails != nil && u.PromptTokensDetails.CachedTokens > 0 {
+		return u.PromptTokensDetails.CachedTokens
 	}
-	return u.PromptTokensDetails.CachedTokens
+	return u.PromptCacheHitTokens
 }
 
 type chatCompletionsChoice struct {
