@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/samcharles93/ai-sdk/chat"
@@ -151,12 +152,28 @@ func (p *Provider) selectWireAPI(req chat.Request) wireAPI {
 	return chatCompletions
 }
 
+// modelDefaultsToReasoning reports a model that reasons by default, which
+// OpenAI serves function tools for only through the Responses API: every
+// gpt-N.M from 5.5 on, including later majors such as gpt-6.
 func modelDefaultsToReasoning(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
-	return model == "gpt-5.5" ||
-		strings.HasPrefix(model, "gpt-5.5-") ||
-		model == "gpt-5.6" ||
-		strings.HasPrefix(model, "gpt-5.6-")
+	rest, ok := strings.CutPrefix(model, "gpt-")
+	if !ok {
+		return false
+	}
+	version, _, _ := strings.Cut(rest, "-")
+	majorText, minorText, _ := strings.Cut(version, ".")
+	major, err := strconv.Atoi(majorText)
+	if err != nil {
+		return false
+	}
+	minor := 0
+	if minorText != "" {
+		if minor, err = strconv.Atoi(minorText); err != nil {
+			return false
+		}
+	}
+	return major > 5 || (major == 5 && minor >= 5)
 }
 
 func validateRequest(req chat.Request) error {
