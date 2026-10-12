@@ -6,6 +6,7 @@ import "strings"
 // imply it. Providers publish both the models.dev vocabulary (audio) and live
 // API variants (Groq's speech), so both are accepted.
 var capabilityOutputModalities = map[Capability][]string{
+	CapabilityDecide: {"decisions"},
 	CapabilityChat:   {"text"},
 	CapabilitySpeech: {"audio", "speech"},
 	CapabilityImage:  {"image"},

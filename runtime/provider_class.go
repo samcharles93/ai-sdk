@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	"github.com/samcharles93/ai-sdk/decide"
 	"github.com/samcharles93/ai-sdk/embed"
 	"github.com/samcharles93/ai-sdk/image"
 	"github.com/samcharles93/ai-sdk/music"
@@ -26,6 +27,7 @@ const (
 	CapabilityImage      Capability = "image"
 	CapabilityVideo      Capability = "video"
 	CapabilityObject     Capability = "object"
+	CapabilityDecide     Capability = "decide"
 	CapabilityRerank     Capability = "rerank"
 	CapabilitySpeech     Capability = "speech"
 	CapabilityTranscribe Capability = "transcribe"
@@ -152,6 +154,7 @@ type ProviderSet struct {
 	Image      image.Provider
 	Video      video.Provider
 	Object     object.Provider
+	Decide     decide.Provider
 	Rerank     rerank.Provider
 	Speech     speech.Provider
 	Transcribe transcribe.Provider
@@ -171,6 +174,8 @@ func (s ProviderSet) Has(cap Capability) bool {
 		return s.Video != nil
 	case CapabilityObject:
 		return s.Object != nil
+	case CapabilityDecide:
+		return s.Decide != nil
 	case CapabilityRerank:
 		return s.Rerank != nil
 	case CapabilitySpeech:

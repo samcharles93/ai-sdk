@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	"github.com/samcharles93/ai-sdk/decide"
 	"github.com/samcharles93/ai-sdk/embed"
 	"github.com/samcharles93/ai-sdk/image"
 	"github.com/samcharles93/ai-sdk/music"
@@ -25,6 +26,7 @@ import (
 	"github.com/samcharles93/ai-sdk/provider/openai"
 	"github.com/samcharles93/ai-sdk/provider/openaiobject"
 	"github.com/samcharles93/ai-sdk/provider/perplexity"
+	"github.com/samcharles93/ai-sdk/provider/systemone"
 	"github.com/samcharles93/ai-sdk/provider/togetherai"
 	"github.com/samcharles93/ai-sdk/provider/xai"
 	"github.com/samcharles93/ai-sdk/rerank"
@@ -65,7 +67,7 @@ func (openAICompatibleClass) Name() string { return "openai-compatible" }
 
 func (openAICompatibleClass) Supports(cap Capability) bool {
 	switch cap {
-	case CapabilityChat, CapabilitySpeech:
+	case CapabilityChat, CapabilitySpeech, CapabilityDecide:
 		return true
 	default:
 		return false
@@ -102,7 +104,11 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 	// the standard surface every self-hosted TTS server (Kokoro-FastAPI,
 	// speaches, openedai-speech, LocalAI) implements, and openai.New already
 	// accepts an empty key for a non-OpenAI base URL.
-	return ProviderSet{Chat: p, Speech: p}, nil
+	d, err := systemone.New(systemone.Config{BaseURL: model.providerURL(cfg.BaseURL), APIKey: apiKey, HTTPClient: httpClient})
+	if err != nil {
+		return ProviderSet{}, err
+	}
+	return ProviderSet{Chat: p, Speech: p, Decide: d}, nil
 }
 
 // speechBuildArgs carries everything a speech builder needs: credentials, the
@@ -125,6 +131,7 @@ type simpleClass struct {
 	buildImage      func(apiKey, baseURL string, httpClient *http.Client) (image.Provider, error)
 	buildVideo      func(apiKey, baseURL string, httpClient *http.Client) (video.Provider, error)
 	buildObject     func(apiKey, baseURL string, httpClient *http.Client) (object.Provider, error)
+	buildDecide     func(apiKey, baseURL string, httpClient *http.Client) (decide.Provider, error)
 	buildRerank     func(apiKey, baseURL string, httpClient *http.Client) (rerank.Provider, error)
 	buildSpeech     func(speechBuildArgs) (speech.Provider, error)
 	buildTranscribe func(apiKey, baseURL string, httpClient *http.Client) (transcribe.Provider, error)
@@ -184,6 +191,11 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 				set.Object = obj
 			}
 		}
+		if c.Supports(CapabilityDecide) {
+			if d, ok := p.(decide.Provider); ok {
+				set.Decide = d
+			}
+		}
 		if c.Supports(CapabilityRerank) {
 			if rk, ok := p.(rerank.Provider); ok {
 				set.Rerank = rk
@@ -223,6 +235,13 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 			return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.name, err)
 		}
 		set.Object = p
+	}
+	if c.buildDecide != nil {
+		p, err := c.buildDecide(apiKey, baseURL, httpClient)
+		if err != nil {
+			return ProviderSet{}, err
+		}
+		set.Decide = p
 	}
 	if c.buildRerank != nil {
 		p, err := c.buildRerank(apiKey, baseURL, httpClient)
@@ -264,7 +283,10 @@ func (c simpleClass) New(ctx context.Context, cfg ProviderConfig, model ModelInf
 func openaiClass() ProviderClass {
 	return simpleClass{
 		name: "openai",
-		caps: []Capability{CapabilityChat, CapabilitySpeech, CapabilityTranscribe},
+		caps: []Capability{CapabilityChat, CapabilitySpeech, CapabilityTranscribe, CapabilityDecide},
+		buildDecide: func(apiKey, baseURL string, httpClient *http.Client) (decide.Provider, error) {
+			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
 		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
 			return openai.New(openai.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
