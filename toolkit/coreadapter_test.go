@@ -38,7 +38,7 @@ func TestCoreToolSetExecutesRegisteredTool(t *testing.T) {
 	}
 }
 
-func TestCoreToolSetKeepsFailuresInBand(t *testing.T) {
+func TestCoreToolSetReturnsFailuresAsErrors(t *testing.T) {
 	reg := toolkit.NewRegistry()
 	if err := reg.Register(toolkit.Tool{
 		Schema: toolkit.Schema{Name: "boom", Description: "always fails"},
@@ -49,13 +49,21 @@ func TestCoreToolSetKeepsFailuresInBand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	set := reg.CoreToolSet(toolkit.HeadlessBridge{})
-	out, err := set["boom"].Execute(context.Background(), `{}`)
-	if err != nil {
-		t.Fatalf("executor error must stay in-band, got Go error: %v", err)
+	if err := reg.Register(toolkit.Tool{
+		Schema: toolkit.Schema{Name: "refuse", Description: "always refuses"},
+		Execute: func(ctx context.Context, params json.RawMessage, ui toolkit.UIBridge) (toolkit.Result, error) {
+			return toolkit.Result{Content: "refused", IsError: true}, nil
+		},
+	}); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out, "kaboom") {
-		t.Fatalf("failure text not fed back to the model: %q", out)
+
+	set := reg.CoreToolSet(toolkit.HeadlessBridge{})
+	for name, want := range map[string]string{"boom": "kaboom", "refuse": "refused"} {
+		_, err := set[name].Execute(context.Background(), `{}`)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("%s: error = %v, want one containing %q", name, err, want)
+		}
 	}
 }
 

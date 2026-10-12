@@ -473,3 +473,21 @@ func TestGrepBlockedWhileGateDirty(t *testing.T) {
 		t.Fatalf("got %s/%s", res.Status, res.StopReason)
 	}
 }
+
+func TestRefusedWriteIsNotAChange(t *testing.T) {
+	res := runScript(
+		t, t.TempDir(),
+		Config{Gate: GateConfig{
+			Commands:               []GateCommand{{Name: "always-red", Argv: []string{"false"}}},
+			MaxConsecutiveFailures: 1,
+		}},
+		toolStep("write", `{"path":"../escape.txt","content":"x"}`),
+		toolStep("finish", `{"status":"passed","summary":"nothing landed"}`),
+	)
+	if res.Status != StatusPassed || res.StopReason != StopFinished {
+		t.Fatalf("got %s/%s, want passed/finished (detail: %s)", res.Status, res.StopReason, res.Detail)
+	}
+	if len(res.Changes) != 0 {
+		t.Fatalf("changes = %v, want none for a refused write", res.Changes)
+	}
+}
