@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
+	"github.com/samcharles93/ai-sdk/core"
 )
 
 // scriptProvider replays a fixed sequence of assistant responses,
@@ -489,5 +490,58 @@ func TestRefusedWriteIsNotAChange(t *testing.T) {
 	}
 	if len(res.Changes) != 0 {
 		t.Fatalf("changes = %v, want none for a refused write", res.Changes)
+	}
+}
+
+func TestBudgetAgreesWithReportedTotal(t *testing.T) {
+	step := func(prompt, completion, total int) core.StepResult {
+		return core.StepResult{Usage: chat.Usage{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: total}}
+	}
+	tests := []struct {
+		name      string
+		steps     []core.StepResult
+		compacted chat.Usage
+		maxTokens int
+		wantStop  bool
+		wantTotal int
+	}{
+		{
+			name:      "under budget",
+			steps:     []core.StepResult{step(10, 10, 20)},
+			maxTokens: 30,
+			wantTotal: 20,
+		},
+		{
+			name:      "provider omits total_tokens still trips budget",
+			steps:     []core.StepResult{step(10, 10, 0), step(10, 10, 0)},
+			maxTokens: 30,
+			wantStop:  true,
+			wantTotal: 40,
+		},
+		{
+			name:      "compaction counts toward budget",
+			steps:     []core.StepResult{step(10, 10, 20)},
+			compacted: chat.Usage{PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10},
+			maxTokens: 30,
+			wantStop:  true,
+			wantTotal: 30,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &compactor{usage: tt.compacted}
+			stop := budgetIs(tt.maxTokens, c)(tt.steps)
+			res := core.GenerateResult{Steps: tt.steps}
+			settleTotal(&res, tt.compacted)
+			if stop != tt.wantStop {
+				t.Fatalf("budget stop = %v, want %v", stop, tt.wantStop)
+			}
+			if res.TotalUsage.TotalTokens != tt.wantTotal {
+				t.Fatalf("reported total = %d, want %d", res.TotalUsage.TotalTokens, tt.wantTotal)
+			}
+			if stop != (res.TotalUsage.TotalTokens >= tt.maxTokens) {
+				t.Fatalf("budget check and reported total disagree: stop=%v total=%d max=%d", stop, res.TotalUsage.TotalTokens, tt.maxTokens)
+			}
+		})
 	}
 }

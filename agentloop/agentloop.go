@@ -234,18 +234,22 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		MaxSteps:  maxSteps,
 		StopWhen: core.AnyCondition(
 			core.StepCountIs(maxSteps),
-			TokenBudgetIs(cfg.Budget.MaxTokens),
+			budgetIs(cfg.Budget.MaxTokens, compact),
 			state.stopRequested,
 		),
 		OnStep:    onStep,
 		ToolHooks: toolHooks,
 	})
+	var compacted chat.Usage
 	if compact != nil {
-		res.TotalUsage = addUsage(res.TotalUsage, compact.usage)
+		compacted = compact.usage
+		res.TotalUsage = addUsage(res.TotalUsage, compacted)
 	}
+	settleTotal(&res, compacted)
 	if shouldForceFinish(cfg, state, res, genErr, maxSteps) {
 		recovery, err := forceFinish(ctx, provider, model, modelInfo, system, first, recoveryMessages, res, tools, toolHooks)
 		res = combineResults(res, recovery)
+		settleTotal(&res, compacted)
 		if err != nil {
 			genErr = err
 		}
@@ -381,16 +385,47 @@ func (s *runState) stopRequested([]core.StepResult) bool {
 // Like all stop conditions it is evaluated between steps, so a run can
 // overshoot by at most one model call.
 func TokenBudgetIs(maxTokens int) core.StopCondition {
+	return budgetIs(maxTokens, nil)
+}
+
+// budgetIs is TokenBudgetIs for a run, counting compaction calls too when
+// compact is set, so the stop condition and the reported total agree.
+func budgetIs(maxTokens int, compact *compactor) core.StopCondition {
 	return func(steps []core.StepResult) bool {
 		if maxTokens <= 0 {
 			return false
 		}
-		total := 0
-		for _, s := range steps {
-			total += s.Usage.TotalTokens
+		var compacted chat.Usage
+		if compact != nil {
+			compacted = compact.usage
 		}
-		return total >= maxTokens
+		return spentTokens(steps, compacted) >= maxTokens
 	}
+}
+
+// effectiveTotal is the tokens a usage record is charged for. Providers that
+// omit total_tokens report 0, so fall back to prompt plus completion.
+func effectiveTotal(u chat.Usage) int {
+	if u.TotalTokens > 0 {
+		return u.TotalTokens
+	}
+	return u.PromptTokens + u.CompletionTokens
+}
+
+// spentTokens is the run's token total: every step plus compaction calls,
+// which are billed like any other model call.
+func spentTokens(steps []core.StepResult, compacted chat.Usage) int {
+	total := effectiveTotal(compacted)
+	for _, s := range steps {
+		total += effectiveTotal(s.Usage)
+	}
+	return total
+}
+
+// settleTotal writes the run's spent total into res.TotalUsage so the stop
+// condition, force-finish check and classification all read the same number.
+func settleTotal(res *core.GenerateResult, compacted chat.Usage) {
+	res.TotalUsage.TotalTokens = spentTokens(res.Steps, compacted)
 }
 
 func resolveProvider(ctx context.Context, cfg Config) (chat.Provider, string, chat.ModelInfo, error) {
