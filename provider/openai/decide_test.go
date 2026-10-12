@@ -89,3 +89,26 @@ func TestDecideWire(t *testing.T) {
 		})
 	}
 }
+
+func TestDecideRejectsInvalidPredicate(t *testing.T) {
+	for _, payload := range []string{`{}`, `{"probability":null}`, `{"probability":-0.1}`, `{"probability":1.1}`} {
+		t.Run(payload, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var a map[string]any
+				_ = json.Unmarshal([]byte(payload), &a)
+				a["name"] = "p"
+				a["type"] = "predicate"
+				_ = json.NewEncoder(w).Encode(map[string]any{"answers": []any{a}})
+			}))
+			defer ts.Close()
+			p, err := New(Config{BaseURL: ts.URL})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = p.Decide(context.Background(), decide.Request{Model: "m", Input: "text", Questions: []decide.Question{{Name: "p", Type: decide.Predicate, Instructions: "true?"}}})
+			if err == nil {
+				t.Fatal("invalid probability accepted as a decision")
+			}
+		})
+	}
+}

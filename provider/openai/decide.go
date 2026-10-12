@@ -89,9 +89,10 @@ func (p *Provider) Decide(ctx context.Context, req decide.Request) (decide.Respo
 	out := decide.Response{Model: wire.Model, Usage: wire.Usage}
 	for i, raw := range wire.Answers {
 		var head struct {
-			Name       string      `json:"name"`
-			Type       decide.Kind `json:"type"`
-			Confidence float64     `json:"confidence"`
+			Name        string      `json:"name"`
+			Type        decide.Kind `json:"type"`
+			Confidence  float64     `json:"confidence"`
+			Probability *float64    `json:"probability"`
 		}
 		if err := json.Unmarshal(raw, &head); err != nil {
 			return decide.Response{}, err
@@ -102,8 +103,10 @@ func (p *Provider) Decide(ctx context.Context, req decide.Request) (decide.Respo
 		a := decide.Answer{Name: head.Name, Type: head.Type, Confidence: head.Confidence}
 		switch head.Type {
 		case decide.Predicate:
-			a.Predicate = &decide.PredicateAnswer{}
-			err = json.Unmarshal(raw, a.Predicate)
+			if head.Probability == nil || *head.Probability < 0 || *head.Probability > 1 {
+				return decide.Response{}, fmt.Errorf("openai decisions: invalid predicate probability")
+			}
+			a.Predicate = &decide.PredicateAnswer{Probability: *head.Probability}
 			a.Confidence = math.Max(a.Predicate.Probability, 1-a.Predicate.Probability)
 		case decide.Choice:
 			a.Choice = &decide.ChoiceAnswer{}
