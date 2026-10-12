@@ -16,7 +16,7 @@ archie-core; design APIs for how archie-core calls them.
 When sources disagree, the higher one wins:
 
 1. The maintainer's instruction in this session.
-2. This file.
+2. Applicable `AGENTS.md` files (the nearest directory adds scoped guidance).
 3. The code as it is in the tree.
 4. Beads issues (`bd show <id>`): the plan for a piece of work.
 5. Everything else (memories, comments, old docs) is a hint. Verify it against
@@ -46,9 +46,6 @@ When sources disagree, the higher one wins:
   them `feat!`/`fix!` so archie-core's bump is deliberate.
 - **Finish before starting.** Complete a half-built domain or provider end to
   end before starting another.
-- **Use the provider's real API.** Implement the wire format the provider
-  documents. Read the provider's current docs or official SDK types before
-  writing request or response structs; never guess field names.
 - **Ask only for real decisions.** API shape trade-offs the maintainer owns
   are questions. Everything with a conventional answer is not: decide, do it,
   say what you chose.
@@ -79,23 +76,6 @@ Onion model; dependencies point inward only.
   the client facade returns the domain's not-supported error.
 - Every struct has a `New` constructor taking its dependencies as interfaces.
   No package-level mutable state, no `init()` wiring.
-
-## Runtime
-
-- A `ProviderClass` turns a `ProviderConfig` into a `ProviderSet` with one
-  optional field per domain. A class must advertise a capability in `caps` and
-  return a provider that implements it; otherwise the field stays nil.
-- Each domain has `rt.<Domain>(ctx, ref, req)` and `rt.<Domain>Provider(ctx,
-  ref)`. A new domain adds both, its `Capability` constant and its
-  `ProviderSet` field.
-- Resolution is metadata-gated where the catalog or server publishes
-  modalities: a model whose metadata excludes the capability is refused with
-  `ErrCapabilityNotSupported` before a request is sent.
-- Self-hosted OpenAI-compatible servers (llama.cpp, llama-swap, vLLM, Kokoro)
-  resolve through the `openai-compatible` class with a `BaseURL` and
-  `auth.type: none`.
-- MiniMax is the worked example of a non-catalog provider wired as a custom
-  class with per-model config.
 
 ## Code
 
@@ -158,6 +138,13 @@ bd ready | bd show <id> | bd update <id> --claim | bd close <id>
 - An issue is the plan: what is wrong or wanted, and how you know it is done.
 - Bead state syncs through Dolt (`bd dolt push/pull`), only when told.
 - File follow-up work you find as a bead. Do not fix it in passing.
+
+## Scoped guidance
+
+Keep repository-wide policy here. Put feature-specific information, guidance
+and rules in `AGENTS.md` beside the owning code. Read the scoped guidance for
+each directory you change; related features may link to guidance in other
+directories.
 
 ## Changing this file
 
