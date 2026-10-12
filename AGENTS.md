@@ -1,750 +1,166 @@
-# AGENTS.md — AI SDK
+# AGENTS.md
 
-Guidance for any coding agent working in this repository.
-
-Keep every rule here harness-agnostic: name the required behaviour, not the tool
-that provides it (e.g. "spawn a fresh reviewer that did not write the code", not
-a specific sub-command).
-
-## Code Quality & Refactoring Standards
-
-- **Zero Patch Stacking:** Never apply more than two sequential fixes to the
-  same logic block. If a solution fails twice, scrap the block and rewrite it
-  cleanly.
-- **Root-Cause Fixes:** Fix invalid state at the producer, not via defensive
-  checks at the consumer.
-- **Architectural Simplicity:** Prefer a complete 20-line rewrite over a 5-line
-  band-aid that adds conditional complexity or obscures intent.
-- **Revert on Flail:** If an implementation becomes convoluted to satisfy edge
-  cases, discard the approach and select a simpler design.
+Rules for any agent working in this repository. Short on purpose: every rule
+here changes a decision. If a rule stops changing decisions, delete it.
 
 ## What this is
 
-**ai-sdk** is a provider-agnostic Go SDK that unifies nine domains — chat, embedding, image
-generation (and image editing), speech synthesis, transcription, object
-(structure) generation, video generation, reranking, and music generation —
-behind typed domain
-interfaces (`chat.Provider`, `image.Provider`, `video.Provider`, `music.Provider`, ...). A pluggable
-`runtime` resolves `provider/model` references into working providers so
-applications (such as `archied`) can consume AI backends without hardcoding any
-implementation.
+**ai-sdk** is a provider-agnostic Go SDK. Each AI domain (chat, embed, image,
+speech, transcribe, object, video, rerank, music, decide) is a typed `Provider`
+interface, concrete backends live in `provider/*`, and `runtime` resolves a
+`provider/model` reference into a working provider. Its main consumer is
+archie-core; design APIs for how archie-core calls them.
+
+## Authority
+
+When sources disagree, the higher one wins:
+
+1. The maintainer's instruction in this session.
+2. This file.
+3. The code as it is in the tree.
+4. Beads issues (`bd show <id>`): the plan for a piece of work.
+5. Everything else (memories, comments, old docs) is a hint. Verify it against
+   the code before acting on it.
+
+## Working with the maintainer
+
+- **A clear direction is the go-ahead.** Do it in the same turn. Do not restate
+  the plan, offer options, or ask "shall I proceed?". Stop only for destructive
+  or outward-facing actions (deleting data, pushing, tagging a release).
+- **Post outside the repo only when told.**
+- **Report, don't narrate.** Final replies say what changed, what was verified,
+  and anything blocked, in a few lines. Leave out what the maintainer can see
+  or infer: a clean tree, a passing gate (commits imply it), steps the task
+  never asked for.
+
+## How to decide
+
+- **Broken beats new.** A bug that blocks work gets fixed now, with the smallest
+  change that unblocks it.
+- **Cheapest option first.** Before building, name the smallest change that
+  solves the problem. If your plan adds a new abstraction, package or option,
+  or grows past about 100 lines, stop and check you're taking the path of least
+  resistance.
+- **Delete before adding.** Unused code, dead paths and fallbacks nobody takes
+  get removed. Solo project: breaking changes need no compatibility shims; mark
+  them `feat!`/`fix!` so archie-core's bump is deliberate.
+- **Finish before starting.** Complete a half-built domain or provider end to
+  end before starting another.
+- **Use the provider's real API.** Implement the wire format the provider
+  documents. Read the provider's current docs or official SDK types before
+  writing request or response structs; never guess field names.
+- **Ask only for real decisions.** API shape trade-offs the maintainer owns
+  are questions. Everything with a conventional answer is not: decide, do it,
+  say what you chose.
+
+## Architecture
+
+Onion model; dependencies point inward only.
+
+| Layer | Packages | May import |
+| --- | --- | --- |
+| Domain | `chat`, `embed`, `image`, `speech`, `transcribe`, `object`, `video`, `rerank`, `music`, `decide` | stdlib only |
+| Infrastructure | `error`, `util`, `schema`, `logger`, `telemetry`, `prompt`, `catalog`, `upload`, `registry` | stdlib, plus domain types for `upload` and `registry` |
+| Providers | `provider/*` | domain packages, infrastructure |
+| Middleware | `middleware` | domain, `telemetry`, `logger`, `error` |
+| Services | `core` | domain |
+| Agent | `agent` | `core`, domain |
+| Runtime | `runtime` | domain, providers, `core`, `catalog` |
+| UI | `ui`, `uimessage` | `core`, domain, `registry`, `runtime` |
+
+- A provider package never imports another provider package, `core`,
+  `middleware`, `registry` or `ui`. Shared wire helpers go in `internal/`.
+- Nothing imports `runtime` except UI and applications.
+- A domain package has `doc.go`, `types.go`, `provider.go`, `client.go` (a thin
+  nil-guarded facade over its own `Provider`), `errors.go`, and
+  `provider_options.go` when it has options. Copy `rerank/` for a new one.
+- An optional capability is its own interface (`image.Editor`,
+  `speech.Streamer`), never a method added to `Provider`. Callers type-assert;
+  the client facade returns the domain's not-supported error.
+- Every struct has a `New` constructor taking its dependencies as interfaces.
+  No package-level mutable state, no `init()` wiring.
+
+## Runtime
+
+- A `ProviderClass` turns a `ProviderConfig` into a `ProviderSet` with one
+  optional field per domain. A class must advertise a capability in `caps` and
+  return a provider that implements it; otherwise the field stays nil.
+- Each domain has `rt.<Domain>(ctx, ref, req)` and `rt.<Domain>Provider(ctx,
+  ref)`. A new domain adds both, its `Capability` constant and its
+  `ProviderSet` field.
+- Resolution is metadata-gated where the catalog or server publishes
+  modalities: a model whose metadata excludes the capability is refused with
+  `ErrCapabilityNotSupported` before a request is sent.
+- Self-hosted OpenAI-compatible servers (llama.cpp, llama-swap, vLLM, Kokoro)
+  resolve through the `openai-compatible` class with a `BaseURL` and
+  `auth.type: none`.
+- MiniMax is the worked example of a non-catalog provider wired as a custom
+  class with per-model config.
+
+## Code
+
+- Idiomatic Go. Small functions, explicit errors, wrap with `%w`, return the
+  domain's sentinel errors so callers use `errors.Is`.
+- Fix invalid state where it is produced, not with checks where it is consumed.
+- If a fix fails twice, throw the block away and rewrite it simply.
+- Comments say why, briefly. No history or issue narration in code.
+- Generated files (`*_templ.go`, `go generate` output) are regenerated, never
+  hand-edited.
 
-The architecture sections below are authoritative for settled design. Read them
-before making non-trivial changes. `cmd/` is the composition root — it wires
-domains to concrete providers and starts the server.
+## Tests
 
-## Scope Discipline
+The default for a change is no new test. Write one only when:
 
-The architecture + package reference sections are the settled design.
+- something actually broke: write the test that reproduces it, see it fail on
+  the assertion, then fix; or
+- the change alters a wire contract: a provider's request encoding or response
+  decoding, error mapping, or runtime capability resolution and gating.
 
-- **Settled design exists** → Implement it immediately with a diff. Do not
-  produce design prose. If a small detail is missing, ask the maintainer
-  directly.
-- **No settled design exists** → Write a decisive, 1-page design doc before
-  coding, or open a decision in beads.
-- **Strictly Prohibited:** Ownership ledgers, field-level inventories,
-  current-state traces, parity matrices for their own sake, and
-  planning/refactor tracking issues that duplicate beads.
-- **Solo Project Context:** Prefer the smallest workable change over extensive
-  defensive scaffolding.
+Provider tests use `httptest` fakes with the provider's documented payloads.
+No test calls a live API or needs a key; prove live behaviour with a throwaway
+program in `/tmp` and report its output. A test must catch a real regression,
+survive refactoring, run fast and be cheap to keep. Never test wiring,
+constants, defaults, struct shapes or fakes. One table-driven test per
+behaviour; extend the table instead of adding a second test.
 
-## Architecture (Onion Model) — CORE | STRICT
-
-This project follows the **onion model** (also known as hexagonal / ports &
-adapters). Each layer is responsible for a specific concern and **MUST NOT**
-know about any layer above it. Dependency direction: **inward only** — outer
-layers depend on inner layers, never the reverse.
-
-```tree
-┌──────────────────────────────────────────────────┐
-│  UI Layer        ui/                         │  Templ + Datastar components & handlers
-│  ─────────────────────────────────────────────── │  Knows: services, domain interfaces
-│                  uimessage/                   │  UI message protocol (SSE, chunks)
-│                  uimessage/sse/               │  SSE writer, stream processor
-├──────────────────────────────────────────────────┤
-│  Runtime         runtime/                     │  Provider-agnostic model resolution:
-│  ─────────────────────────────────────────────── │    models.dev catalog, pluggable
-│                                                   │    ProviderClass registry, Chat/Embed
-│                                                   │    entry points.
-│                                                   │  Knows: catalog, classes, core, domains
-├──────────────────────────────────────────────────┤
-│  Agent           agent/                       │  Tool-loop agent over StreamText
-│  ─────────────────────────────────────────────── │  Knows: core, domain interfaces
-├──────────────────────────────────────────────────┤
-│  Services        core/                       │  Orchestration: GenerateText, StreamText,
-│  ─────────────────────────────────────────────── │    GenerateObject, GenerateImage,
-│                  chat/client.go               │    GenerateSpeech
-│                  embed/client.go              │  Knows: domain interfaces (Provider)
-│                  image/client.go              │  Thin facades over providers
-│                  speech/client.go             │
-│                  transcribe/client.go         │
-│                  object/client.go             │
-│                  video/client.go              │
-│                  rerank/client.go             │
-├──────────────────────────────────────────────────┤
-│  Middleware      middleware/                  │  Wraps domain interfaces
-│  ─────────────────────────────────────────────── │  Knows: domain, telemetry interfaces
-├──────────────────────────────────────────────────┤
-│  Infrastructure  registry/                    │  Provider registry
-│  ─────────────────────────────────────────────── │  Knows: domain interfaces
-│                  schema/                      │  JSON Schema builder (standalone)
-│                  util/                        │  Prompt helpers, tokenizer (stdlib only)
-│                  upload/                      │  Multipart form parsing
-│                  error/                       │  Sentinel errors (stdlib only)
-│                  logger/                      │  Structured logging abstraction
-│                  telemetry/                   │  OTel-compatible tracing interfaces
-│                  prompt/                      │  Prompt manager (standalone)
-├──────────────────────────────────────────────────┤
-│  Domain          chat/                        │  Chat types + Provider interface
-│  Interfaces      embed/                       │  Embedding types + Provider
-│  ─────────────── image/                       │  Image gen types + Provider (+ Editor)
-│  (INNERMOST)     speech/                      │  Speech synthesis types + Provider
-│                  transcribe/                   │  Transcription types + Provider
-│                  object/                      │  Object gen types + Provider
-│                  video/                       │  Video gen types + Provider
-│                  rerank/                      │  Reranking types + Provider
-│                                                  │  Knows: NOTHING (stdlib only)
-├──────────────────────────────────────────────────┤
-│  Providers       provider/anthropic/          │  Implements domain interfaces
-│  ─────────────── provider/azure/              │  Knows: domain interfaces + HTTP APIs
-│                  provider/cohere/              │
-│                  provider/deepseek/            │
-│                  provider/gemini/              │
-│                  provider/groq/                │
-│                  provider/mistral/             │
-│                  provider/ollama/              │
-│                  provider/openai/              │
-│                  provider/openaiobject/        │
-│                  provider/perplexity/          │
-│                  provider/togetherai/          │
-│                  provider/xai/                 │
-└──────────────────────────────────────────────────┘
-```
-
-### Dependency Rules (NON-NEGOTIABLE)
-
-1. **Domain packages (`chat`, `embed`, etc.)** MUST NOT import any other
-   package. Only stdlib imports are allowed.
-   - The required `client.go` in each domain package is a thin in-package facade
-     over that package's own `Provider` interface and types. It remains
-     domain-layer code and does not import `core` or any other package.
-2. **Provider packages (`provider/*`)** MAY import domain packages
-   (`chat`, `embed`) to implement their interfaces. They MUST NOT import
-   `core`, `ui`, `registry`, or `middleware`. A provider package MUST NOT import
-   another provider package.
-3. **Core/Services (`core/`)** MAY import domain packages and their
-   interfaces. It MUST NOT import provider implementations or UI packages. It
-   works strictly against interfaces.
-   - The `client.go` files shown in the Services row (for example,
-     `chat/client.go`) live in their respective domain packages. `core/`
-     does not own these files; it imports domain packages.
-4. **Runtime (`runtime/`)** MAY import domain packages, provider
-   implementations, and core. It is the provider-resolution and model-discovery
-   layer. It MUST NOT be imported by providers, domain packages, or core.
-5. **Middleware (`middleware/`)** MAY import domain packages and
-   infrastructure packages (`telemetry/`, `logger/`, `error/`). It
-   MUST NOT import `core/`, provider implementations, `ui/`, or
-   `runtime/`.
-6. **Agent (`agent/`)** MAY import `core/` and domain packages. It MUST
-   NOT import `ui/`, `runtime/`, or provider implementations.
-7. **Infrastructure (`registry/`, `schema/`, `util/`, `upload/`,
-   `error/`, `logger/`, `telemetry/`, `prompt/`)**:
-   - `registry` — MAY import all domain interface packages. MUST NOT import
-     providers, core, or UI.
-   - `schema` — standalone, no package imports.
-   - `util` — standalone, stdlib only.
-   - `upload` — MAY import stdlib and domain types where needed for
-     transport-level file handling. MUST NOT import providers, core, runtime, or
-     UI.
-   - `error` — standalone sentinel errors; stdlib only.
-   - `logger` — standalone logging abstraction over stdlib logging
-     primitives/interfaces. MUST NOT import providers, core, runtime, or UI.
-   - `telemetry` — standalone tracing interfaces and no-op implementations. MUST
-     NOT import providers, core, runtime, or UI.
-   - `prompt` — standalone prompt management utilities; MUST NOT import
-     providers, core, runtime, or UI.
-8. **UI (`ui/`)** is the outermost layer. It MAY import core, domain
-   interfaces, registry, and runtime. It MUST NOT import provider
-   implementations directly. It contains:
-   - State management structs (Go equivalents of React hooks like `useChat`)
-   - Templ components (`.templ` files)
-   - HTTP handlers
-   - All UI depends on Datastar for streaming reactivity.
-9. **`cmd/`** is the composition root. It wires everything together via
-   dependency injection. It MAY import all packages.
-
-### Package Conventions
-
-Every domain package MUST contain:
-
-- `doc.go` — Package-level documentation
-- `types.go` — Request/Response types
-- `provider.go` — Provider interface
-- `client.go` — Thin Client facade with nil-guard
-- `errors.go` — Sentinel errors
-
-### Interface Ownership
-
-Following
-[Go's interface conventions](https://go.dev/wiki/CodeReviewComments#interfaces):
-
-- **Consumers define interfaces they need**, not producers.
-- Domain packages define the `Provider` interface because they are consumed by
-  higher layers.
-- HTTP handlers define service interfaces, not the other way around.
-- **Optional capabilities** are separate interfaces (e.g. `image.Editor`, an
-  optional image-edit capability) rather than methods bolted onto the base
-  `Provider`. Callers type-assert before use; keep the base `Provider` minimal so
-  every implementer builds without adding every optional method.
-
-### Dependency Injection
-
-- Every struct has a `New` constructor accepting its dependencies as interfaces.
-- No global state. No package-level singletons. No `init()` for wiring.
-- Changing a `New` signature produces compile-time errors showing all affected
-  call sites.
-
-## Runtime Capabilities
-
-The `runtime` package is the provider-resolution layer. `ProviderSet` carries
-one optional field per domain (Chat, Embed, Image, Video, Object, Rerank,
-Speech, Transcribe, Music); `Capability` constants name each; `Supports`/`Has` report
-what a class/provider can satisfy. Built-in classes are registered by
-`runtime.RegisterBuiltinClasses()`.
-
-`Runtime` exposes a high-level entry point per domain, mirroring the
-`ChatProvider`/`Chat` pattern:
-
-```go
-rt.Image(ctx, "xai/grok-imagine-image", image.GenerateImageRequest{...})      // image.GenerateImageResponse
-rt.Video(ctx, "xai/grok-imagine-video", video.GenerateVideoRequest{...})      // video.GenerateVideoResponse
-rt.Object(ctx, "openaiobject/gpt-4o-mini", object.Request{...})       // object.ObjectResult
-rt.Rerank(ctx, "cohere/rerank-english-v3.0", rerank.Request{...})             // rerank.Response
-rt.Speech(ctx, "openai/tts-1", speech.GenerateSpeechRequest{...})     // speech.GenerateSpeechResponse
-rt.Transcribe(ctx, "openai/whisper-1", transcribe.TranscribeRequest{...})
-rt.Music(ctx, "minimax/music-3.0", music.GenerateMusicRequest{...})       // music.GenerateMusicResponse
-```
-
-Each domain also exposes a `*Provider` resolver
-(`rt.ImageProvider(ctx, ref)` returns `(image.Provider, modelID, error)`).
-
-**Extensibility:**
-
-```go
-runtime.RegisterClass(myCustomClass{})
-```
-
-A custom `ProviderClass` does arbitrary setup (discovery, auth exchange, header
-injection) before returning a `ProviderSet`. This is the escape hatch for
-providers not covered by the built-in classes.
-
-## Provider Ecosystem
-
-Capabilities as resolvable through the runtime (the `Class` column is the
-`ProviderConfig.Class` value):
-
-| Provider      | Package                      | Class          | Chat | Embed | Image | Video | Object | Rerank | Speech | Transcribe | Music |
-| ------------- | ---------------------------- | -------------- | ---- | ----- | ----- | ----- | ------ | ------ | ------ | ---------- | ----- |
-| OpenAI        | `provider/openai`            | `openai`       | ✅   | —     | —     | —     | —      | —      | ✅     | ✅         | —     |
-| OpenAIObject  | `provider/openaiobject`      | `openaiobject` | —    | —     | —     | —     | ✅     | —      | —      | —          | —     |
-| Anthropic     | `provider/anthropic`         | `anthropic`    | ✅   | —     | —     | —     | —      | —      | —      | —          | —     |
-| Azure         | `provider/azure`             | `azure`        | ✅   | ✅    | ✅    | —     | —      | —      | —      | —          | —     |
-| Cohere        | `provider/cohere`            | `cohere`       | ✅   | ✅    | —     | —     | —      | ✅     | —      | —          | —     |
-| DeepSeek      | `provider/deepseek`          | `deepseek`     | ✅   | —     | —     | —     | —      | —      | —      | —          | —     |
-| Gemini        | `provider/gemini`            | `gemini`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
-| Groq          | `provider/groq`              | `groq`         | ✅   | —     | —     | —     | —      | —      | ✅     | ✅          | —     |
-| MiniMax       | `provider/minimax`           | `minimax`      | ✅   | —     | ✅    | ✅    | —      | —      | ✅      | —          | ✅     |
-| Mistral       | `provider/mistral`           | `mistral`      | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
-| Ollama        | `provider/ollama`            | `ollama`       | ✅   | ✅    | —     | —     | —      | —      | —      | —          | —     |
-| Perplexity    | `provider/perplexity`        | `perplexity`   | ✅   | —     | —     | —     | —      | —      | —      | —          | —     |
-| TogetherAI    | `provider/togetherai`        | `togetherai`   | ✅   | —     | ✅    | —     | —      | ✅     | —      | —          | —     |
-| xAI           | `provider/xai`               | `xai`          | ✅   | —     | ✅    | ✅    | —      | —      | —      | —          | —     |
-
-Notes:
-- TogetherAI chat routes through the OpenAI-compatible path; its native provider
-  implements image + rerank.
-- Azure chat/embed/image come from one `provider/azure` provider.
-- xAI implements chat + image + video from a single `*Provider`.
-- `openaiobject` is a standalone object-generation backend (OpenAI Chat
-  Completions with `response_format.json_schema`).
-- MiniMax is a reference provider not published in the models.dev catalog, so
-  it resolves only when the operator supplies a provider config (class
-  `minimax`) with model IDs (e.g. `MiniMax-H3`, `image-01`, `speech-2.8-hd`, `music-3.0`)
-  and its API key. It is the worked example of the custom-class/config pattern:
-  a non-catalog provider is wired as a `ProviderClass` and resolved through the
-  runtime with per-model config, exactly as an operator would for their own
-  provider.
-- MiniMax chat routes through the OpenAI-compatible path (its text API is
-  OpenAI-compatible); its native provider implements image + speech + music +
-  video across four domain interfaces.
-- Groq speech synthesis uses the same OpenAI-compatible `/audio/speech`
-  endpoint shape as OpenAI, so both providers share the generic helper in
-  `internal/tts` (mirroring `internal/whisper` for transcription) and each
-  stays a thin wrapper. Groq voices are model-scoped, so a voice-less request is
-  rejected rather than defaulted; the current Orpheus models are wav-only, so
-  that is the wrapper's default and sole client-side format, and they need a
-  one-time org-level terms acceptance in the Groq console.
-- Self-hosted OpenAI-compatible TTS servers (Kokoro-FastAPI, speaches,
-  openedai-speech, LocalAI) resolve through the generic `openai-compatible`
-  class with the server `BaseURL` and `auth.type: none` for keyless servers.
-  The generic path has no built-in voice: set `Voice` per request or configure
-  `speech_default_voice` / `speech_default_format` in provider `options`
-  (per-model `extra` wins). Orpheus uses in-band `[direction]` tags in the
-  input text; OpenAI's current TTS model is `gpt-4o-mini-tts` (it recommends
-  `marin`/`cedar` voices and supports `instructions`, which `tts-1`/`tts-1-hd`
-  do not).
-- Speech resolution is metadata-gated: `rt.Speech` refuses a model whose
-  published modalities (or explicit `ModelConfig.Capabilities`) exclude speech
-  output with `ErrCapabilityNotSupported`, before any request is sent. Models
-  without published metadata are attempted best-effort, so the generic class
-  can still surface a provider-side error; declaring `capabilities: ["speech"]`
-  makes the intent explicit.
-- Speech input limits are enforced client-side where known (OpenAI 4096
-  characters, Groq Orpheus 200; the generic class is uncapped because servers
-  like Kokoro make the limit deployment-configurable). Override with
-  `max_input_chars` in provider `options` or model `extra`; oversized text
-  fails with `ErrInvalidRequest` before any request.
-- Voice discovery is an optional capability: `speech.VoiceLister` (and the
-  `speech.Client.ListVoices` facade) enumerates voices through the provider's
-  `/audio/voices` endpoint where one exists, normalising the string and object
-  response shapes; providers without an endpoint return
-  `ErrVoiceListingNotSupported`.
-- Streaming synthesis is an optional capability (`speech.Streamer`, surfaced
-  as `speech.Client.StreamSpeech` and `Runtime.SpeechStream`): chunks carry
-  audio bytes, then a Done chunk with optional usage, then `io.EOF`.
-  Establishment failures use the same sentinels as the buffered path; failures
-  after the first chunk surface from `Next`. Middleware mirrors the optional
-  pattern (`ChainSpeechStream`, telemetry span ended on Close, circuit breaker
-  guarding establishment only, no retry).
-
-**Extended Thinking Support:** Anthropic provider supports Claude extended
-thinking (`reasoning_effort`/`thinking_budget_tokens`) via
-`chat.Request.ProviderOptions`.
-
-This table reflects capabilities resolvable through the runtime. Additional
-provider capabilities may be added as packages evolve against domain interface
-contracts.
-
-## UI Layer — Templ + Datastar
-
-The UI layer maps the new AI SDK UI concepts to server-side Go using
-[Templ](https://templ.guide)
-for HTML templating and [Datastar](https://data-star.dev) for real-time
-streaming reactivity via SSE.
-
-### Key Concepts
-
-| Concept            | Go Equivalent                          |
-| ------------------- | -------------------------------------- |
-| `useChat()` hook    | `chat.Chat` struct with methods        |
-| `UIMessage`         | `chat.UIMessage` struct                |
-| `ChatTransport`     | `chat.Transport` interface             |
-| `sendMessage()`     | `Chat.Send(ctx, msg)` method           |
-| `status` (reactive) | Datastar signals on the DOM            |
-| `onToolCall`        | Callback registered on `ChatOptions`   |
-| `addToolOutput()`   | `Chat.AddToolOutput(ctx, opts)` method |
-| `onFinish`          | Callback registered on `ChatOptions`   |
-
-### Component Strategy
-
-Templ components are written as `.templ` files
-using Datastar attributes for reactivity:
-
-- `data-signals` for local state
-- `data-on-*` for event handling
-- SSE streaming for real-time text deltas from `streamText`
-
-## File Organization
-
-```tree
-ai-sdk-examples/            # Example programs demonstrating SDK usage (separate module)
-  openai-chat/              #   Simple chat CLI with OpenAI
-  anthropic-agent/          #   Agent with tool-use and streaming
-  object-generation/        #   Structured object generation
-  speech-to-text/           #   Audio transcription example
-  image-generation/         #   Image generation example
-  video-generation/         #   Video generation example
-ai-sdk-local/               # Experimental local-engine providers (separate module, CGO)
-cmd/ai-sdk/                 # Entrypoint — wires dependencies, starts server
-chat/                     # Domain: chat types & interface
-embed/                    # Domain: embedding types & interface
-image/                    # Domain: image generation types & interface
-speech/                   # Domain: speech synthesis types & interface
-transcribe/               # Domain: transcription types & interface
-object/                   # Domain: structured object generation types & interface
-video/                    # Domain: video generation types & interface
-rerank/                   # Domain: reranking types & interface
-core/                     # Services: GenerateText, StreamText orchestration
-agent/                    # Agent: tool-loop agent over StreamText
-runtime/                  # Provider resolution, provider classes
-catalog/                  # models.dev catalog: types, loader, npm class mapping (stdlib only)
-middleware/               # Middleware: wraps domain interfaces (logging, telemetry)
-registry/                 # Infrastructure: provider registry
-schema/                   # Infrastructure: JSON Schema builder
-util/                     # Infrastructure: prompt helpers, tokeniser
-upload/                   # Infrastructure: multipart form parsing
-error/                    # Infrastructure: sentinel errors
-logger/                   # Infrastructure: structured logging abstraction
-telemetry/                # Infrastructure: OTel-compatible tracing interfaces
-prompt/                   # Infrastructure: prompt manager
-uimessage/                # UI: message protocol (chunks, SSE encoding)
-  sse/                    #   SSE writer and stream processing
-provider/                 # Providers: concrete implementations
-  anthropic/
-  azure/
-  cohere/
-  deepseek/
-  gemini/
-  groq/
-  mistral/
-  ollama/
-  openai/
-  openaiobject/
-  perplexity/
-  togetherai/
-  xai/
-ui/                       # UI: Templ components & HTTP handlers
-  chat/                   #   Chat state management
-  components/             #   Templ component files (.templ)
-  handlers/               #   HTTP handler implementations
-```
-
-## Package Reference
-
-### `runtime/` — AI Provider Runtime
-
-The runtime layer resolves model references like `openai/gpt-5.4` into working
-provider instances. It is designed for applications (such as `archied`) that
-want to consume AI providers without hardcoding every implementation.
-
-```tree
-runtime/
-  doc.go            Package-level documentation
-  provider_class.go ProviderClass interface + class registry
-  catalog.go        aliases for the catalog package
-  config.go         Declarative runtime configuration
-  runtime.go        Runtime: Chat/ChatStream + per-domain entrypoints
-  builtin.go        Built-in classes (openai-compatible, openai, anthropic, ...)
-```
-
-**Key abstractions:**
-
-- `ProviderClass` — a factory that turns a `ProviderConfig` into a `ProviderSet`
-  of domain providers. `ProviderSet` has one optional field per capability;
-  `Has/Capability` reports what a set satisfies.
-- `Catalog` — loads `https://models.dev/api.json`, merges overrides, and exposes
-  provider/model metadata.
-- `Runtime` — public entry point: `Chat`, `ChatStream`, plus `*Provider`
-  resolvers and convenience methods for every domain.
-
-**Trap:** A class must advertise a capability in its `caps` AND actually return a
-provider that satisfies it. Advertising a capability whose builder returns a
-provider that does not implement the interface leaves the `ProviderSet` field nil
-(no half-wired set). When building a single provider that implements several
-interfaces, prefer the combined builder + type-assertion so one instance is
-shared.
-
-### `image/` — Image Generation + Editing
-
-```tree
-image/
-  client.go           Thin Client facade (GenerateImage + EditImage) with nil-guard
-  doc.go              Package-level documentation
-  errors.go           Sentinel errors (ErrNoProvider, ErrEditNotSupported, ...)
-  provider.go         Provider interface (GenerateImage) + optional Editor interface
-  provider_options.go Provider-specific options helpers
-  types.go            GenerateImageRequest/Response, EditImageRequest/Response
-```
-
-**Key interfaces:**
-
-- `Provider` — `GenerateImage(ctx, req)` (required)
-- `Editor` — `EditImage(ctx, req)` (optional capability; type-assert to use, or
-  call `image.Client.EditImage` which returns `ErrEditNotSupported` when the
-  provider can't edit).
-
-**Trap:** Keep image editing on the optional `Editor` interface, not on
-`Provider`. Widening `Provider` forces every provider (azure, togetherai, xai)
-and every middleware wrapper to implement the method, breaking the build for
-non-editing backends.
-
-### `video/` — Video Generation
-
-```tree
-video/
-  client.go           Thin Client facade with nil-guard
-  doc.go              Package-level documentation
-  errors.go           Sentinel errors
-  provider.go         Provider interface (GenerateVideo)
-  types.go            GenerateVideoRequest, GenerateVideoResponse, VideoMode
-```
-
-**Key types:**
-
-- `GenerateVideoRequest` — Model, Prompt, Duration, Resolution, FrameRate,
-  plus typed `Mode` (`VideoModeTextToVideo`/`EditVideo`/`ExtendVideo`/
-  `ReferenceToVideo`), `SourceVideo`, `ReferenceImages`, `Ratio`.
-- `VideoResult` — Data, URL, MediaType. Async providers (e.g. xAI) poll
-  internally inside `GenerateVideo`, so the call blocks until the video is ready
-  or fails.
-
-**Trap:** Preserve back-compat: providers should read typed mode/source/reference
-fields first and fall back to legacy `ProviderOptions["xai"]` keys only when the
-typed fields are unset. Do not add a competing `Duration` int-seconds field
-alongside the existing string field — it creates ambiguity.
-
-### `object/` — Object Generation Domain
-
-```tree
-object/
-  client.go           Thin Client facade with nil-guard
-  doc.go              Package-level documentation
-  errors.go           Sentinel errors
-  provider.go         Provider interface (GenerateObject + StreamObject)
-  provider_options.go Provider-specific options helpers
-  stream.go           ObjectStream iterator (Next/Close), ObjectChunk
-  types.go            Request, Response, Object, ObjectResult
-```
-
-**Key types:**
-
-- `Provider` interface — `GenerateObject(ctx, req)` + `StreamObject(ctx, req)`
-- `Request` — Model, Prompt, MaxTokens, Schema, ProviderOptions
-- `ObjectResult` — type alias for `any`; providers return `object.Object` (or a
-  richer shape). `core.GenerateTypedObject[T]`/`StreamTypedObject[T]` derive the
-  schema from `T` and strictly decode.
-
-**Usage via core:**
-
-```go
-result, err := core.GenerateObject(ctx, provider, objRequest)
-value, err := core.GenerateTypedObject[MyType](ctx, provider, objRequest)
-```
-
-**Trap:** A provider package must not import `core` (output would be an onion
-violation). Validate `GenerateTypedObject` integration in a throwaway test
-package and delete it, keeping the provider→core boundary clean.
-
-### `agent/` — Agent Orchestration
-
-```tree
-agent/
-  agent.go            Agent struct, StreamEvent types, translate()
-  agent_impl.go       RunAgent function (convenience API)
-  doc.go              Package documentation with usage examples
-```
-
-**Key concepts:**
-
-- `Agent` struct — Provider, Model, System, Tools, MaxSteps, Temperature,
-  MaxTokens
-- `Agent.Run(ctx, prompt)` — returns `<-chan StreamEvent`
-- `StreamEvent` — Type-based event dispatch (TextDelta, ToolCall, ToolResult,
-  Finish, Error, Abort)
-
-The agent does NOT execute tools itself — `core.StreamText` handles the full tool
-loop internally. The agent concentrates on event translation and lifecycle
-management.
-
-### `upload/` — File Upload Utilities
-
-```go
-ParseMultipartForm(r *http.Request, maxMemory int64) ([]File, error)
-DetectMediaType(data []byte) string  // PNG, JPEG, GIF, PDF detection
-ToBase64(f File) string
-```
-
-### `util/` — Prompt Helpers and Token Counting
-
-```go
-util.SystemPrompt("You are a helpful assistant.")
-util.UserPrompt("What is the weather?")
-util.AssistantPrompt("Let me check that for you.")
-util.ToolResultMessage(callID, result)
-util.FormatMessages(messages) // human-readable formatting
-```
-
-### `error/` — Sentinel Errors
-
-```go
-ErrInvalidInput           = errors.New("invalid input")
-ErrTimeout                = errors.New("timeout")
-ErrCancelled              = errors.New("cancelled")
-ErrNotImplemented         = errors.New("not implemented")
-ErrProviderNotAvailable   = errors.New("provider not available")
-ErrModelNotFound          = errors.New("model not found")
-ErrQuotaExceeded          = errors.New("quota exceeded")
-```
-
-### `logger/` — Structured Logging
-
-- `Logger` interface — `Info(msg, attrs...), Error(msg, attrs...), Debug(msg, attrs...)`
-- `NewSlogLogger(l *slog.Logger) Logger` — adapts stdlib slog
-- `NoopLogger` — no-op implementation for tests
-
-### `telemetry/` — OpenTelemetry-Compatible Tracing
-
-```go
-type Span interface {
-    End()
-    SetAttribute(key, value string)
-    RecordError(err error)
-}
-type Tracer interface {
-    Start(ctx context.Context, name string) (context.Context, Span)
-}
-```
-
-`NoopSpan` / `NoopTracer` are zero-cost no-ops; `DefaultTracer` is the package
-fallback.
-
-### `middleware/` — Provider Middleware
-
-```go
-type ChatMiddleware func(next chat.Provider) chat.Provider
-func Chain(middlewares ...ChatMiddleware) ChatMiddleware // composes left-to-right
-```
-
-- `TelemetryMiddleware` — wraps provider with OTel spans for Chat/ChatStream
-- `ChatRequestHook` / `ChatResponseHook` — interception points
-- Generation domains have per-domain wrappers (`retry_image`,
-  `telemetry_video`, `circuitbreaker_object`, `rerank`, etc.); image editing has
-  `*_image_edit` wrappers.
-
-### `uimessage/sse/` — SSE Streaming
-
-- `Writer` — streams `uimessage.Chunk` values as SSE `data:` events
-- `NewWriter(rw http.ResponseWriter)` — applies headers, flushes automatically
-- `Headers` — canonical AI SDK UI stream headers
-  (`X-Vercel-Ai-Ui-Message-Stream: v1`)
-- `Pipe(ctx, src, w)` — drains chunk channel into SSE writer
-- `FromTextStream` — adapts core text stream into UI message chunks
-
-## Build & Test
-
-Commands are defined in `Taskfile.yaml` (Go 1.26.2, `gofumpt`, `goimports`,
-`golangci-lint`, `staticcheck`, `go vet`, `deadcode`).
+## Build and gate
 
 ```bash
-task check        # gofumpt -w . + go vet + staticcheck + golangci-lint + deadcode + go test ./...
-                  #   ⚠ THE DEFINITIVE GATE — run this before calling a change done
-task test         # go test ./...
-task test:race    # go test -race ./...
-task test:cover   # go test -coverprofile=coverage.out ./...
-task fmt          # gofumpt -w . && goimports -w .
-task vet          # go vet ./...
-task lint         # golangci-lint run ./...
-task staticcheck  # staticcheck ./...
-task deadcode     # golangci-lint run --tests=false --enable-only=unused,staticcheck ./...
-task tidy         # go mod tidy (root + ai-sdk-examples)
-task clean        # remove coverage.out
+task check   # gofumpt, go vet, golangci-lint (includes staticcheck), deadcode, go test ./...
+task fmt     # gofumpt + goimports
 ```
 
-Single package/test runs:
+Go version is in `go.mod`. Adopt `task fmt` output as-is.
+
+- `task check` gates the commit: `task check && git commit ...`. Never claim a
+  gate result you did not just produce on that exact tree.
+- Commit finished work without asking. Stage only your own paths and commit in
+  the same command. Conventional Commits scoped by package (`feat(decide)`,
+  `fix(openai)`). Push only when told.
+- Never commit binaries, `coverage.out`, scratch files or `.beads/`. Scratch
+  goes in `/tmp`.
+- `ai-sdk-examples/` and `ai-sdk-local/` are separate modules; `task tidy`
+  covers both.
+
+## Credentials
+
+Never inspect an API key: not its value, not a presence check. Run the command
+and deal with credentials only if it fails for want of one.
+
+## Issues (beads)
+
+Work is tracked in `bd`, never in Markdown TODO files.
 
 ```bash
-go test ./runtime/... -run TestProviderSetHas -v -count=1
+bd ready | bd show <id> | bd update <id> --claim | bd close <id>
 ```
 
-## Repository Hygiene
+- An issue is the plan: what is wrong or wanted, and how you know it is done.
+- Bead state syncs through Dolt (`bd dolt push/pull`), only when told.
+- File follow-up work you find as a bead. Do not fix it in passing.
 
-- **Generated assets are LAW:** Never hand-edit, revert, or fight generated
-  files — `.templ` output (`*_templ.go`), schema outputs, and any `go generate`
-  artifact. Re-run the generator and commit the result verbatim.
-- **Ignored paths:** Never commit build artifacts, binaries, `coverage.out`,
-  `.serena/`, `.beads/`, or IDE/editor files.
-- **Scratch files:** Place scratch files strictly in `/tmp` or the harness
-  scratch space. Never put scratch files in the working tree.
-- **Conventional Commits:** Scope by package — `feat(runtime): ...`,
-  `feat(image): ...`, `fix(xai): ...`, `chore(docs): ...`. One logical change per
-  commit; discrete features get separate commits.
-- **Commit policy:** Commit finished, gate-clean changes (`task check` passing)
-  **without asking**. This repo works in branch/worktree; commit
-  each validated slice so nothing is left uncommitted. Push only when instructed.
+## Changing this file
 
-## Development Protocol
-
-1. **Red (Failing Test):** Write failing test cases first using table-driven tests
-   against target behaviour. Verify the failure originates from test assertions,
-   not compilation errors.
-2. **Green (Implementation):** Implement minimal code to satisfy the failing
-   tests.
-3. **Quality Gate:** Run `task check`.
-4. **Formatting is LAW:** Adopt all formatting and simplification changes from
-   `task fmt` (`gofumpt` + `goimports`) verbatim. Never revert or fight canonical
-   linter/formatter diffs.
-5. **Linter Guard:** When fixing lint findings, preserve the existing semantics
-   (e.g. keep boolean predicates alongside `errors.As`; don't duplicate slice
-   elements when extracting loops). Do not break text-generation paths while
-   changing a provider's error handling.
-
-## Issue Tracking (Beads)
-
-All task management is tracked via **bd (beads)**. Do not write local Markdown
-TODO lists or use non-Beads trackers.
-
-```bash
-bd ready               # List unclaimed work
-bd show <id>           # View issue details
-bd update <id> --claim # Claim an issue
-bd close <id>          # Mark issue complete
-bd remember            # Persist cross-session architectural facts
-```
-
-`bd prime` injects full workflow context. Use `bd remember` for knowledge
-retention. Issues live in a local Dolt DB; `.beads/issues.jsonl` is an export.
-
-## Session Completion Protocol
-
-1. **Log remaining work:** File new items via `bd` for identified debt or
-   follow-up tasks.
-2. **Run gate:** Verify `task check` passes completely clean.
-3. **Update tracker:** Close finished issues via `bd close <id>`.
-4. **Commit (always):**
-
-   ```bash
-   git add <scoped-files>
-   git commit -m "feat(scope): description"
-   ```
-
-   Commit each validated slice as you go — do not leave work uncommitted.
-5. **Sync & Push Policy:** Push to git remotes and run `bd dolt push` only when
-   explicitly instructed.
-6. **Handoff:** Report changed files, gate verification results, and active
-   issue states.
-
-## Examples
-
-Example programs demonstrating SDK usage live in `ai-sdk-examples/`:
-
-| Example              | Description                                       |
-| -------------------- | ------------------------------------------------- |
-| `openai-chat/`       | Interactive chat CLI using OpenAI provider        |
-| `anthropic-agent/`   | Agent with mock weather tool and streaming output |
-| `object-generation/` | Structured object generation API pattern          |
-| `speech-to-text/`    | Audio transcription API pattern                   |
-| `image-generation/`  | Image generation API pattern (TogetherAI)         |
-| `video-generation/`  | Video generation API pattern (xAI)                |
-
-Run examples from the workspace root:
-
-```bash
-# Openai chat
-OPENAI_API_KEY=sk-... go run ./ai-sdk-examples/openai-chat/
-
-# Anthropic agent with tool use
-ANTHROPIC_API_KEY=sk-ant-... go run ./ai-sdk-examples/anthropic-agent/ "What is the weather in London?"
-
-# Informational examples (no API key needed)
-go run ./ai-sdk-examples/object-generation/
-go run ./ai-sdk-examples/speech-to-text/
-go run ./ai-sdk-examples/image-generation/
-go run ./ai-sdk-examples/video-generation/
-```
-
-## References
-
-- Project structure: <https://templ.guide/project-structure/project-structure>
-- AI SDK Core: <https://ai-sdk.dev/docs/reference/ai-sdk-core>
-- AI SDK UI useChat: <https://ai-sdk.dev/docs/reference/ai-sdk-core/ui-message>
-- Datastar: <https://data-star.dev>
+A rule is added only after a real failure it would have prevented, and it must
+say which decision it changes. Remove rules that no longer change decisions.
+Keep it short enough to read in full every session.
