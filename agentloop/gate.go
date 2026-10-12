@@ -22,8 +22,8 @@ type GateCommand struct {
 }
 
 // GateConfig is the quality gate for a run: the command list that must
-// pass after mutations, and how many consecutive failing cycles are
-// tolerated before the run parks instead of flailing.
+// pass at explicit checkpoints and successful completion. Consecutive failing
+// checkpoints eventually park the run.
 type GateConfig struct {
 	Commands []GateCommand
 	// MaxConsecutiveFailures parks the run after N failing gate cycles
@@ -38,9 +38,8 @@ func (g GateConfig) maxFailures() int {
 	return 5
 }
 
-// gateState tracks the dirty/parked status of the gate across tool calls.
+// gateState tracks failed checkpoints across tool calls.
 type gateState struct {
-	dirty            bool
 	consecutiveFails int
 	parked           bool
 	lastFailure      string
@@ -49,37 +48,6 @@ type gateState struct {
 // gateOutputLimit bounds how much failing command output is fed back to
 // the model per gate cycle.
 const gateOutputLimit = 4096
-
-// gatedToolSet wraps the toolset with the quality gate:
-//
-//   - write/edit record the touched path and trigger a gate cycle; the
-//     cycle's outcome is appended to the tool result so the model sees
-//     breakage immediately.
-//   - while the gate is failing, find and grep are blocked ("fix the
-//     gate first") to stop the model wandering off; read stays available
-//     because fixing requires it, and shell stays available as the
-//     escape hatch for investigation.
-//   - MaxConsecutiveFailures failing cycles in a row set parked, which
-//     the run's stop condition observes.
-//
-// An empty command list disables all of this.
-func gatedToolSet(set core.ToolSet, g *gateState, cfg GateConfig, workdir string, log *slog.Logger) core.ToolSet {
-	if len(cfg.Commands) == 0 {
-		return set
-	}
-	out := make(core.ToolSet, len(set))
-	for name, tool := range set {
-		switch name {
-		case "write", "edit":
-			out[name] = wrapMutating(tool, g, cfg, workdir, log)
-		case "find", "grep":
-			out[name] = wrapBlockedWhileDirty(tool, g)
-		default:
-			out[name] = tool
-		}
-	}
-	return out
-}
 
 // ProtectPathsHook returns a [core.ToolHook] that denies write/edit tool
 // calls whose "path" argument matches the supplied predicate, surfacing
@@ -132,51 +100,23 @@ func changeTrackedToolSet(set core.ToolSet, state *runState) core.ToolSet {
 	return out
 }
 
-func wrapMutating(tool *core.Tool, g *gateState, cfg GateConfig, workdir string, log *slog.Logger) *core.Tool {
-	inner := tool.Execute
-	wrapped := *tool
-	wrapped.Execute = func(ctx context.Context, input string) (string, error) {
-		res, err := inner(ctx, input)
-		if err != nil {
-			return res, err
-		}
-
-		gateOut, gateErr := runGate(ctx, cfg.Commands, workdir)
-		if gateErr == nil {
-			g.dirty = false
-			g.consecutiveFails = 0
-			return res + "\n\n[gate] all gate commands passed", nil
-		}
-		g.dirty = true
-		g.consecutiveFails++
-		g.lastFailure = gateOut
-		log.Warn(
-			"gate cycle failed",
-			"consecutive", g.consecutiveFails,
-			"max", cfg.maxFailures(),
-			"failure", gateOut,
-		)
-		if g.consecutiveFails >= cfg.maxFailures() {
-			g.parked = true
-			return res + fmt.Sprintf("\n\n[gate] FAILED (%d consecutive failing cycles — parking the run):\n%s",
-				g.consecutiveFails, gateOut), nil
-		}
-		return res + fmt.Sprintf("\n\n[gate] FAILED (cycle %d of %d before the run parks) — fix this before anything else:\n%s",
-			g.consecutiveFails, cfg.maxFailures(), gateOut), nil
-	}
-	return &wrapped
-}
-
-func wrapBlockedWhileDirty(tool *core.Tool, g *gateState) *core.Tool {
-	inner := tool.Execute
-	wrapped := *tool
-	wrapped.Execute = func(ctx context.Context, input string) (string, error) {
-		if g.dirty {
-			return "blocked: the quality gate is currently failing. Fix the gate before exploring further. Last failure:\n" + g.lastFailure, nil
-		}
-		return inner(ctx, input)
-	}
-	return &wrapped
+// checkTool lets the model validate a coordinated edit before continuing.
+func checkTool(g *gateState, cfg GateConfig, workdir string, log *slog.Logger) *core.Tool {
+	return core.NewTool("check", "Run the quality gate after completing a coherent set of edits. A failed check reports what needs fixing.",
+		json.RawMessage(`{"type":"object","properties":{}}`),
+		func(ctx context.Context, _ string) (string, error) {
+			out, err := runGate(ctx, cfg.Commands, workdir)
+			if err == nil {
+				g.consecutiveFails = 0
+				g.lastFailure = ""
+				return "[gate] all gate commands passed", nil
+			}
+			g.consecutiveFails++
+			g.lastFailure = out
+			g.parked = g.consecutiveFails >= cfg.maxFailures()
+			log.Warn("gate cycle failed", "consecutive", g.consecutiveFails, "max", cfg.maxFailures(), "failure", out)
+			return fmt.Sprintf("[gate] FAILED (cycle %d of %d before the run parks):\n%s", g.consecutiveFails, cfg.maxFailures(), out), nil
+		})
 }
 
 // pathFromArgs extracts the "path" argument shared by the write and edit

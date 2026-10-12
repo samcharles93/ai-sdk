@@ -14,9 +14,11 @@ import (
 const (
 	defaultAutoCompactThresholdRatio = 0.75
 	defaultAutoCompactTargetRatio    = 0.35
-	autoCompactMinMessages           = 4
 	estimatedCharsPerToken           = 4
 )
+
+// ErrContextLimit means the preserved context cannot fit the configured window.
+var ErrContextLimit = errors.New("agentloop: context window exceeded")
 
 // CompactionConfig bounds automatic history compaction. When enabled, a run
 // whose accumulated history approaches the model's context window summarises
@@ -28,13 +30,15 @@ type CompactionConfig struct {
 	Enabled bool
 	// ContextWindow is the model's context window in tokens. It is required
 	// for the character-based estimate; zero disables compaction because no
-	// threshold can be computed.
+	// threshold can be computed. Ten percent is reserved for model output;
+	// input sizes use a character-based estimate.
 	ContextWindow int
 	// ThresholdRatio is the fraction of ContextWindow that triggers
 	// compaction. Defaults to 0.75 when unset or out of range.
 	ThresholdRatio float64
 	// TargetRatio is the fraction of ContextWindow the summary is asked to
-	// stay under. Defaults to 0.35 when unset or not below ThresholdRatio.
+	// stay under, further limited by retained context. Defaults to the smaller
+	// of 0.35 and half ThresholdRatio when unset or out of range.
 	TargetRatio float64
 	// Model, when non-empty, names the model used for the summarisation
 	// call. Empty uses the run's model.
@@ -46,7 +50,7 @@ func (c CompactionConfig) normalised() CompactionConfig {
 		c.ThresholdRatio = defaultAutoCompactThresholdRatio
 	}
 	if c.TargetRatio <= 0 || c.TargetRatio >= c.ThresholdRatio {
-		c.TargetRatio = defaultAutoCompactTargetRatio
+		c.TargetRatio = min(defaultAutoCompactTargetRatio, c.ThresholdRatio/2)
 	}
 	return c
 }
@@ -90,19 +94,27 @@ func estimateRequestTokens(messages []chat.Message, tools core.ToolSet) int {
 	return tokens
 }
 
-// splitCompactionHistory separates a message slice into the parts that
-// survive compaction verbatim and the part that is summarised.
-//
-// Unlike tau — where the system prompt is a separate field — ai-sdk encodes
-// it as a leading RoleSystem message inside the slice, so it is preserved
-// explicitly rather than summarised away. OnStep always runs after a tool
-// turn, so there is never an unanswered user turn to hold back.
-func splitCompactionHistory(messages []chat.Message) (system, history []chat.Message) {
+// splitCompactionHistory preserves the initial context and the last two
+// assistant turns with all their tool results. Boundaries never split a batch.
+func splitCompactionHistory(messages []chat.Message) (prefix, history, recent []chat.Message) {
 	i := 0
 	for i < len(messages) && messages[i].Role == chat.RoleSystem {
 		i++
 	}
-	return messages[:i], messages[i:]
+	if i < len(messages) && messages[i].Role == chat.RoleUser {
+		i++
+	}
+	start, turns := len(messages), 0
+	for j := len(messages) - 1; j >= i; j-- {
+		if messages[j].Role == chat.RoleAssistant {
+			start = j
+			turns++
+			if turns == 2 {
+				break
+			}
+		}
+	}
+	return messages[:i], messages[i:start], messages[start:]
 }
 
 // compactionInstruction asks the model to compress the history. A non-zero
@@ -121,13 +133,14 @@ func compactionInstruction(targetTokens int) string {
 // It summarises the history via the provider when the token estimate crosses
 // the threshold.
 type compactor struct {
-	provider  chat.Provider
-	model     string
-	modelInfo chat.ModelInfo
-	tools     core.ToolSet
-	cfg       CompactionConfig
-	log       *slog.Logger
-	usage     chat.Usage
+	provider   chat.Provider
+	model      string
+	modelInfo  chat.ModelInfo
+	tools      core.ToolSet
+	cfg        CompactionConfig
+	log        *slog.Logger
+	usage      chat.Usage
+	modelHooks []core.ModelHook
 }
 
 // compactorFor returns an OnStep hook for cfg, or nil when compaction is
@@ -140,12 +153,13 @@ func compactorFor(cfg Config, provider chat.Provider, model string, info chat.Mo
 		return nil
 	}
 	c := &compactor{
-		provider:  provider,
-		model:     model,
-		modelInfo: info,
-		tools:     tools,
-		cfg:       cfg.Compact.normalised(),
-		log:       log,
+		provider:   provider,
+		model:      model,
+		modelInfo:  info,
+		tools:      tools,
+		cfg:        cfg.Compact.normalised(),
+		log:        log,
+		modelHooks: cfg.ModelHooks,
 	}
 	if override := c.cfg.Model; override != "" && override != model && cfg.Runtime != nil && cfg.ModelRef != "" {
 		if ref, err := cfg.Runtime.ParseModelRef(cfg.ModelRef); err == nil {
@@ -157,44 +171,80 @@ func compactorFor(cfg Config, provider chat.Provider, model string, info chat.Mo
 	return c
 }
 
+func (c *compactor) outputReserve() int {
+	if c == nil || c.cfg.ContextWindow <= 0 {
+		return 0
+	}
+	return max(1, c.cfg.ContextWindow/10)
+}
+
+func (c *compactor) checkSize(messages []chat.Message) error {
+	if c == nil || c.cfg.ContextWindow <= 0 {
+		return nil
+	}
+	limit := c.cfg.ContextWindow - c.outputReserve()
+	if n := estimateRequestTokens(messages, c.tools); n > limit {
+		return fmt.Errorf("%w: estimated input %d exceeds %d tokens after output reserve", ErrContextLimit, n, limit)
+	}
+	return nil
+}
+
 func (c *compactor) onStep(ctx context.Context, messages []chat.Message) ([]chat.Message, error) {
 	if c.cfg.ContextWindow <= 0 {
 		return nil, nil
 	}
-	if len(messages) < autoCompactMinMessages {
-		return nil, nil
-	}
 	threshold := int(float64(c.cfg.ContextWindow) * c.cfg.ThresholdRatio)
 	if estimateRequestTokens(messages, c.tools) < threshold {
-		return nil, nil
+		return nil, c.checkSize(messages)
 	}
 
-	system, history := splitCompactionHistory(messages)
+	prefix, history, recent := splitCompactionHistory(messages)
+	// Retain at least the newest complete turn; evict the older retained turn
+	// if it would leave no useful space for the summary.
+	limit := c.cfg.ContextWindow - c.outputReserve()
+	for len(recent) > 0 && estimateRequestTokens(recent, nil) > limit/2 {
+		next := 1
+		for next < len(recent) && recent[next].Role != chat.RoleAssistant {
+			next++
+		}
+		if next == len(recent) {
+			break
+		}
+		history = messages[len(prefix) : len(prefix)+len(history)+next]
+		recent = recent[next:]
+	}
 	if len(history) == 0 {
-		return nil, nil
+		return nil, c.checkSize(messages)
 	}
 
-	summary, err := c.summarise(ctx, history, int(float64(c.cfg.ContextWindow)*c.cfg.TargetRatio))
+	replacement := append([]chat.Message(nil), prefix...)
+	replacement = append(replacement, chat.Message{Role: chat.RoleUser, Content: "Conversation summary before auto-compaction:\n\n"})
+	summaryIndex := len(replacement) - 1
+	replacement = append(replacement, recent...)
+	target := min(int(float64(c.cfg.ContextWindow)*c.cfg.TargetRatio), limit-estimateRequestTokens(replacement, c.tools))
+	if target <= 0 {
+		return nil, c.checkSize(messages)
+	}
+
+	summary, err := c.summarise(ctx, history, target)
 	if err != nil {
 		if c.log != nil {
 			c.log.Warn("agentloop history compaction failed; preserving original history", "err", err)
 		}
+		if sizeErr := c.checkSize(messages); sizeErr != nil {
+			return nil, fmt.Errorf("%w: compaction failed: %v", sizeErr, err)
+		}
 		return nil, nil
 	}
-
-	replacement := make([]chat.Message, 0, len(system)+1)
-	replacement = append(replacement, system...)
-	replacement = append(replacement, chat.Message{
-		Role:    chat.RoleUser,
-		Content: "Conversation summary before auto-compaction:\n\n" + summary,
-	})
-
+	replacement[summaryIndex].Content += summary
+	if err := c.checkSize(replacement); err != nil {
+		if c.checkSize(messages) == nil {
+			return nil, nil
+		}
+		return nil, err
+	}
 	if c.log != nil {
-		c.log.Info(
-			"agentloop compacted history",
-			"before", len(messages),
-			"after", len(replacement),
-		)
+		c.log.Info("agentloop compacted history", "before", len(messages), "after", len(replacement))
 	}
 	return replacement, nil
 }
@@ -215,17 +265,24 @@ func (c *compactor) summarise(ctx context.Context, history []chat.Message, targe
 	msgs = append(msgs, history...)
 	msgs = append(msgs, chat.Message{Role: chat.RoleUser, Content: compactionInstruction(targetTokens)})
 
-	resp, err := c.provider.Chat(ctx, chat.Request{
-		Model:     model,
-		Messages:  msgs,
-		MaxTokens: targetTokens,
-		ModelInfo: c.modelInfo,
+	targetTokens = min(targetTokens, c.cfg.ContextWindow-estimateRequestTokens(msgs, nil))
+	if targetTokens <= 0 {
+		return "", fmt.Errorf("%w: summarisation input leaves no output space", ErrContextLimit)
+	}
+	msgs[len(msgs)-1].Content = compactionInstruction(targetTokens)
+	resp, err := core.GenerateText(ctx, c.provider, core.GenerateOptions{
+		Model:      model,
+		Messages:   msgs,
+		MaxTokens:  targetTokens,
+		ModelInfo:  c.modelInfo,
+		ModelHooks: c.modelHooks,
+		MaxSteps:   1,
 	})
 	if err != nil {
 		return "", fmt.Errorf("agentloop: compact history: %w", err)
 	}
-	c.usage = addUsage(c.usage, resp.Usage)
-	summary := strings.TrimSpace(resp.Content)
+	c.usage = addUsage(c.usage, resp.TotalUsage)
+	summary := strings.TrimSpace(resp.Text)
 	if summary == "" {
 		return "", errors.New("agentloop: compact history: empty summary")
 	}

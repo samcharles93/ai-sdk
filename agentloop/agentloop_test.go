@@ -110,7 +110,9 @@ func TestGateParksAfterConsecutiveFailures(t *testing.T) {
 			MaxConsecutiveFailures: 2,
 		}},
 		toolStep("write", `{"path":"a.txt","content":"one"}`),
+		toolStep("check", `{}`),
 		toolStep("write", `{"path":"b.txt","content":"two"}`),
+		toolStep("check", `{}`),
 		toolStep("write", `{"path":"c.txt","content":"never reached"}`),
 	)
 	if res.Status != StatusParked || res.StopReason != StopGateParked {
@@ -137,6 +139,7 @@ func TestFailedGateCycleLogsFailureOutput(t *testing.T) {
 			},
 		},
 		toolStep("write", `{"path":"a.txt","content":"one"}`),
+		toolStep("check", `{}`),
 	)
 	if res.Status != StatusParked {
 		t.Fatalf("status = %s, want parked", res.Status)
@@ -157,6 +160,7 @@ func TestExpectFailureGate(t *testing.T) {
 			MaxConsecutiveFailures: 1,
 		}},
 		toolStep("write", `{"path":"x_test.go","content":"package x"}`),
+		toolStep("check", `{}`),
 	)
 	if res.Status != StatusParked || res.StopReason != StopGateParked {
 		t.Fatalf("got %s/%s, want parked/gate_parked", res.Status, res.StopReason)
@@ -180,7 +184,8 @@ func TestFinalGateOverridesFinish(t *testing.T) {
 	res := runScript(
 		t, dir,
 		Config{Gate: GateConfig{Commands: []GateCommand{{Name: "flip", Argv: []string{"sh", "flip.sh"}}}}},
-		toolStep("write", `{"path":"a.txt","content":"hello"}`),    // gate cycle 1: passes, creates marker
+		toolStep("write", `{"path":"a.txt","content":"hello"}`),
+		toolStep("check", `{}`), // creates marker
 		toolStep("finish", `{"status":"passed","summary":"done"}`), // final gate: fails on marker
 	)
 	if res.Status != StatusParked || res.StopReason != StopGateFailedFinal {
@@ -458,23 +463,6 @@ func TestReadOnlyStripsWriteTools(t *testing.T) {
 	}
 }
 
-func TestGrepBlockedWhileGateDirty(t *testing.T) {
-	dir := t.TempDir()
-	res := runScript(
-		t, dir,
-		Config{Gate: GateConfig{
-			Commands:               []GateCommand{{Name: "red", Argv: []string{"false"}}},
-			MaxConsecutiveFailures: 5,
-		}},
-		toolStep("write", `{"path":"a.txt","content":"1"}`), // gate goes dirty
-		toolStep("grep", `{"pattern":"anything"}`),          // must be blocked
-		toolStep("finish", `{"status":"blocked","summary":"stuck"}`),
-	)
-	if res.Status != StatusParked || res.StopReason != StopModelBlocked {
-		t.Fatalf("got %s/%s", res.Status, res.StopReason)
-	}
-}
-
 func TestRefusedWriteIsNotAChange(t *testing.T) {
 	res := runScript(
 		t, t.TempDir(),
@@ -485,8 +473,8 @@ func TestRefusedWriteIsNotAChange(t *testing.T) {
 		toolStep("write", `{"path":"../escape.txt","content":"x"}`),
 		toolStep("finish", `{"status":"passed","summary":"nothing landed"}`),
 	)
-	if res.Status != StatusPassed || res.StopReason != StopFinished {
-		t.Fatalf("got %s/%s, want passed/finished (detail: %s)", res.Status, res.StopReason, res.Detail)
+	if res.Status != StatusParked || res.StopReason != StopGateFailedFinal {
+		t.Fatalf("got %s/%s, want parked/gate_failed_final (detail: %s)", res.Status, res.StopReason, res.Detail)
 	}
 	if len(res.Changes) != 0 {
 		t.Fatalf("changes = %v, want none for a refused write", res.Changes)
@@ -541,6 +529,57 @@ func TestBudgetAgreesWithReportedTotal(t *testing.T) {
 			}
 			if stop != (res.TotalUsage.TotalTokens >= tt.maxTokens) {
 				t.Fatalf("budget check and reported total disagree: stop=%v total=%d max=%d", stop, res.TotalUsage.TotalTokens, tt.maxTokens)
+			}
+		})
+	}
+}
+
+func TestGateCheckpoints(t *testing.T) {
+	dir := t.TempDir()
+	res := runScript(t, dir, Config{Gate: GateConfig{
+		Commands:               []GateCommand{{Name: "coordinated edit", Argv: []string{"sh", "-c", "echo check >> checks; test -f a && test -f b"}}},
+		MaxConsecutiveFailures: 1,
+	}},
+		toolStep("write", `{"path":"a","content":"a"}`),
+		toolStep("write", `{"path":"b","content":"b"}`),
+		toolStep("check", `{}`),
+		toolStep("finish", `{"status":"passed","summary":"done"}`))
+	if res.Status != StatusPassed {
+		t.Fatalf("result=%+v", res)
+	}
+	checks, err := os.ReadFile(filepath.Join(dir, "checks"))
+	if err != nil || string(checks) != "check\ncheck\n" {
+		t.Fatalf("checks=%q err=%v", checks, err)
+	}
+}
+
+func TestFailedCheckpointAllowsDiscovery(t *testing.T) {
+	var discovered []string
+	extra := core.ToolSet{}
+	for _, name := range []string{"find", "grep"} {
+		extra[name] = core.NewTool(name, "", nil, func(context.Context, string) (string, error) {
+			discovered = append(discovered, name)
+			return "evidence", nil
+		})
+	}
+	res := runScript(t, t.TempDir(), Config{Extra: extra, Gate: GateConfig{Commands: []GateCommand{{Name: "red", Argv: []string{"false"}}}}},
+		toolStep("check", `{}`), toolStep("find", `{}`), toolStep("grep", `{}`), toolStep("finish", `{"status":"blocked","summary":"needs repair"}`))
+	if len(discovered) != 2 || res.StopReason != StopModelBlocked {
+		t.Fatalf("discovery=%v result=%+v", discovered, res)
+	}
+}
+
+func TestFinalGateChecksUntrackedMutations(t *testing.T) {
+	for _, name := range []string{"shell", "custom"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			extra := core.ToolSet{"custom": core.NewTool("custom", "", nil, func(context.Context, string) (string, error) {
+				return "", os.WriteFile(filepath.Join(dir, "x"), []byte("x"), 0o600)
+			})}
+			res := runScript(t, dir, Config{Extra: extra, Gate: GateConfig{Commands: []GateCommand{{Name: "red", Argv: []string{"false"}}}}},
+				toolStep(name, `{"command":"echo x > x"}`), toolStep("finish", `{"status":"passed","summary":"done"}`))
+			if res.StopReason != StopGateFailedFinal {
+				t.Fatalf("result=%+v", res)
 			}
 		})
 	}

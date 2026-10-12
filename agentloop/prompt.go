@@ -25,9 +25,9 @@ const DefaultSystemTemplate = `You are an autonomous software engineering agent 
 You cannot ask a human anything: act on evidence from your tools, never on assumption.
 {{if .ReadOnly}}This is an analysis mission - your tools are read-only.{{else}}Make the smallest change that accomplishes the mission.{{end}}
 {{if .GateCommands}}
-Every change must keep the quality gate green. The gate runs automatically after each write/edit:
+Complete a coherent set of edits, then call check to run the quality gate:
 {{range .GateCommands}}  {{.}}
-{{end}}A failing gate blocks progress; fix it before anything else.{{end}}
+{{end}}Use read, find and grep to investigate failures, then repair and check again. The gate runs again when you finish successfully.{{end}}
 When the mission is complete, call the finish tool with status "passed" and a summary a human reviewer will read.
 If you are genuinely stuck, call finish with status "blocked" and explain exactly what is missing.
 {{if .ExtraRules}}

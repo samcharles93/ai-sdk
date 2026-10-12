@@ -3,8 +3,10 @@ package agentloop
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
 	"github.com/samcharles93/ai-sdk/core"
@@ -47,16 +49,16 @@ func TestEstimateRequestTokensMonotonic(t *testing.T) {
 }
 
 func TestSplitCompactionHistoryPreservesSystem(t *testing.T) {
-	system, history := splitCompactionHistory([]chat.Message{
+	system, history, recent := splitCompactionHistory([]chat.Message{
 		{Role: chat.RoleSystem, Content: "s"},
 		{Role: chat.RoleUser, Content: "mission"},
 		{Role: chat.RoleAssistant, Content: "work"},
 	})
-	if len(system) != 1 || system[0].Content != "s" {
-		t.Fatalf("system = %+v, want the leading system message", system)
+	if len(system) != 2 || system[0].Content != "s" || system[1].Content != "mission" {
+		t.Fatalf("system = %+v, want system and initial mission", system)
 	}
-	if len(history) != 2 {
-		t.Fatalf("history = %d messages, want 2", len(history))
+	if len(history) != 0 || len(recent) != 1 {
+		t.Fatalf("history = %d messages, want none", len(history))
 	}
 }
 
@@ -75,14 +77,9 @@ func TestCompactorOverThresholdSummarizes(t *testing.T) {
 		provider:  p,
 		model:     "m",
 		modelInfo: chat.ModelInfo{Reasoning: true},
-		cfg:       CompactionConfig{Enabled: true, ContextWindow: 200}.normalised(),
+		cfg:       CompactionConfig{Enabled: true, ContextWindow: 1000, ThresholdRatio: 0.5}.normalised(),
 	}
-	msgs := []chat.Message{
-		{Role: chat.RoleSystem, Content: "you are an agent"},
-		{Role: chat.RoleUser, Content: strings.Repeat("x", 4000)},
-		{Role: chat.RoleAssistant, Content: "working"},
-		{Role: chat.RoleTool, Content: "result"},
-	}
+	msgs := compactionHistory()
 
 	got, err := c.onStep(context.Background(), msgs)
 	if err != nil {
@@ -91,17 +88,26 @@ func TestCompactorOverThresholdSummarizes(t *testing.T) {
 	if len(p.calls) != 1 {
 		t.Fatalf("expected 1 summarisation call, got %d", len(p.calls))
 	}
+	if estimateRequestTokens(p.calls[0].Messages, nil)+p.calls[0].MaxTokens > c.cfg.ContextWindow {
+		t.Fatal("summariser exceeds configured window")
+	}
 	if !p.calls[0].ModelInfo.Reasoning {
 		t.Errorf("summarise request ModelInfo = %+v, want Reasoning true", p.calls[0].ModelInfo)
 	}
-	if len(got) != 2 {
-		t.Fatalf("replacement = %d messages, want 2: %+v", len(got), got)
+	if len(got) != 7 {
+		t.Fatalf("replacement = %d messages, want 7: %+v", len(got), got)
 	}
 	if got[0].Role != chat.RoleSystem || got[0].Content != "you are an agent" {
 		t.Errorf("system message not preserved: %+v", got[0])
 	}
-	if !strings.Contains(got[1].Content, "a faithful summary") {
-		t.Errorf("summary not included: %q", got[1].Content)
+	if !strings.Contains(got[2].Content, "a faithful summary") {
+		t.Errorf("summary not included: %q", got[2].Content)
+	}
+	if got[1].Content != "mission" || !reflect.DeepEqual(got[3:], msgs[4:]) {
+		t.Fatalf("mission or complete recent turns changed: %+v", got)
+	}
+	if estimateRequestTokens(got, c.tools)+c.outputReserve() > c.cfg.ContextWindow {
+		t.Fatal("replacement exceeds window")
 	}
 	if c.usage.TotalTokens != 10 {
 		t.Fatalf("compaction usage = %+v, want 10 total tokens", c.usage)
@@ -113,14 +119,9 @@ func TestCompactorFailureKeepsOriginalHistory(t *testing.T) {
 	c := &compactor{
 		provider: p,
 		model:    "m",
-		cfg:      CompactionConfig{Enabled: true, ContextWindow: 200}.normalised(),
+		cfg:      CompactionConfig{Enabled: true, ContextWindow: 1000, ThresholdRatio: 0.5}.normalised(),
 	}
-	msgs := []chat.Message{
-		{Role: chat.RoleSystem, Content: "system"},
-		{Role: chat.RoleUser, Content: strings.Repeat("x", 4000)},
-		{Role: chat.RoleAssistant, Content: "working"},
-		{Role: chat.RoleTool, Content: "result"},
-	}
+	msgs := compactionHistory()
 
 	got, err := c.onStep(context.Background(), msgs)
 	if err != nil {
@@ -187,7 +188,7 @@ func (p *compactRunProvider) Chat(_ context.Context, req chat.Request) (chat.Res
 		return chat.Response{Role: chat.RoleAssistant, Content: "the agent worked on X", FinishReason: "stop"}, nil
 	}
 	p.mainCalls++
-	if p.mainCalls == 1 {
+	if p.mainCalls <= 3 {
 		return chat.Response{
 			Role:         chat.RoleAssistant,
 			ToolCalls:    []chat.ToolCall{{ID: "c1", Name: "count", Arguments: p.args}},
@@ -205,14 +206,16 @@ func (p *compactRunProvider) ChatStream(context.Context, chat.Request) (chat.Str
 // and a small context window must compact at least once before ending.
 func TestRunCompactsHistory(t *testing.T) {
 	dir := t.TempDir()
-	long := strings.Repeat("x", 1000)
+	long := strings.Repeat("x", 6000)
 	p := &compactRunProvider{args: `{"data":"` + long + `"}`}
 
+	started, finished := 0, 0
 	cfg := Config{
-		WorkDir: dir,
-		Mission: "do a thing",
-		Budget:  Budget{MaxSteps: 20},
-		Compact: CompactionConfig{Enabled: true, ContextWindow: 200},
+		ModelHooks: []core.ModelHook{core.ModelHookFuncs(func(context.Context, chat.Request) { started++ }, func(context.Context, chat.Request, *chat.Response, error, time.Duration, *chat.Usage) { finished++ })},
+		WorkDir:    dir,
+		Mission:    "do a thing",
+		Budget:     Budget{MaxSteps: 20},
+		Compact:    CompactionConfig{Enabled: true, ContextWindow: 10000, ThresholdRatio: 0.5},
 		Extra: core.ToolSet{"count": core.NewTool("count", "", nil,
 			func(context.Context, string) (string, error) { return "ok", nil })},
 	}
@@ -223,10 +226,53 @@ func TestRunCompactsHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if started != p.mainCalls+p.summaries || finished != started {
+		t.Fatalf("hooks started=%d finished=%d calls=%d summaries=%d", started, finished, p.mainCalls, p.summaries)
+	}
 	if p.summaries == 0 {
 		t.Fatal("expected at least one compaction, got none")
 	}
 	if p.mainCalls < 2 {
 		t.Fatalf("expected the loop to continue after compaction, main calls = %d", p.mainCalls)
+	}
+}
+
+func compactionHistory() []chat.Message {
+	turn := func(id, text string) []chat.Message {
+		return []chat.Message{
+			{Role: chat.RoleAssistant, Content: text, ToolCalls: []chat.ToolCall{{ID: id, Name: "read", Arguments: `{"path":"x"}`}}},
+			{Role: chat.RoleTool, ToolCallID: id, Content: "evidence " + id},
+		}
+	}
+	messages := []chat.Message{{Role: chat.RoleSystem, Content: "you are an agent"}, {Role: chat.RoleUser, Content: "mission"}}
+	messages = append(messages, turn("old", strings.Repeat("x", 2000))...)
+	messages = append(messages, turn("recent1", "working")...)
+	return append(messages, turn("recent2", "working")...)
+}
+
+func TestCompactionContextLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		messages []chat.Message
+	}{
+		{"initial", []chat.Message{{Role: chat.RoleUser, Content: strings.Repeat("x", 5000)}}},
+		{"latest batch", append(compactionHistory(), chat.Message{Role: chat.RoleAssistant, Content: strings.Repeat("x", 5000)})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &summariseProvider{}
+			c := &compactor{provider: p, cfg: CompactionConfig{Enabled: true, ContextWindow: 1000}.normalised()}
+			_, err := c.onStep(context.Background(), tc.messages)
+			if !errors.Is(err, ErrContextLimit) {
+				t.Fatalf("got %v, want context limit", err)
+			}
+			if len(p.calls) != 0 {
+				t.Fatal("sent unfit context to provider")
+			}
+		})
+	}
+	p := &scriptProvider{}
+	r, err := Run(context.Background(), Config{Provider: p, Model: "m", WorkDir: t.TempDir(), Mission: strings.Repeat("x", 10000), Compact: CompactionConfig{Enabled: true, ContextWindow: 1000}})
+	if !errors.Is(err, ErrContextLimit) || r.StopReason != StopContextLimit || len(p.requests) != 0 {
+		t.Fatalf("result=%+v err=%v calls=%d", r, err, len(p.requests))
 	}
 }

@@ -45,6 +45,7 @@ const (
 	// timeout it must not be retried automatically.
 	StopCanceled        = "canceled"
 	StopProviderError   = "provider_error"
+	StopContextLimit    = "context_limit"
 	StopLoopBreak       = "loop_break"
 	StopGateParked      = "gate_parked"
 	StopGateFailedFinal = "gate_failed_final"
@@ -158,15 +159,21 @@ type Config struct {
 	ProtectPaths func(path string) bool
 	// Extra tools are merged into the toolset after the built-ins and
 	// wrapped with them; an Extra named write or edit replaces the built-in
-	// but is still tracked and gated.
+	// but is still tracked.
 	Extra core.ToolSet
+
+	// ToolHooks intercept all tools, including built-ins and completion recovery.
+	// Internal guards validate the resulting call after caller Before hooks.
+	ToolHooks []core.ToolHook
+	// ModelHooks observe every model call, including compaction and recovery.
+	ModelHooks []core.ModelHook
 
 	Logger *slog.Logger
 }
 
 // Run executes the mission to completion and reports what happened. The
-// returned error is reserved for infrastructure failures (provider
-// resolution, provider errors); mission-level failures are expressed in
+// returned error reports provider/configuration failures, including context
+// that cannot fit the configured window; mission-level failures are expressed in
 // Result.Status.
 func Run(ctx context.Context, cfg Config) (Result, error) {
 	log := cfg.Logger
@@ -220,7 +227,18 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		return next, nil
 	}
 
-	var toolHooks []core.ToolHook
+	initialMessages, err := onStep(ctx, baseMessages(system, first))
+	if err != nil {
+		return classify(ctx, cfg, state, core.GenerateResult{}, err, maxSteps), err
+	}
+
+	toolHooks := append([]core.ToolHook(nil), cfg.ToolHooks...)
+	toolHooks = append(toolHooks, core.ToolHookFuncs(func(_ context.Context, _ *core.ToolCall) (*core.Skip, error) {
+		if state.stopRequested(nil) {
+			return &core.Skip{Error: "blocked: run has already stopped"}, nil
+		}
+		return nil, nil
+	}, nil))
 	if cfg.ProtectPaths != nil {
 		toolHooks = append(toolHooks, ProtectPathsHook(cfg.ProtectPaths))
 	}
@@ -228,8 +246,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	res, genErr := core.GenerateText(ctx, provider, core.GenerateOptions{
 		Model:     model,
 		ModelInfo: modelInfo,
-		System:    system,
-		Messages:  []chat.Message{{Role: chat.RoleUser, Content: first}},
+		Messages:  initialMessages,
 		Tools:     tools,
 		MaxSteps:  maxSteps,
 		StopWhen: core.AnyCondition(
@@ -237,8 +254,9 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 			budgetIs(cfg.Budget.MaxTokens, compact),
 			state.stopRequested,
 		),
-		OnStep:    onStep,
-		ToolHooks: toolHooks,
+		OnStep:     onStep,
+		ToolHooks:  toolHooks,
+		ModelHooks: cfg.ModelHooks,
 	})
 	var compacted chat.Usage
 	if compact != nil {
@@ -247,7 +265,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	}
 	settleTotal(&res, compacted)
 	if shouldForceFinish(cfg, state, res, genErr, maxSteps) {
-		recovery, err := forceFinish(ctx, provider, model, modelInfo, system, first, recoveryMessages, res, tools, toolHooks)
+		recovery, err := forceFinish(ctx, provider, model, modelInfo, system, first, recoveryMessages, res, tools, toolHooks, cfg.ModelHooks, compact)
 		res = combineResults(res, recovery)
 		settleTotal(&res, compacted)
 		if err != nil {
@@ -298,7 +316,7 @@ func shouldForceFinish(cfg Config, state *runState, res core.GenerateResult, gen
 		(cfg.Budget.MaxTokens <= 0 || res.TotalUsage.TotalTokens < cfg.Budget.MaxTokens)
 }
 
-func forceFinish(ctx context.Context, provider chat.Provider, model string, info chat.ModelInfo, system, first string, messages []chat.Message, previous core.GenerateResult, tools core.ToolSet, toolHooks []core.ToolHook) (core.GenerateResult, error) {
+func forceFinish(ctx context.Context, provider chat.Provider, model string, info chat.ModelInfo, system, first string, messages []chat.Message, previous core.GenerateResult, tools core.ToolSet, toolHooks []core.ToolHook, modelHooks []core.ModelHook, compact *compactor) (core.GenerateResult, error) {
 	if len(messages) == 0 {
 		messages = baseMessages(system, first)
 	}
@@ -310,12 +328,16 @@ func forceFinish(ctx context.Context, provider chat.Provider, model string, info
 		Role:    chat.RoleUser,
 		Content: "Your previous response ended without completing this run. Call the finish tool now with the correct status and a concise, verified summary. Do not reply with text instead of calling finish.",
 	})
+	if err := compact.checkSize(messages); err != nil {
+		return core.GenerateResult{}, err
+	}
 	return core.GenerateText(ctx, provider, core.GenerateOptions{
 		Model:      model,
 		ModelInfo:  info,
 		Messages:   messages,
 		Tools:      tools,
 		ToolHooks:  toolHooks,
+		ModelHooks: modelHooks,
 		MaxSteps:   1,
 		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "finish"},
 	})
@@ -447,7 +469,7 @@ func resolveProvider(ctx context.Context, cfg Config) (chat.Provider, string, ch
 }
 
 // buildToolSet assembles built-ins (jailed to WorkDir), wraps them with
-// the gate and the loop breaker, and adds the finish/write_note tools.
+// change tracking and the loop breaker, and adds the finish/write_note tools.
 func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, error) {
 	reg := toolkit.NewRegistry()
 	if err := toolkit.RegisterBuiltins(reg, cfg.WorkDir); err != nil {
@@ -463,22 +485,22 @@ func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, 
 		}
 	}
 
-	// Every tool joins the set before wrapping, so Extra tools and
-	// finish/write_note are tracked, gated and loop-broken like built-ins.
+	// Extra tools join before wrapping so replacements are tracked too.
 	for name, tool := range cfg.Extra {
 		set[name] = tool
 	}
 	set["finish"] = finishTool(state)
+	if len(cfg.Gate.Commands) > 0 {
+		set["check"] = checkTool(&state.gate, cfg.Gate, cfg.WorkDir, log)
+	}
 	if cfg.Notes != nil {
 		set["write_note"] = writeNoteTool(cfg.Notes)
 	}
 
 	// Wrap order matters: change tracking wraps the tool's success
-	// path; the gate appends its verdict to mutating tools; the loop
-	// breaker sees everything (including repeated blocked calls).
+	// path; the loop breaker sees everything (including blocked calls).
 	// Path protection is a [core.ToolHook] instead; see ProtectPathsHook.
 	set = changeTrackedToolSet(set, state)
-	set = gatedToolSet(set, &state.gate, cfg.Gate, cfg.WorkDir, log)
 	return loopBrokenToolSet(set, &state.loop), nil
 }
 
@@ -569,6 +591,9 @@ func classify(ctx context.Context, cfg Config, state *runState, res core.Generat
 		r.Status, r.StopReason = StatusParked, StopTimedOut
 	case genErr != nil && errors.Is(ctx.Err(), context.Canceled):
 		r.Status, r.StopReason = StatusParked, StopCanceled
+	case errors.Is(genErr, ErrContextLimit):
+		r.Status, r.StopReason = StatusParked, StopContextLimit
+		r.Detail = genErr.Error()
 	case genErr != nil:
 		r.Status, r.StopReason = StatusParked, StopProviderError
 		r.Detail = genErr.Error()
@@ -582,8 +607,8 @@ func classify(ctx context.Context, cfg Config, state *runState, res core.Generat
 		r.Status, r.StopReason = StatusParked, StopModelBlocked
 	case state.finishCalled:
 		// The model claims success; the gate is the authority. Re-run it
-		// once if anything was mutated.
-		if len(state.changes) > 0 && len(cfg.Gate.Commands) > 0 {
+		// once, including shell and custom-tool changes.
+		if len(cfg.Gate.Commands) > 0 {
 			if out, err := runGate(ctx, cfg.Gate.Commands, cfg.WorkDir); err != nil {
 				r.Status, r.StopReason = StatusParked, StopGateFailedFinal
 				r.Detail = out
