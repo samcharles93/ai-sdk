@@ -129,26 +129,38 @@ func compactionInstruction(targetTokens int) string {
 // It summarises the history via the provider when the token estimate crosses
 // the threshold.
 type compactor struct {
-	provider chat.Provider
-	model    string
-	tools    core.ToolSet
-	cfg      CompactionConfig
-	log      *slog.Logger
-	usage    chat.Usage
+	provider  chat.Provider
+	model     string
+	modelInfo chat.ModelInfo
+	tools     core.ToolSet
+	cfg       CompactionConfig
+	log       *slog.Logger
+	usage     chat.Usage
 }
 
 // compactorFor returns an OnStep hook for cfg, or nil when compaction is
-// disabled. A nil hook avoids the per-step overhead when unused.
-func compactorFor(cfg Config, provider chat.Provider, model string, tools core.ToolSet, log *slog.Logger) *compactor {
+// disabled. A nil hook avoids the per-step overhead when unused. info is the
+// run model's request-shaping flags; when an override model is configured its
+// own flags are resolved instead so a reasoning summariser gets the right
+// parameter name.
+func compactorFor(cfg Config, provider chat.Provider, model string, info chat.ModelInfo, tools core.ToolSet, log *slog.Logger) *compactor {
 	if !cfg.Compact.Enabled {
 		return nil
 	}
 	c := &compactor{
-		provider: provider,
-		model:    model,
-		tools:    tools,
-		cfg:      cfg.Compact.normalised(),
-		log:      log,
+		provider:  provider,
+		model:     model,
+		modelInfo: info,
+		tools:     tools,
+		cfg:       cfg.Compact.normalised(),
+		log:       log,
+	}
+	if override := c.cfg.Model; override != "" && override != model && cfg.Runtime != nil && cfg.ModelRef != "" {
+		if ref, err := cfg.Runtime.ParseModelRef(cfg.ModelRef); err == nil {
+			if overrideInfo, err := cfg.Runtime.ChatModelInfo(ref.ProviderID + "/" + override); err == nil {
+				c.modelInfo = overrideInfo
+			}
+		}
 	}
 	return c
 }
@@ -218,6 +230,7 @@ func (c *compactor) summarise(ctx context.Context, history []chat.Message, targe
 		Model:     model,
 		Messages:  msgs,
 		MaxTokens: targetTokens,
+		ModelInfo: c.modelInfo,
 	})
 	if err != nil {
 		return "", fmt.Errorf("agentloop: compact history: %w", err)

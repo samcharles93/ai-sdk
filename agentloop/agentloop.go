@@ -99,11 +99,14 @@ type NotesStore interface {
 type Config struct {
 	// Runtime + ModelRef select the model ("provider/model"). Provider,
 	// when non-nil, bypasses the runtime (tests, custom providers) and
-	// Model names the model to request from it.
-	Runtime  *runtime.Runtime
-	ModelRef string
-	Provider chat.Provider
-	Model    string
+	// Model names the model to request from it. ModelInfo carries the
+	// request-shaping flags for the explicit Provider path; the runtime
+	// path resolves them from catalog metadata instead.
+	Runtime   *runtime.Runtime
+	ModelRef  string
+	Provider  chat.Provider
+	Model     string
+	ModelInfo chat.ModelInfo
 
 	// WorkDir is the directory the toolset is jailed to and gate
 	// commands run in.
@@ -166,7 +169,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		log = slog.New(slog.DiscardHandler)
 	}
 
-	provider, model, err := resolveProvider(ctx, cfg)
+	provider, model, modelInfo, err := resolveProvider(ctx, cfg)
 	if err != nil {
 		return Result{}, err
 	}
@@ -195,7 +198,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	}
 
 	recoveryMessages := baseMessages(system, first)
-	compact := compactorFor(cfg, provider, model, tools, log)
+	compact := compactorFor(cfg, provider, model, modelInfo, tools, log)
 	onStep := func(ctx context.Context, messages []chat.Message) ([]chat.Message, error) {
 		next := messages
 		if compact != nil {
@@ -218,11 +221,12 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	}
 
 	res, genErr := core.GenerateText(ctx, provider, core.GenerateOptions{
-		Model:    model,
-		System:   system,
-		Messages: []chat.Message{{Role: chat.RoleUser, Content: first}},
-		Tools:    tools,
-		MaxSteps: maxSteps,
+		Model:     model,
+		ModelInfo: modelInfo,
+		System:    system,
+		Messages:  []chat.Message{{Role: chat.RoleUser, Content: first}},
+		Tools:     tools,
+		MaxSteps:  maxSteps,
 		StopWhen: core.AnyCondition(
 			core.StepCountIs(maxSteps),
 			TokenBudgetIs(cfg.Budget.MaxTokens),
@@ -235,7 +239,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		res.TotalUsage = addUsage(res.TotalUsage, compact.usage)
 	}
 	if shouldForceFinish(cfg, state, res, genErr, maxSteps) {
-		recovery, err := forceFinish(ctx, provider, model, system, first, recoveryMessages, res, tools, toolHooks)
+		recovery, err := forceFinish(ctx, provider, model, modelInfo, system, first, recoveryMessages, res, tools, toolHooks)
 		res = combineResults(res, recovery)
 		if err != nil {
 			genErr = err
@@ -285,7 +289,7 @@ func shouldForceFinish(cfg Config, state *runState, res core.GenerateResult, gen
 		(cfg.Budget.MaxTokens <= 0 || res.TotalUsage.TotalTokens < cfg.Budget.MaxTokens)
 }
 
-func forceFinish(ctx context.Context, provider chat.Provider, model, system, first string, messages []chat.Message, previous core.GenerateResult, tools core.ToolSet, toolHooks []core.ToolHook) (core.GenerateResult, error) {
+func forceFinish(ctx context.Context, provider chat.Provider, model string, info chat.ModelInfo, system, first string, messages []chat.Message, previous core.GenerateResult, tools core.ToolSet, toolHooks []core.ToolHook) (core.GenerateResult, error) {
 	if len(messages) == 0 {
 		messages = baseMessages(system, first)
 	}
@@ -299,6 +303,7 @@ func forceFinish(ctx context.Context, provider chat.Provider, model, system, fir
 	})
 	return core.GenerateText(ctx, provider, core.GenerateOptions{
 		Model:      model,
+		ModelInfo:  info,
 		Messages:   messages,
 		Tools:      tools,
 		ToolHooks:  toolHooks,
@@ -383,14 +388,22 @@ func TokenBudgetIs(maxTokens int) core.StopCondition {
 	}
 }
 
-func resolveProvider(ctx context.Context, cfg Config) (chat.Provider, string, error) {
+func resolveProvider(ctx context.Context, cfg Config) (chat.Provider, string, chat.ModelInfo, error) {
 	if cfg.Provider != nil {
-		return cfg.Provider, cfg.Model, nil
+		return cfg.Provider, cfg.Model, cfg.ModelInfo, nil
 	}
 	if cfg.Runtime == nil || cfg.ModelRef == "" {
-		return nil, "", errors.New("agentloop: either Provider+Model or Runtime+ModelRef must be set")
+		return nil, "", chat.ModelInfo{}, errors.New("agentloop: either Provider+Model or Runtime+ModelRef must be set")
 	}
-	return cfg.Runtime.ChatProvider(ctx, cfg.ModelRef)
+	provider, model, err := cfg.Runtime.ChatProvider(ctx, cfg.ModelRef)
+	if err != nil {
+		return nil, "", chat.ModelInfo{}, err
+	}
+	info, err := cfg.Runtime.ChatModelInfo(cfg.ModelRef)
+	if err != nil {
+		return nil, "", chat.ModelInfo{}, err
+	}
+	return provider, model, info, nil
 }
 
 // buildToolSet assembles built-ins (jailed to WorkDir), wraps them with

@@ -138,6 +138,22 @@ func (r *Runtime) ChatProvider(ctx context.Context, ref string) (chat.Provider, 
 	return provider, model.ID, nil
 }
 
+// ChatModelInfo resolves a model reference to the request-shaping flags
+// that belong on a chat request, without building the provider. Callers
+// that resolve their own provider (for example agentloop) use it so their
+// requests carry the same shaping flags as Chat and ChatStream.
+func (r *Runtime) ChatModelInfo(ref string) (chat.ModelInfo, error) {
+	mref, err := r.ParseModelRef(ref)
+	if err != nil {
+		return chat.ModelInfo{}, err
+	}
+	model, err := r.resolveModel(mref)
+	if err != nil {
+		return chat.ModelInfo{}, err
+	}
+	return chatModelInfo(model), nil
+}
+
 // chatProvider resolves a model reference to both the chat provider and
 // the resolved model metadata, so callers can carry the model's
 // request-shaping capabilities onto the request.

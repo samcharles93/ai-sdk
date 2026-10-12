@@ -85,9 +85,10 @@ func TestCompactionInstruction(t *testing.T) {
 func TestCompactorOverThresholdSummarizes(t *testing.T) {
 	p := &summariseProvider{}
 	c := &compactor{
-		provider: p,
-		model:    "m",
-		cfg:      CompactionConfig{Enabled: true, ContextWindow: 200}.normalised(),
+		provider:  p,
+		model:     "m",
+		modelInfo: chat.ModelInfo{Reasoning: true},
+		cfg:       CompactionConfig{Enabled: true, ContextWindow: 200}.normalised(),
 	}
 	msgs := []chat.Message{
 		{Role: chat.RoleSystem, Content: "you are an agent"},
@@ -102,6 +103,9 @@ func TestCompactorOverThresholdSummarizes(t *testing.T) {
 	}
 	if len(p.calls) != 1 {
 		t.Fatalf("expected 1 summarisation call, got %d", len(p.calls))
+	}
+	if !p.calls[0].ModelInfo.Reasoning {
+		t.Errorf("summarise request ModelInfo = %+v, want Reasoning true", p.calls[0].ModelInfo)
 	}
 	if len(got) != 2 {
 		t.Fatalf("replacement = %d messages, want 2: %+v", len(got), got)

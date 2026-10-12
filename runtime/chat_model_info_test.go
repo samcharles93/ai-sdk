@@ -87,6 +87,17 @@ func TestRuntimeChatCarriesModelInfo(t *testing.T) {
 	if provider.last.ModelInfo.Temperature == nil || *provider.last.ModelInfo.Temperature {
 		t.Errorf("request ModelInfo.Temperature = %v, want pointer to false", provider.last.ModelInfo.Temperature)
 	}
+
+	info, err := rt.ChatModelInfo("capture/reasoner")
+	if err != nil {
+		t.Fatalf("ChatModelInfo: %v", err)
+	}
+	if !info.Reasoning {
+		t.Error("ChatModelInfo Reasoning = false, want true")
+	}
+	if info.Temperature == nil || *info.Temperature {
+		t.Errorf("ChatModelInfo Temperature = %v, want pointer to false", info.Temperature)
+	}
 }
 
 // TestRuntimeChatStreamCarriesModelInfo covers the streaming entry point.

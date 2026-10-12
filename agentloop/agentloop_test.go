@@ -263,6 +263,32 @@ func TestCompletionForceFinishRecoversOnlyThroughFinishTool(t *testing.T) {
 	}
 }
 
+// TestRunCarriesModelInfo guards the plumbing that puts the resolved model's
+// request-shaping flags on every agentloop request, including the forced finish
+// call: without it a reasoning model gets max_tokens and 400s.
+func TestRunCarriesModelInfo(t *testing.T) {
+	p := &scriptProvider{}
+	_, err := Run(context.Background(), Config{
+		Provider:   p,
+		Model:      "script-1",
+		ModelInfo:  chat.ModelInfo{Reasoning: true},
+		WorkDir:    t.TempDir(),
+		Budget:     Budget{MaxSteps: 2},
+		Completion: CompletionForceFinish,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(p.requests) == 0 {
+		t.Fatal("no requests recorded")
+	}
+	for i, req := range p.requests {
+		if !req.ModelInfo.Reasoning {
+			t.Errorf("request %d ModelInfo = %+v, want Reasoning true", i, req.ModelInfo)
+		}
+	}
+}
+
 func TestCompletionForceFinishRetainsProtectPaths(t *testing.T) {
 	dir := t.TempDir()
 	p := &scriptProvider{steps: []chat.Response{
