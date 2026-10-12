@@ -36,10 +36,18 @@ func TestEstimateRequestTokensMonotonic(t *testing.T) {
 	if long <= short {
 		t.Fatalf("longer content must estimate more tokens: short=%d long=%d", short, long)
 	}
+
+	plain := estimateRequestTokens([]chat.Message{{Role: chat.RoleAssistant, Content: "a", Parts: chat.Parts{chat.TextPart{Text: "a"}}}}, nil)
+	thinking := estimateRequestTokens([]chat.Message{{Role: chat.RoleAssistant, Content: "a", Parts: chat.Parts{
+		chat.ReasoningPart{Text: strings.Repeat("x", 1000)}, chat.TextPart{Text: "a"},
+	}}}, nil)
+	if thinking <= plain {
+		t.Fatalf("replayed reasoning must be counted: plain=%d thinking=%d", plain, thinking)
+	}
 }
 
 func TestSplitCompactionHistoryPreservesSystem(t *testing.T) {
-	system, current, history := splitCompactionHistory([]chat.Message{
+	system, history := splitCompactionHistory([]chat.Message{
 		{Role: chat.RoleSystem, Content: "s"},
 		{Role: chat.RoleUser, Content: "mission"},
 		{Role: chat.RoleAssistant, Content: "work"},
@@ -47,29 +55,8 @@ func TestSplitCompactionHistoryPreservesSystem(t *testing.T) {
 	if len(system) != 1 || system[0].Content != "s" {
 		t.Fatalf("system = %+v, want the leading system message", system)
 	}
-	if current != nil {
-		t.Fatalf("current = %+v, want nil (last message is assistant)", current)
-	}
 	if len(history) != 2 {
 		t.Fatalf("history = %d messages, want 2", len(history))
-	}
-}
-
-func TestSplitCompactionHistoryHoldsTrailingUser(t *testing.T) {
-	system, current, history := splitCompactionHistory([]chat.Message{
-		{Role: chat.RoleSystem, Content: "s"},
-		{Role: chat.RoleUser, Content: "a"},
-		{Role: chat.RoleAssistant, Content: "b"},
-		{Role: chat.RoleUser, Content: "c"},
-	})
-	if current == nil || current.Content != "c" {
-		t.Fatalf("current = %+v, want the trailing user message", current)
-	}
-	if len(history) != 2 || history[0].Content != "a" {
-		t.Fatalf("history = %+v, want [a, b]", history)
-	}
-	if len(system) != 1 {
-		t.Fatalf("system = %+v, want 1 message", system)
 	}
 }
 

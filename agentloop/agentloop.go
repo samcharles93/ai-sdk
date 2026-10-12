@@ -41,6 +41,9 @@ const (
 	StopFinished        = "finished"
 	StopBudgetExhausted = "budget_exhausted"
 	StopTimedOut        = "timed_out"
+	// StopCanceled: the caller cancelled the run. Unlike a wall-clock
+	// timeout it must not be retried automatically.
+	StopCanceled        = "canceled"
 	StopProviderError   = "provider_error"
 	StopLoopBreak       = "loop_break"
 	StopGateParked      = "gate_parked"
@@ -153,7 +156,9 @@ type Config struct {
 	// an environmental constraint where a prompt rule would be advisory
 	// (e.g. a TDD fix stage protecting the committed repro tests).
 	ProtectPaths func(path string) bool
-	// Extra tools are merged into the toolset after the built-ins.
+	// Extra tools are merged into the toolset after the built-ins and
+	// wrapped with them; an Extra named write or edit replaces the built-in
+	// but is still tracked and gated.
 	Extra core.ToolSet
 
 	Logger *slog.Logger
@@ -423,26 +428,23 @@ func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, 
 		}
 	}
 
-	// Wrap order matters: change tracking wraps the tool's success
-	// path; the gate appends its verdict to mutating tools; the loop
-	// breaker sees everything (including repeated blocked calls).
-	//
-	// Path protection is now expressed as a [core.ToolHook] on
-	// [Config.Run]'s GenerateOptions, not as a toolset wrapper — see
-	// ProtectPathsHook. The wrapper form is gone.
-	set = changeTrackedToolSet(set, state)
-	set = gatedToolSet(set, &state.gate, cfg.Gate, cfg.WorkDir, log)
-	set = loopBrokenToolSet(set, &state.loop)
-
+	// Every tool joins the set before wrapping, so Extra tools and
+	// finish/write_note are tracked, gated and loop-broken like built-ins.
 	for name, tool := range cfg.Extra {
 		set[name] = tool
 	}
-
 	set["finish"] = finishTool(state)
 	if cfg.Notes != nil {
 		set["write_note"] = writeNoteTool(cfg.Notes)
 	}
-	return set, nil
+
+	// Wrap order matters: change tracking wraps the tool's success
+	// path; the gate appends its verdict to mutating tools; the loop
+	// breaker sees everything (including repeated blocked calls).
+	// Path protection is a [core.ToolHook] instead; see ProtectPathsHook.
+	set = changeTrackedToolSet(set, state)
+	set = gatedToolSet(set, &state.gate, cfg.Gate, cfg.WorkDir, log)
+	return loopBrokenToolSet(set, &state.loop), nil
 }
 
 // readOnlyTools are the built-ins available to ReadOnly (planner) runs.
@@ -470,6 +472,9 @@ func finishTool(state *runState) *core.Tool {
 			if err := json.Unmarshal([]byte(input), &args); err != nil {
 				//nolint:nilerr // Malformed arguments are reported back to the model in-band so it can retry; a Go error would abort the run.
 				return "finish rejected: invalid arguments: " + err.Error(), nil
+			}
+			if args.Status != "passed" && args.Status != "blocked" {
+				return `finish rejected: status must be "passed" or "blocked"`, nil
 			}
 			if args.Summary == "" {
 				return "finish rejected: summary is required", nil
@@ -528,7 +533,7 @@ func classify(ctx context.Context, cfg Config, state *runState, res core.Generat
 	case genErr != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
 		r.Status, r.StopReason = StatusParked, StopTimedOut
 	case genErr != nil && errors.Is(ctx.Err(), context.Canceled):
-		r.Status, r.StopReason = StatusParked, StopTimedOut
+		r.Status, r.StopReason = StatusParked, StopCanceled
 	case genErr != nil:
 		r.Status, r.StopReason = StatusParked, StopProviderError
 		r.Detail = genErr.Error()

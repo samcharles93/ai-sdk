@@ -64,10 +64,17 @@ func estimateRequestTokens(messages []chat.Message, tools core.ToolSet) int {
 			chars += len(call.Name)
 			chars += len(call.Arguments)
 		}
-		if msg.Content == "" {
-			// Parts is canonical when set; count its text so multimodal
-			// turns are not under-estimated.
-			chars += len(msg.Parts.Text())
+		for _, part := range msg.Parts {
+			switch p := part.(type) {
+			case chat.TextPart:
+				if msg.Content == "" {
+					chars += len(p.Text)
+				}
+			case chat.ReasoningPart:
+				// Replayed thinking is sent back on the wire but never
+				// appears in Content.
+				chars += len(p.Text)
+			}
 		}
 	}
 	for name, tool := range tools {
@@ -88,29 +95,14 @@ func estimateRequestTokens(messages []chat.Message, tools core.ToolSet) int {
 //
 // Unlike tau — where the system prompt is a separate field — ai-sdk encodes
 // it as a leading RoleSystem message inside the slice, so it is preserved
-// explicitly rather than summarised away. A trailing user turn that has not
-// yet been answered is also held back, per tau's semantics; the summary is
-// inserted ahead of it.
-func splitCompactionHistory(messages []chat.Message) (system []chat.Message, current *chat.Message, history []chat.Message) {
-	if len(messages) == 0 {
-		return nil, nil, nil
-	}
+// explicitly rather than summarised away. OnStep always runs after a tool
+// turn, so there is never an unanswered user turn to hold back.
+func splitCompactionHistory(messages []chat.Message) (system, history []chat.Message) {
 	i := 0
 	for i < len(messages) && messages[i].Role == chat.RoleSystem {
 		i++
 	}
-	system = messages[:i]
-
-	rest := messages[i:]
-	if len(rest) == 0 {
-		return system, nil, nil
-	}
-	if rest[len(rest)-1].Role == chat.RoleUser {
-		last := rest[len(rest)-1]
-		current = &last
-		rest = rest[:len(rest)-1]
-	}
-	return system, current, rest
+	return messages[:i], messages[i:]
 }
 
 // compactionInstruction asks the model to compress the history. A non-zero
@@ -177,7 +169,7 @@ func (c *compactor) onStep(ctx context.Context, messages []chat.Message) ([]chat
 		return nil, nil
 	}
 
-	system, current, history := splitCompactionHistory(messages)
+	system, history := splitCompactionHistory(messages)
 	if len(history) == 0 {
 		return nil, nil
 	}
@@ -190,15 +182,12 @@ func (c *compactor) onStep(ctx context.Context, messages []chat.Message) ([]chat
 		return nil, nil
 	}
 
-	replacement := make([]chat.Message, 0, len(system)+2)
+	replacement := make([]chat.Message, 0, len(system)+1)
 	replacement = append(replacement, system...)
 	replacement = append(replacement, chat.Message{
 		Role:    chat.RoleUser,
 		Content: "Conversation summary before auto-compaction:\n\n" + summary,
 	})
-	if current != nil {
-		replacement = append(replacement, *current)
-	}
 
 	if c.log != nil {
 		c.log.Info(
