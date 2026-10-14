@@ -16,3 +16,9 @@ provider integration checks must not introduce a provider-to-core dependency.
 Anthropic thinking options travel through `chat.Request.ProviderOptions` as
 `reasoning_effort` or `thinking_budget_tokens`; model-specific validation lives
 in its adapter.
+
+Gemini chat has two transports: `gemini` (generateContent) and
+`gemini-interactions` (Interactions API, steps schema via `Api-Revision`).
+Interactions requests send `store: false`; long decode (`MaxTokens` > 65536)
+must use `background` + `store`, so the provider deletes those interactions
+after reading or cancelling them. Keep that invariant when changing it.

@@ -565,38 +565,31 @@ func (s *stream) Close() error {
 	return nil
 }
 
-// readDataEvent reads the next SSE event and returns its concatenated `data:`
-// JSON payload, or io.EOF when the stream ends. Comments and blank lines
-// outside of an event are skipped.
-func (s *stream) readDataEvent() ([]byte, error) {
+func (s *stream) readDataEvent() ([]byte, error) { return readSSEData(s.reader) }
+
+// readSSEData reads the next SSE event and returns its concatenated `data:`
+// payload, or io.EOF when the stream ends. Comments, `event:` lines and blank
+// lines outside of an event are skipped.
+func readSSEData(r *bufio.Reader) ([]byte, error) {
 	var buf bytes.Buffer
 	for {
-		line, err := s.reader.ReadString('\n')
+		line, err := r.ReadString('\n')
 		if len(line) > 0 {
-			// Strip trailing CR/LF.
 			line = strings.TrimRight(line, "\r\n")
 			if line == "" {
 				if buf.Len() > 0 {
 					return buf.Bytes(), nil
 				}
-				// blank separator with no data; keep reading
-			} else if strings.HasPrefix(line, ":") {
-				// SSE comment, ignore
 			} else if after, ok := strings.CutPrefix(line, "data:"); ok {
-				v := after
-				v = strings.TrimPrefix(v, " ")
 				if buf.Len() > 0 {
 					buf.WriteByte('\n')
 				}
-				buf.WriteString(v)
+				buf.WriteString(strings.TrimPrefix(after, " "))
 			}
 		}
 		if err != nil {
-			if err == io.EOF {
-				if buf.Len() > 0 {
-					return buf.Bytes(), nil
-				}
-				return nil, io.EOF
+			if err == io.EOF && buf.Len() > 0 {
+				return buf.Bytes(), nil
 			}
 			return nil, err
 		}

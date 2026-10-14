@@ -47,6 +47,7 @@ func RegisterBuiltinClasses() {
 	MustRegisterClass(cohereClass())
 	MustRegisterClass(deepseekClass())
 	MustRegisterClass(geminiClass())
+	MustRegisterClass(geminiInteractionsClass())
 	MustRegisterClass(groqClass())
 	MustRegisterClass(minimaxClass())
 	MustRegisterClass(mistralClass())
@@ -361,6 +362,16 @@ func geminiClass() ProviderClass {
 		caps: []Capability{CapabilityChat, CapabilityEmbed},
 		build: func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error) {
 			return gemini.New(gemini.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		},
+	}
+}
+
+func geminiInteractionsClass() ProviderClass {
+	return simpleClass{
+		name: "gemini-interactions",
+		caps: []Capability{CapabilityChat},
+		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
+			return gemini.NewInteractions(gemini.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
 		},
 	}
 }
