@@ -280,8 +280,8 @@ func TestRuntimeGoogleSDKNameCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Class != "gemini" {
-		t.Fatalf("class = %q, want gemini", cfg.Class)
+	if cfg.Class != "gemini-interactions" {
+		t.Fatalf("class = %q, want gemini-interactions", cfg.Class)
 	}
 	if cfg.BaseURL != "https://generativelanguage.googleapis.com/v1beta" {
 		t.Fatalf("base_url = %q, want https://generativelanguage.googleapis.com/v1beta", cfg.BaseURL)
@@ -291,8 +291,8 @@ func TestRuntimeGoogleSDKNameCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if class.Name() != "gemini" {
-		t.Fatalf("class.Name() = %q, want gemini", class.Name())
+	if class.Name() != "gemini-interactions" {
+		t.Fatalf("class.Name() = %q, want gemini-interactions", class.Name())
 	}
 }
 

@@ -19,6 +19,8 @@ in its adapter.
 
 Gemini chat has two transports: `gemini` (generateContent) and
 `gemini-interactions` (Interactions API, steps schema via `Api-Revision`).
-Interactions requests send `store: false`; long decode (`MaxTokens` > 65536)
-must use `background` + `store`, so the provider deletes those interactions
-after reading or cancelling them. Keep that invariant when changing it.
+Catalog Google providers use `gemini-interactions` because Gemini 3.x and
+later need thought signatures replayed on tool turns. Interactions requests
+send `store: false`; long decode is opt-in via the `background` provider
+option (stored, then deleted after reading or cancelling). Without it,
+MaxTokens above 65,536 is clamped with a warning.

@@ -19,7 +19,7 @@ func newTestInteractions(t *testing.T, h http.HandlerFunc) *Interactions {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	p, err := NewInteractions(Config{APIKey: "k", BaseURL: srv.URL})
+	p, err := NewInteractions(Config{APIKey: "k", BaseURL: srv.URL + "/v1beta"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,9 +30,10 @@ func newTestInteractions(t *testing.T, h http.HandlerFunc) *Interactions {
 func TestInteractionsRequestEncoding(t *testing.T) {
 	thought := json.RawMessage(`{"type":"thought","signature":"sig"}`)
 	tests := []struct {
-		name string
-		req  chat.Request
-		want string
+		name     string
+		req      chat.Request
+		want     string
+		wantWarn bool
 	}{
 		{
 			name: "stateless history with replayed steps and tool result",
@@ -76,11 +77,20 @@ func TestInteractionsRequestEncoding(t *testing.T) {
 				{"type":"function_call","id":"c1","name":"f","arguments":{}}]}`,
 		},
 		{
-			name: "long decode runs in background with storage",
-			req:  chat.Request{Model: "gemini-4-argon", MaxTokens: 262144, Messages: []chat.Message{{Role: chat.RoleUser, Content: "x"}}},
+			name: "background option runs long decode with storage",
+			req: chat.Request{
+				Model: "gemini-4-argon", MaxTokens: 262144, Messages: []chat.Message{{Role: chat.RoleUser, Content: "x"}},
+				ProviderOptions: map[string]any{"gemini": map[string]any{"background": true}},
+			},
 			want: `{"model":"gemini-4-argon","store":true,"background":true,
 				"input":[{"type":"user_input","content":[{"type":"text","text":"x"}]}],
 				"generation_config":{"max_output_tokens":262144}}`,
+		},
+		{
+			name:     "max tokens above foreground limit clamps without background",
+			req:      chat.Request{Model: "gemini-4-argon", MaxTokens: 262144, Messages: []chat.Message{{Role: chat.RoleUser, Content: "x"}}},
+			want:     `{"model":"gemini-4-argon","store":false,"input":[{"type":"user_input","content":[{"type":"text","text":"x"}]}],"generation_config":{"max_output_tokens":65536}}`,
+			wantWarn: true,
 		},
 	}
 	for _, tt := range tests {
@@ -95,8 +105,12 @@ func TestInteractionsRequestEncoding(t *testing.T) {
 				}
 				_, _ = io.WriteString(w, `{"id":"i1","status":"completed","steps":[]}`)
 			})
-			if _, err := p.Chat(context.Background(), tt.req); err != nil {
+			resp, err := p.Chat(context.Background(), tt.req)
+			if err != nil {
 				t.Fatal(err)
+			}
+			if got := len(resp.Warnings) > 0; got != tt.wantWarn {
+				t.Errorf("warnings = %v, want present=%v", resp.Warnings, tt.wantWarn)
 			}
 			var gotV, wantV any
 			if err := json.Unmarshal(got, &gotV); err != nil {
@@ -120,15 +134,15 @@ func TestInteractionsChatResponse(t *testing.T) {
 		{"type":"function_call","id":"c1","name":"get_weather","arguments":{"city":"Paris"}}],
 		"usage":{"total_input_tokens":5,"total_output_tokens":3,"total_thought_tokens":2,"total_tokens":10}}`
 	tests := []struct {
-		name      string
-		maxTokens int
-		calls     []string
-		wantErr   error
-		status    string
+		name       string
+		background bool
+		calls      []string
+		wantErr    error
+		status     string
 	}{
 		{name: "foreground", calls: []string{"POST /v1beta/interactions"}},
 		{
-			name: "long decode polls then deletes", maxTokens: 100000,
+			name: "background polls then deletes", background: true,
 			calls: []string{"POST /v1beta/interactions", "GET /v1beta/interactions/i1", "DELETE /v1beta/interactions/i1"},
 		},
 		{
@@ -147,7 +161,7 @@ func TestInteractionsChatResponse(t *testing.T) {
 				switch {
 				case tt.status != "":
 					_, _ = io.WriteString(w, `{"id":"i1","status":"`+tt.status+`","errors":[{"message":"boom"}]}`)
-				case r.Method == http.MethodPost && tt.maxTokens > 0:
+				case r.Method == http.MethodPost && tt.background:
 					_, _ = io.WriteString(w, `{"id":"i1","status":"in_progress"}`)
 				case r.Method == http.MethodDelete:
 				default:
@@ -155,8 +169,8 @@ func TestInteractionsChatResponse(t *testing.T) {
 				}
 			})
 			resp, err := p.Chat(context.Background(), chat.Request{
-				Model: "gemini-4-argon", MaxTokens: tt.maxTokens,
-				Messages: []chat.Message{{Role: chat.RoleUser, Content: "q"}},
+				Model: "gemini-4-argon", Messages: []chat.Message{{Role: chat.RoleUser, Content: "q"}},
+				ProviderOptions: map[string]any{"gemini": interactionsOptions{Background: tt.background}},
 			})
 			if !reflect.DeepEqual(calls, tt.calls) {
 				t.Errorf("calls = %v, want %v", calls, tt.calls)
@@ -203,14 +217,14 @@ func TestInteractionsStream(t *testing.T) {
 		`{"event_type":"interaction.completed","event_id":"e10","interaction":{"id":"i1","status":"requires_action","usage":{"total_tokens":7}}}`,
 	}
 	tests := []struct {
-		name      string
-		maxTokens int
-		dropAfter int // first connection ends after this many events
-		wantCalls []string
+		name       string
+		background bool
+		dropAfter  int // first connection ends after this many events
+		wantCalls  []string
 	}{
 		{name: "foreground", dropAfter: len(events), wantCalls: []string{"POST /v1beta/interactions?"}},
 		{
-			name: "background resumes after drop", maxTokens: 100000, dropAfter: 5,
+			name: "background resumes after drop", background: true, dropAfter: 5,
 			wantCalls: []string{
 				"POST /v1beta/interactions?",
 				"GET /v1beta/interactions/i1?last_event_id=e5&stream=true",
@@ -238,7 +252,8 @@ func TestInteractionsStream(t *testing.T) {
 				}
 			})
 			s, err := p.ChatStream(context.Background(), chat.Request{
-				Model: "m", MaxTokens: tt.maxTokens, Messages: []chat.Message{{Role: chat.RoleUser, Content: "q"}},
+				Model: "m", Messages: []chat.Message{{Role: chat.RoleUser, Content: "q"}},
+				ProviderOptions: map[string]any{"gemini": interactionsOptions{Background: tt.background}},
 			})
 			if err != nil {
 				t.Fatal(err)

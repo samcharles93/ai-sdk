@@ -366,14 +366,34 @@ func geminiClass() ProviderClass {
 	}
 }
 
+// geminiInteractionsClass serves chat through the Interactions API and
+// embeddings through the native embed endpoint.
 func geminiInteractionsClass() ProviderClass {
 	return simpleClass{
 		name: "gemini-interactions",
-		caps: []Capability{CapabilityChat},
-		buildChat: func(apiKey, baseURL string, httpClient *http.Client) (chat.Provider, error) {
-			return gemini.NewInteractions(gemini.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient})
+		caps: []Capability{CapabilityChat, CapabilityEmbed},
+		build: func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error) {
+			cfg := gemini.Config{APIKey: apiKey, BaseURL: baseURL, HTTPClient: httpClient}
+			chatProvider, err := gemini.NewInteractions(cfg)
+			if err != nil {
+				return nil, err
+			}
+			embedProvider, err := gemini.New(cfg)
+			if err != nil {
+				return nil, err
+			}
+			return geminiInteractionsSet{Interactions: chatProvider, embedder: embedProvider}, nil
 		},
 	}
+}
+
+type geminiInteractionsSet struct {
+	*gemini.Interactions
+	embedder *gemini.Provider
+}
+
+func (s geminiInteractionsSet) Embed(ctx context.Context, req embed.Request) (embed.Response, error) {
+	return s.embedder.Embed(ctx, req)
 }
 
 func groqClass() ProviderClass {

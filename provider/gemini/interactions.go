@@ -32,9 +32,10 @@ const (
 //
 // Requests are stateless: the full history is sent as steps with store
 // disabled, and model steps are replayed verbatim through message provider
-// options so thought signatures survive. Requests above 65,536 output tokens
-// (long decode) must run in the background with storage enabled; those
-// interactions are deleted once their result has been read.
+// options so thought signatures survive. Long decode is opt-in through the
+// "background" provider option, which runs a stored background interaction
+// that is deleted once its result has been read. Without it, MaxTokens is
+// clamped to the 65,536 foreground limit with a warning.
 type Interactions struct {
 	apiKey       string
 	baseURL      string
@@ -58,6 +59,9 @@ var _ chat.Provider = (*Interactions)(nil)
 
 // interactionsOptions is the request provider-options bucket "gemini".
 type interactionsOptions struct {
+	// Background runs the request as a stored background interaction,
+	// required for long decode (max_output_tokens above 65,536).
+	Background        bool   `json:"background,omitempty"`
 	ThinkingLevel     string `json:"thinking_level,omitempty"`
 	ThinkingSummaries string `json:"thinking_summaries,omitempty"`
 }
@@ -212,7 +216,7 @@ func assistantSteps(m chat.Message) ([]json.RawMessage, error) {
 	return raw, nil
 }
 
-func (p *Interactions) buildBody(req chat.Request, stream bool) (map[string]any, error) {
+func (p *Interactions) buildBody(req chat.Request, stream bool) (map[string]any, []chat.Warning, error) {
 	var system []string
 	var input []any
 	toolNames := map[string]string{}
@@ -228,7 +232,7 @@ func (p *Interactions) buildBody(req chat.Request, stream bool) (map[string]any,
 			}
 			steps, err := assistantSteps(m)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			for _, s := range steps {
 				input = append(input, s)
@@ -255,10 +259,6 @@ func (p *Interactions) buildBody(req chat.Request, stream bool) (map[string]any,
 	if stream {
 		body["stream"] = true
 	}
-	if req.MaxTokens > maxForegroundOutputTokens {
-		body["background"] = true
-		body["store"] = true
-	}
 	if len(system) > 0 {
 		body["system_instruction"] = strings.Join(system, "\n")
 	}
@@ -277,9 +277,25 @@ func (p *Interactions) buildBody(req chat.Request, stream bool) (map[string]any,
 		body["tools"] = tools
 	}
 
+	opts, err := chat.ProviderOptionsFor[interactionsOptions](req.ProviderOptions, "gemini")
+	if err != nil {
+		return nil, nil, err
+	}
+	var warnings []chat.Warning
+	maxTokens := req.MaxTokens
+	if opts.Background {
+		body["background"] = true
+		body["store"] = true
+	} else if maxTokens > maxForegroundOutputTokens {
+		maxTokens = maxForegroundOutputTokens
+		warnings = append(warnings, chat.Warning{
+			Type:    "clamped-option",
+			Message: fmt.Sprintf("gemini: max_output_tokens %d clamped to %d; set provider option background for long decode", req.MaxTokens, maxForegroundOutputTokens),
+		})
+	}
 	gen := map[string]any{}
-	if req.MaxTokens != 0 {
-		gen["max_output_tokens"] = req.MaxTokens
+	if maxTokens != 0 {
+		gen["max_output_tokens"] = maxTokens
 	}
 	if req.Temperature != 0 && req.ModelInfo.TemperatureSupported() {
 		gen["temperature"] = req.Temperature
@@ -289,10 +305,6 @@ func (p *Interactions) buildBody(req chat.Request, stream bool) (map[string]any,
 	}
 	if len(req.Stop) > 0 {
 		gen["stop_sequences"] = req.Stop
-	}
-	opts, err := chat.ProviderOptionsFor[interactionsOptions](req.ProviderOptions, "gemini")
-	if err != nil {
-		return nil, err
 	}
 	if opts.ThinkingLevel != "" {
 		gen["thinking_level"] = opts.ThinkingLevel
@@ -310,19 +322,19 @@ func (p *Interactions) buildBody(req chat.Request, stream bool) (map[string]any,
 			gen["tool_choice"] = "any"
 		case chat.ToolChoiceTool:
 			if req.ToolChoice.Name == "" {
-				return nil, fmt.Errorf("ToolChoiceTool requires Name: %w", chat.ErrInvalidRequest)
+				return nil, nil, fmt.Errorf("ToolChoiceTool requires Name: %w", chat.ErrInvalidRequest)
 			}
 			gen["tool_choice"] = map[string]any{
 				"allowed_tools": map[string]any{"mode": "any", "tools": []string{req.ToolChoice.Name}},
 			}
 		default:
-			return nil, fmt.Errorf("unknown ToolChoice type %q: %w", req.ToolChoice.Type, chat.ErrInvalidRequest)
+			return nil, nil, fmt.Errorf("unknown ToolChoice type %q: %w", req.ToolChoice.Type, chat.ErrInvalidRequest)
 		}
 	}
 	if len(gen) > 0 {
 		body["generation_config"] = gen
 	}
-	return body, nil
+	return body, warnings, nil
 }
 
 func validate(req chat.Request) error {
@@ -406,7 +418,7 @@ func (p *Interactions) Chat(ctx context.Context, req chat.Request) (chat.Respons
 	if err := validate(req); err != nil {
 		return chat.Response{}, err
 	}
-	body, err := p.buildBody(req, false)
+	body, warnings, err := p.buildBody(req, false)
 	if err != nil {
 		return chat.Response{}, fmt.Errorf("gemini: %w", err)
 	}
@@ -429,7 +441,9 @@ func (p *Interactions) Chat(ctx context.Context, req chat.Request) (chat.Respons
 			ix = next
 		}
 	}
-	return interactionResponse(req.Model, ix)
+	resp, err := interactionResponse(req.Model, ix)
+	resp.Warnings = warnings
+	return resp, err
 }
 
 func interactionResponse(model string, ix ixInteraction) (chat.Response, error) {
@@ -527,7 +541,7 @@ func (p *Interactions) ChatStream(ctx context.Context, req chat.Request) (chat.S
 	if err := validate(req); err != nil {
 		return nil, err
 	}
-	body, err := p.buildBody(req, true)
+	body, warnings, err := p.buildBody(req, true)
 	if err != nil {
 		return nil, fmt.Errorf("gemini: %w", err)
 	}
@@ -537,7 +551,7 @@ func (p *Interactions) ChatStream(ctx context.Context, req chat.Request) (chat.S
 	}
 	return &ixStream{
 		p: p, resp: resp, reader: bufio.NewReader(resp.Body),
-		background: body["background"] == true, toolIndex: map[int]int{}, steps: map[int]*ixStepAcc{},
+		background: body["background"] == true, warnings: warnings, toolIndex: map[int]int{}, steps: map[int]*ixStepAcc{},
 	}, nil
 }
 
@@ -576,6 +590,7 @@ type ixStream struct {
 	resp        *http.Response
 	reader      *bufio.Reader
 	background  bool
+	warnings    []chat.Warning
 	id          string
 	lastEventID string
 	reconnects  int
@@ -633,6 +648,7 @@ func (s *ixStream) Next(ctx context.Context) (chat.Chunk, error) {
 			return chat.Chunk{}, err
 		}
 		if emit {
+			chunk.Warnings, s.warnings = s.warnings, nil
 			return chunk, nil
 		}
 	}

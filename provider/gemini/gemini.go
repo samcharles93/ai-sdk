@@ -47,7 +47,8 @@ func New(cfg Config) (*Provider, error) {
 	if base == "" {
 		base = defaultBaseURL
 	}
-	base = strings.TrimRight(base, "/")
+	// Catalog base URLs carry the API version; paths add it themselves.
+	base = strings.TrimSuffix(strings.TrimRight(base, "/"), "/v1beta")
 	hc := cfg.HTTPClient
 	if hc == nil {
 		hc = &http.Client{}

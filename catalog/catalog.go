@@ -487,9 +487,9 @@ func mergeCatalogModel(base, override Model) Model {
 // the Runtime select a class automatically for known providers.
 //
 // Alignment rules:
-//   - "@ai-sdk/google" maps to "gemini" because models.dev publishes Google as
-//     provider "google" with npm package "@ai-sdk/google", while the native
-//     class in this SDK is registered as "gemini".
+//   - "@ai-sdk/google" maps to "gemini-interactions": Gemini 3.x and later
+//     need thought signatures replayed across tool turns, which only the
+//     Interactions transport does.
 //   - Entries are pruned when models.dev stops publishing a package: deepseek
 //     now advertises "@ai-sdk/openai-compatible", ollama-cloud uses
 //     "@ai-sdk/openai-compatible", and Google uses "@ai-sdk/google", so
@@ -500,7 +500,7 @@ var NPMClassMapping = map[string]string{
 	"@ai-sdk/anthropic":         "anthropic",
 	"@ai-sdk/azure":             "azure",
 	"@ai-sdk/cohere":            "cohere",
-	"@ai-sdk/google":            "gemini",
+	"@ai-sdk/google":            "gemini-interactions",
 	"@ai-sdk/groq":              "groq",
 	"@ai-sdk/mistral":           "mistral",
 	"@ai-sdk/perplexity":        "perplexity",
