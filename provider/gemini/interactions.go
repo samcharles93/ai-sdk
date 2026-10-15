@@ -697,12 +697,10 @@ func (s *ixStream) apply(ev ixEvent) (chat.Chunk, bool, error) {
 		if acc.step.Type == "function_call" {
 			idx := len(s.toolIndex)
 			s.toolIndex[ev.Index] = idx
+			// Arguments on the start step may be a placeholder ("{}") that
+			// arguments_delta events then replace, so they are held back and
+			// sent only if no delta arrives (see complete).
 			delta := chat.ToolCallDelta{Index: idx, ID: acc.step.ID, Name: acc.step.Name}
-			if len(acc.step.Arguments) > 0 {
-				delta.ArgsDelta = string(acc.step.Arguments)
-				acc.args.Write(acc.step.Arguments)
-				acc.step.Arguments = nil
-			}
 			return chat.Chunk{Role: chat.RoleAssistant, ToolCallDeltas: []chat.ToolCallDelta{delta}}, true, nil
 		}
 	case "step.delta":
@@ -743,6 +741,7 @@ func (s *ixStream) applyDelta(ev ixEvent) (chat.Chunk, bool, error) {
 		acc.step.Signature += d.Signature
 		return chat.Chunk{}, false, nil
 	case "arguments_delta":
+		acc.step.Arguments = nil
 		acc.args.WriteString(d.Arguments)
 		chunk.ToolCallDeltas = []chat.ToolCallDelta{{Index: s.toolIndex[ev.Index], ArgsDelta: d.Arguments}}
 	default:
@@ -769,7 +768,12 @@ func (s *ixStream) complete(ix *ixInteraction) (chat.Chunk, bool, error) {
 	chunk.FinishReason = finishReason(s.status, len(s.toolIndex) > 0)
 	replay := make([]json.RawMessage, 0, len(s.order))
 	for _, idx := range s.order {
-		replay = append(replay, s.steps[idx].raw())
+		acc := s.steps[idx]
+		if acc.step.Type == "function_call" && acc.args.Len() == 0 && len(acc.step.Arguments) > 0 {
+			acc.args.Write(acc.step.Arguments)
+			chunk.ToolCallDeltas = append(chunk.ToolCallDeltas, chat.ToolCallDelta{Index: s.toolIndex[idx], ArgsDelta: string(acc.step.Arguments)})
+		}
+		replay = append(replay, acc.raw())
 	}
 	if len(replay) > 0 {
 		chunk.ProviderMetadata = map[string]any{"gemini": interactionsMessageOptions{InteractionSteps: replay}}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -296,6 +297,64 @@ func TestInteractionsStream(t *testing.T) {
 			}
 			if !reflect.DeepEqual(calls, tt.wantCalls) {
 				t.Errorf("calls = %v, want %v", calls, tt.wantCalls)
+			}
+		})
+	}
+}
+
+// TestInteractionsStreamToolArguments pins how a function call's arguments
+// are assembled: a start step may carry a placeholder that deltas replace,
+// or carry the whole arguments with no deltas.
+func TestInteractionsStreamToolArguments(t *testing.T) {
+	start := func(args string) string {
+		return `{"event_type":"step.start","event_id":"e1","index":0,"step":{"type":"function_call","id":"c1","name":"f"` + args + `}}`
+	}
+	delta := func(id, args string) string {
+		return `{"event_type":"step.delta","event_id":"` + id + `","index":0,"delta":{"type":"arguments_delta","arguments":` + strconv.Quote(args) + `}}`
+	}
+	done := `{"event_type":"interaction.completed","event_id":"e9","interaction":{"id":"i1","status":"requires_action"}}`
+	tests := []struct {
+		name   string
+		events []string
+		want   string
+	}{
+		{"placeholder replaced by deltas", []string{start(`,"arguments":{}`), delta("e2", `{"path":`), delta("e3", `"/w"}`), done}, `{"path":"/w"}`},
+		{"whole arguments on start", []string{start(`,"arguments":{"path":"/w"}`), done}, `{"path":"/w"}`},
+		{"deltas only", []string{start(""), delta("e2", `{"path":"/w"}`), done}, `{"path":"/w"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newTestInteractions(t, func(w http.ResponseWriter, _ *http.Request) {
+				for _, e := range tt.events {
+					_, _ = io.WriteString(w, "event: x\ndata: "+e+"\n\n")
+				}
+				_, _ = io.WriteString(w, "event: done\ndata: [DONE]\n\n")
+			})
+			s, err := p.ChatStream(context.Background(), chat.Request{Model: "m", Messages: []chat.Message{{Role: chat.RoleUser, Content: "q"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = s.Close() }()
+			var deltas []chat.ToolCallDelta
+			var last chat.Chunk
+			for {
+				c, err := s.Next(context.Background())
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				deltas = append(deltas, c.ToolCallDeltas...)
+				last = c
+			}
+			calls := chat.AssembleToolCalls(deltas)
+			if len(calls) != 1 || calls[0].Arguments != tt.want {
+				t.Fatalf("calls = %+v, want arguments %s", calls, tt.want)
+			}
+			steps := last.ProviderMetadata["gemini"].(interactionsMessageOptions).InteractionSteps
+			if want := `{"type":"function_call","id":"c1","name":"f","arguments":` + tt.want + `}`; len(steps) != 1 || string(steps[0]) != want {
+				t.Errorf("replay = %s, want %s", steps, want)
 			}
 		})
 	}
