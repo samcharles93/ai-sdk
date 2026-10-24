@@ -246,8 +246,11 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 			body["tool_choice"] = "auto"
 		case chat.ToolChoiceNone:
 			body["tool_choice"] = "none"
+		// DeepSeek answers 400 to a required or named tool_choice in
+		// thinking mode, its default, so those requests turn it off.
 		case chat.ToolChoiceRequired:
 			body["tool_choice"] = "required"
+			body["thinking"] = map[string]any{"type": "disabled"}
 		case chat.ToolChoiceTool:
 			if req.ToolChoice.Name == "" {
 				return nil, nil, fmt.Errorf("deepseek: tool_choice type=tool requires Name: %w", chat.ErrInvalidRequest)
@@ -256,6 +259,7 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 				"type":     "function",
 				"function": map[string]any{"name": req.ToolChoice.Name},
 			}
+			body["thinking"] = map[string]any{"type": "disabled"}
 		default:
 			return nil, nil, fmt.Errorf("deepseek: unknown tool_choice type %q: %w", req.ToolChoice.Type, chat.ErrInvalidRequest)
 		}

@@ -127,6 +127,9 @@ func TestChat_ToolChoice(t *testing.T) {
 		choice  *chat.ToolChoice
 		wantKey bool
 		check   func(t *testing.T, v any)
+		// noThinking: the request must turn thinking mode off, which
+		// DeepSeek requires for a forced tool choice.
+		noThinking bool
 	}
 	cases := []tcase{
 		{
@@ -157,7 +160,7 @@ func TestChat_ToolChoice(t *testing.T) {
 		{
 			name:    "required",
 			choice:  &chat.ToolChoice{Type: chat.ToolChoiceRequired},
-			wantKey: true,
+			wantKey: true, noThinking: true,
 			check: func(t *testing.T, v any) {
 				if v != "required" {
 					t.Errorf("tool_choice = %v", v)
@@ -167,7 +170,7 @@ func TestChat_ToolChoice(t *testing.T) {
 		{
 			name:    "specific-tool",
 			choice:  &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "get_weather"},
-			wantKey: true,
+			wantKey: true, noThinking: true,
 			check: func(t *testing.T, v any) {
 				m, ok := v.(map[string]any)
 				if !ok {
@@ -209,6 +212,10 @@ func TestChat_ToolChoice(t *testing.T) {
 			}
 			if c.check != nil {
 				c.check(t, v)
+			}
+			thinking, _ := body["thinking"].(map[string]any)
+			if off := thinking["type"] == "disabled"; off != c.noThinking {
+				t.Errorf("thinking disabled = %v, want %v (thinking=%v)", off, c.noThinking, body["thinking"])
 			}
 		})
 	}
