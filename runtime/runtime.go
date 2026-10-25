@@ -599,6 +599,17 @@ func (r *Runtime) providerSetFor(ctx context.Context, providerID string, model M
 // buildProviderConfig constructs a ProviderConfig for a provider ID using
 // the runtime configuration first, then falling back to the catalog.
 func (r *Runtime) buildProviderConfig(providerID string) (ProviderConfig, error) {
+	cfg, err := r.resolveProviderConfig(providerID)
+	if err != nil {
+		return ProviderConfig{}, err
+	}
+	if cfg.Transport == nil {
+		cfg.Transport = r.config.HTTPTransport
+	}
+	return cfg, nil
+}
+
+func (r *Runtime) resolveProviderConfig(providerID string) (ProviderConfig, error) {
 	id := catalog.NormaliseProviderID(providerID)
 	if cfg, ok := r.config.ProviderByID(id); ok {
 		return r.enrichFromCatalog(cfg), nil

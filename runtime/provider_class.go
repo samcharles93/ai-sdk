@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -63,6 +64,10 @@ type ProviderConfig struct {
 	// greater than zero opt in to a timeout; zero leaves requests unlimited so
 	// callers can control cancellation through context deadlines.
 	Timeout int
+
+	// Transport carries this provider's HTTP requests. Nil falls back to
+	// Config.HTTPTransport, then http.DefaultTransport.
+	Transport http.RoundTripper `json:"-"`
 
 	// Options carries class-specific options as a generic map. Classes
 	// read only the keys they understand.

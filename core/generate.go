@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/samcharles93/ai-sdk/chat"
 )
 
@@ -68,6 +71,12 @@ type GenerateOptions struct {
 	// fire for every Chat / ChatStream invocation; nil resp with a
 	// non-nil err indicates a provider failure.
 	ModelHooks []ModelHook
+	// TracerProvider supplies the OpenTelemetry tracer for model-call and
+	// tool-call spans. Nil uses the global provider.
+	TracerProvider trace.TracerProvider
+	// MeterProvider supplies the OpenTelemetry meter for gen_ai client
+	// metrics. Nil uses the global provider.
+	MeterProvider metric.MeterProvider
 }
 
 // GenerateText performs a non-streaming text generation with optional
@@ -81,6 +90,8 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 		return GenerateResult{}, ErrNoProvider
 	}
 
+	tel := telemetryFor(opts)
+	ctx = withTelemetry(ctx, tel)
 	stop := effectiveStopCondition(opts)
 	messages := buildBaseMessages(opts)
 	wireTools := toolsToChat(opts.Tools)
@@ -123,8 +134,10 @@ func GenerateText(ctx context.Context, provider chat.Provider, opts GenerateOpti
 
 		fireModelStarted(ctx, opts.ModelHooks, req)
 		chatStart := time.Now()
-		resp, err := provider.Chat(ctx, req)
+		callCtx, call := tel.startModelCall(ctx, provider.Name(), req.Model)
+		resp, err := provider.Chat(callCtx, req)
 		chatLatency := time.Since(chatStart)
+		call.end(callCtx, resp.ID, resp.Model, resp.FinishReason, resp.Usage, err)
 		var respPtr *chat.Response
 		var usagePtr *chat.Usage
 		if err == nil {

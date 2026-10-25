@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/samcharles93/ai-sdk/image"
-	"github.com/samcharles93/ai-sdk/telemetry"
 )
 
 // stubEditor is a configurable image.Editor for middleware tests.
@@ -70,9 +69,7 @@ func TestRetryImageEdit_NonRetryableStops(t *testing.T) {
 func TestChainImageEdit_Composes(t *testing.T) {
 	ed := &stubEditor{name: "xai"}
 	wrapped := ChainImageEdit(
-		func(next image.Editor) image.Editor {
-			return NewTelemetryImageEditMiddleware(next, telemetry.NoopTracer{})
-		},
+		func(next image.Editor) image.Editor { return next },
 		RetryImageEdit(RetryConfig{MaxAttempts: 1}, ExponentialBackoff{BaseDelay: time.Nanosecond}, DefaultRetryableError),
 	)(ed)
 

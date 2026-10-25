@@ -174,7 +174,9 @@ func runToolCall(ctx context.Context, call ToolCall, set ToolSet, hooks []ToolHo
 		case tool.Execute == nil:
 			res.Error = fmt.Errorf("%w: tool %q has no Execute function", ErrToolExecutionFailed, call.ToolName).Error()
 		default:
-			out, err := safeToolExecute(ctx, call, tool)
+			toolCtx, endSpan := startToolCall(ctx, call)
+			out, err := safeToolExecute(toolCtx, call, tool)
+			endSpan(err)
 			if err != nil {
 				res.Error = err.Error()
 			} else {

@@ -561,8 +561,9 @@ func speechMaxInputChars(options, extra map[string]any, fallback int) int {
 }
 
 func (cfg ProviderConfig) httpClient() *http.Client {
-	if cfg.Timeout <= 0 {
-		return &http.Client{}
+	c := &http.Client{Transport: cfg.Transport}
+	if cfg.Timeout > 0 {
+		c.Timeout = time.Duration(cfg.Timeout) * time.Millisecond
 	}
-	return &http.Client{Timeout: time.Duration(cfg.Timeout) * time.Millisecond}
+	return c
 }

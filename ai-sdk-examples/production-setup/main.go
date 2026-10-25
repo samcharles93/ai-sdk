@@ -1,5 +1,5 @@
 // Command production-setup demonstrates a production-ready provider
-// pipeline using middleware: telemetry tracing, automatic retry with
+// pipeline using middleware: automatic retry with
 // exponential backoff, and circuit breaker protection.
 //
 //	Usage:
@@ -16,7 +16,6 @@ import (
 	"github.com/samcharles93/ai-sdk/core"
 	"github.com/samcharles93/ai-sdk/middleware"
 	"github.com/samcharles93/ai-sdk/provider/openai"
-	"github.com/samcharles93/ai-sdk/telemetry"
 )
 
 func main() {
@@ -42,8 +41,8 @@ func run() error {
 		return fmt.Errorf("create openai provider: %w", err)
 	}
 
-	// Pipeline: Telemetry → Retry → CircuitBreaker → Provider
-	tracer := telemetry.DefaultTracer
+	// Pipeline: Retry → CircuitBreaker → Provider. core emits OpenTelemetry
+	// spans for every model call using the global providers.
 
 	retryCfg := middleware.RetryConfig{MaxAttempts: 3}
 	backoff := middleware.ExponentialBackoff{
@@ -61,15 +60,12 @@ func run() error {
 
 	// ChainChat composes ChatMiddleware left-to-right. The first
 	// middleware becomes outermost; the last is closest to the provider.
-	// TelemetryMiddleware is a concrete chat.Provider wrapper, so it
-	// sits outside the chain.
 	chain := middleware.ChainChat(
 		middleware.RetryChat(retryCfg, backoff, middleware.DefaultRetryableError),
 		middleware.CircuitBreakerChat(cbCfg),
 	)
 
-	wrapped := chain(base)
-	finalProvider := middleware.NewTelemetryMiddleware(wrapped, tracer)
+	finalProvider := chain(base)
 
 	ctx := context.Background()
 	result, err := core.GenerateText(ctx, finalProvider, core.GenerateOptions{

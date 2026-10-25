@@ -194,7 +194,7 @@ Outer layers depend on inner layers, never the reverse.
 │  Middleware      middleware/          │  Provider wrappers
 │  Infrastructure  registry/, schema/, │
 │                  util/, upload/, error/,  │
-│                  logger/, telemetry/,     │
+│                  logger/,     │
 │                  prompt/                  │
 │  Domain          chat/, embed/,       │  Interfaces + types (stdlib only)
 │  Providers       provider/*/          │  Wire implementations

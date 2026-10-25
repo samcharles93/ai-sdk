@@ -57,9 +57,9 @@ Onion model; dependencies point inward only.
 | Layer | Packages | May import |
 | --- | --- | --- |
 | Domain | `chat`, `embed`, `image`, `speech`, `transcribe`, `object`, `video`, `rerank`, `music`, `decide` | stdlib only |
-| Infrastructure | `error`, `util`, `schema`, `logger`, `telemetry`, `prompt`, `catalog`, `upload`, `registry` | stdlib, plus domain types for `upload` and `registry` |
+| Infrastructure | `error`, `util`, `schema`, `logger`, `prompt`, `catalog`, `upload`, `registry` | stdlib, plus domain types for `upload` and `registry` |
 | Providers | `provider/*` | domain packages, infrastructure |
-| Middleware | `middleware` | domain, `telemetry`, `logger`, `error` |
+| Middleware | `middleware` | domain, `logger`, `error` |
 | Services | `core` | domain |
 | Agent | `agent` | `core`, domain |
 | Runtime | `runtime` | domain, providers, `core`, `catalog` |

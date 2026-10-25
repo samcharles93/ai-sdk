@@ -5,10 +5,9 @@ type ChatMiddleware func(next chat.Provider) chat.Provider
 func ChainChat(ms ...ChatMiddleware) ChatMiddleware // first middleware is outermost
 ```
 
-- `TelemetryMiddleware` — wraps provider with OTel spans for Chat/ChatStream
 - `ChatRequestHook` / `ChatResponseHook` — interception points
 - Generation domains have per-domain wrappers (`retry_image`,
-  `telemetry_video`, `circuitbreaker_object`, `rerank`, etc.); image editing has
+  `circuitbreaker_object`, `rerank`, etc.); image editing has
   `*_image_edit` wrappers.
 
 Speech streaming uses `ChainSpeechStream`: end telemetry spans on Close,

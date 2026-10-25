@@ -83,6 +83,8 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 		defer close(src)
 		defer close(done)
 
+		tel := telemetryFor(opts)
+		ctx := withTelemetry(ctx, tel)
 		stop := effectiveStopCondition(opts)
 		messages := buildBaseMessages(opts)
 		wireTools := toolsToChat(opts.Tools)
@@ -129,8 +131,10 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 
 			fireModelStarted(ctx, opts.ModelHooks, req)
 			chatStart := time.Now()
-			stream, err := provider.ChatStream(ctx, req)
+			callCtx, call := tel.startModelCall(ctx, provider.Name(), req.Model)
+			stream, err := provider.ChatStream(callCtx, req)
 			if err != nil {
+				call.end(callCtx, "", "", "", chat.Usage{}, err)
 				chatLatency := time.Since(chatStart)
 				fireModelFinished(ctx, opts.ModelHooks, req, nil, err, chatLatency, nil)
 				runErr = err
@@ -158,10 +162,11 @@ func StreamText(ctx context.Context, provider chat.Provider, opts GenerateOption
 			streamErr := func() (terminalErr error) {
 				defer func() {
 					_ = stream.Close()
+					call.end(callCtx, "", "", stepReason, stepUsage, terminalErr)
 					fireModelFinished(ctx, opts.ModelHooks, req, nil, terminalErr, time.Since(chatStart), &stepUsage)
 				}()
 				for {
-					chunk, cerr := stream.Next(ctx)
+					chunk, cerr := stream.Next(callCtx)
 					if errors.Is(cerr, io.EOF) {
 						break
 					}

@@ -66,3 +66,18 @@ func TestHealthCheck_SkipsWhenNotImplemented(t *testing.T) {
 		t.Errorf("Content = %q, want %q", resp.Content, "ok")
 	}
 }
+
+type stubProvider struct {
+	name   string
+	chatFn func(ctx context.Context, req chat.Request) (chat.Response, error)
+}
+
+func (p *stubProvider) Name() string { return p.name }
+
+func (p *stubProvider) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
+	return p.chatFn(ctx, req)
+}
+
+func (p *stubProvider) ChatStream(context.Context, chat.Request) (chat.Stream, error) {
+	return nil, errors.New("not implemented")
+}
