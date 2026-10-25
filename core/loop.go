@@ -16,51 +16,19 @@ import (
 // Errors from individual tool executions are recorded on the
 // corresponding ToolResult (Error field) and surfaced as the message
 // content fed back to the model — the loop does not abort on tool
-// errors. Models are expected to react to error outputs the same way
-// they react to ordinary tool outputs.
-//
-// A missing tool yields a ToolResult with Error set to a wrapped
-// [ErrToolNotFound]; the conversation continues so the model can
-// recover.
-//
-// maxParallel bounds how many calls run concurrently. One (or less)
-// preserves the strictly sequential behaviour; a higher value runs
-// independent calls in parallel, filling results[i]/msgs[i] by index so
-// the returned slice order is unaffected by completion order.
-//
-// The batch is truncated early only when ctx itself has ended — checked
-// directly, not inferred from a tool's returned error. A tool that owns an
-// inner deadline, or that wraps a cancelled downstream call, can return
-// context.Canceled or context.DeadlineExceeded while ctx is still live;
-// treating that as "the caller gave up" would drop the remaining calls and
-// their tool result messages, leaving the next provider request naming tool
-// calls with no matching response.
-// executeToolCalls runs each tool call from a model step against the
-// provided [ToolSet], returning [ToolResult]s in the same order as the
-// input calls and the [chat.Message]s that should be appended to the
-// conversation before the next step.
-//
-// Errors from individual tool executions are recorded on the
-// corresponding ToolResult (Error field) and surfaced as the message
-// content fed back to the model — the loop does not abort on tool
-// errors. Models are expected to react to error outputs the same way
-// they react to ordinary tool outputs.
-//
-// A missing tool yields a ToolResult with Error set to a wrapped
-// [ErrToolNotFound]; the conversation continues so the model can
-// recover.
+// errors. A missing tool yields a ToolResult with Error set to a wrapped
+// [ErrToolNotFound]; the conversation continues so the model can recover.
 //
 // hooks, when non-empty, run around every tool call (see [ToolHook]).
-// They may inspect/replace input, bypass execution with a Skip, deny
-// the call, or sanitise output. Panics in tool.Execute or in the hooks
-// themselves are recovered and surfaced as a typed [ToolPanicError]
-// in the corresponding ToolResult — they do not crash the run, even on
-// the parallel path.
+// Panics in tool.Execute or in the hooks are recovered and surfaced as a
+// typed [ToolPanicError] in the corresponding ToolResult, even on the
+// parallel path.
 //
-// maxParallel bounds how many calls run concurrently. One (or less)
-// preserves the strictly sequential behaviour; a higher value runs
-// independent calls in parallel, filling results[i]/msgs[i] by index so
-// the returned slice order is unaffected by completion order.
+// maxParallel bounds how many calls run concurrently. One (or less) runs
+// calls strictly in order. A higher value lets calls overlap as each tool's
+// [Tool.Concurrency] allows: an exclusive call waits for every earlier call
+// and holds back every later one, and calls sharing a key run in call order.
+// Results are filled by index, so their order never depends on completion.
 //
 // The batch is truncated early only when ctx itself has ended — checked
 // directly, not inferred from a tool's returned error. A tool that owns an
@@ -82,6 +50,7 @@ func executeToolCalls(ctx context.Context, calls []ToolCall, set ToolSet, hooks 
 
 	sem := make(chan struct{}, maxParallel)
 	var wg sync.WaitGroup
+	lastByKey := make(map[string]chan struct{})
 	spawned := 0
 
 spawnLoop:
@@ -92,6 +61,18 @@ spawnLoop:
 		if ctx.Err() != nil {
 			break spawnLoop
 		}
+		mode := callConcurrency(set, call)
+		if !mode.Parallel {
+			// Spawning is in call order, so waiting here orders an exclusive
+			// call after every earlier one and before every later one.
+			wg.Wait()
+			if ctx.Err() != nil {
+				break spawnLoop
+			}
+			results[i], msgs[i] = runToolCall(ctx, call, set, hooks)
+			spawned++
+			continue
+		}
 		select {
 		case sem <- struct{}{}:
 		case <-ctx.Done():
@@ -99,10 +80,22 @@ spawnLoop:
 			// finish (they observe ctx) and are included below.
 			break spawnLoop
 		}
+		var prev, done chan struct{}
+		if mode.Key != "" {
+			prev = lastByKey[mode.Key]
+			done = make(chan struct{})
+			lastByKey[mode.Key] = done
+		}
 		wg.Add(1)
 		go func(i int, call ToolCall) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			if done != nil {
+				defer close(done)
+			}
+			if prev != nil {
+				<-prev
+			}
 			results[i], msgs[i] = runToolCall(ctx, call, set, hooks)
 		}(i, call)
 		spawned++
@@ -112,13 +105,28 @@ spawnLoop:
 	return results[:spawned], msgs[:spawned]
 }
 
+// callConcurrency resolves how call may overlap others. A tool without a
+// Concurrency function, or whose function panics, runs exclusively; a call
+// to a missing tool only produces an error result, so it may overlap.
+func callConcurrency(set ToolSet, call ToolCall) (mode Concurrency) {
+	tool, ok := set[call.ToolName]
+	if !ok || tool == nil {
+		return Concurrency{Parallel: true}
+	}
+	if tool.Concurrency == nil {
+		return Concurrency{}
+	}
+	defer func() {
+		if recover() != nil {
+			mode = Concurrency{}
+		}
+	}()
+	return tool.Concurrency(call.Input)
+}
+
 // executeToolCallsSequential runs calls one at a time, checking ctx between
 // calls so a cancelled caller truncates the batch at the first unstarted
 // call.
-// executeToolCallsSequential runs calls one at a time, checking ctx between
-// calls so a cancelled caller truncates the batch at the first unstarted
-// call. hooks are forwarded to runToolCall — see [executeToolCalls] for
-// the hook chain semantics.
 func executeToolCallsSequential(ctx context.Context, calls []ToolCall, set ToolSet, hooks []ToolHook) ([]ToolResult, []chat.Message) {
 	results := make([]ToolResult, len(calls))
 	msgs := make([]chat.Message, len(calls))
@@ -131,9 +139,6 @@ func executeToolCallsSequential(ctx context.Context, calls []ToolCall, set ToolS
 	return results, msgs
 }
 
-// runToolCall executes a single tool call and builds its ToolResult and the
-// tool message fed back to the model. It is shared by the sequential and
-// parallel paths so they behave identically per call.
 // runToolCall executes a single tool call and builds its ToolResult and the
 // tool message fed back to the model. It is shared by the sequential and
 // parallel paths so they behave identically per call.

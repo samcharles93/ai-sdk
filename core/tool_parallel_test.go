@@ -24,6 +24,7 @@ func TestExecuteToolCallsRunsConcurrently(t *testing.T) {
 	for i := range n {
 		name := fmt.Sprintf("t%d", i)
 		set[name] = &Tool{
+			Concurrency: RunParallel,
 			Execute: func(context.Context, string) (string, error) {
 				entered <- struct{}{}
 				<-release
@@ -58,11 +59,11 @@ func TestExecuteToolCallsRunsConcurrently(t *testing.T) {
 // stay in call order even when a later call finishes first.
 func TestExecuteToolCallsParallelPreservesOrder(t *testing.T) {
 	set := ToolSet{
-		"slow": &Tool{Execute: func(context.Context, string) (string, error) {
+		"slow": &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) {
 			time.Sleep(50 * time.Millisecond)
 			return "slow-out", nil
 		}},
-		"fast": &Tool{Execute: func(context.Context, string) (string, error) {
+		"fast": &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) {
 			return "fast-out", nil
 		}},
 	}
@@ -87,8 +88,8 @@ func TestExecuteToolCallsParallelPreservesOrder(t *testing.T) {
 // error without affecting the others.
 func TestExecuteToolCallsParallelFailingCall(t *testing.T) {
 	set := ToolSet{
-		"fail": &Tool{Execute: func(context.Context, string) (string, error) { return "", errors.New("boom") }},
-		"ok":   &Tool{Execute: func(context.Context, string) (string, error) { return "good", nil }},
+		"fail": &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) { return "", errors.New("boom") }},
+		"ok":   &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) { return "good", nil }},
 	}
 	calls := []ToolCall{
 		{ToolCallID: "0", ToolName: "fail"},
@@ -109,8 +110,8 @@ func TestExecuteToolCallsParallelFailingCall(t *testing.T) {
 // mistaken for the caller's context ending, so the batch stays full.
 func TestExecuteToolCallsParallelToolCancelDoesNotTruncate(t *testing.T) {
 	set := ToolSet{
-		"slow": &Tool{Execute: func(context.Context, string) (string, error) { return "", context.Canceled }},
-		"fast": &Tool{Execute: func(context.Context, string) (string, error) { return "ok", nil }},
+		"slow": &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) { return "", context.Canceled }},
+		"fast": &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) { return "ok", nil }},
 	}
 	calls := []ToolCall{
 		{ToolCallID: "0", ToolName: "slow"},
@@ -133,7 +134,7 @@ func TestExecuteToolCallsParallelCancelledContext(t *testing.T) {
 	cancel()
 
 	set := ToolSet{
-		"t": &Tool{Execute: func(context.Context, string) (string, error) { return "x", nil }},
+		"t": &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) { return "x", nil }},
 	}
 	calls := []ToolCall{{ToolCallID: "0", ToolName: "t"}, {ToolCallID: "1", ToolName: "t"}}
 
@@ -147,8 +148,8 @@ func TestExecuteToolCallsParallelCancelledContext(t *testing.T) {
 // value of MaxParallelToolCalls) routes to the sequential path.
 func TestExecuteToolCallsParallelDefaultSequential(t *testing.T) {
 	set := ToolSet{
-		"a": &Tool{Execute: func(context.Context, string) (string, error) { return "a", nil }},
-		"b": &Tool{Execute: func(context.Context, string) (string, error) { return "b", nil }},
+		"a": &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) { return "a", nil }},
+		"b": &Tool{Concurrency: RunParallel, Execute: func(context.Context, string) (string, error) { return "b", nil }},
 	}
 	calls := []ToolCall{{ToolCallID: "0", ToolName: "a"}, {ToolCallID: "1", ToolName: "b"}}
 

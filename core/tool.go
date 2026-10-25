@@ -22,7 +22,26 @@ type Tool struct {
 	// It receives the JSON-encoded input arguments and returns the tool's
 	// output verbatim, or an error.
 	Execute func(ctx context.Context, input string) (output string, err error) `json:"-"`
+	// Concurrency reports how a call with this input may overlap other
+	// calls in the same step when parallel tool calls are enabled. Nil runs
+	// every call exclusively, so a tool is parallel only by declaration.
+	Concurrency func(input string) Concurrency `json:"-"`
 }
+
+// Concurrency is how one tool call may overlap others in a parallel batch.
+// The zero value is exclusive: the call waits for every earlier call and
+// every later call waits for it.
+type Concurrency struct {
+	// Parallel lets the call overlap other parallel calls.
+	Parallel bool
+	// Key orders parallel calls that touch the same resource, such as a
+	// file path: calls sharing a key run one at a time in call order.
+	Key string
+}
+
+// RunParallel is a Concurrency function for tools that are safe to run
+// alongside anything.
+func RunParallel(string) Concurrency { return Concurrency{Parallel: true} }
 
 // ToolSet is a map of tool name to Tool, used for type-safe tool
 // configuration.

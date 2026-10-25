@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/samcharles93/ai-sdk/chat"
@@ -159,8 +161,12 @@ type Config struct {
 	ProtectPaths func(path string) bool
 	// Extra tools are merged into the toolset after the built-ins and
 	// wrapped with them; an Extra named write or edit replaces the built-in
-	// but is still tracked.
+	// but is still tracked. An Extra runs exclusively unless it declares
+	// its own Concurrency.
 	Extra core.ToolSet
+	// MaxParallelToolCalls bounds how many of one step's tool calls run at
+	// once. One or less runs them in order.
+	MaxParallelToolCalls int
 
 	// ToolHooks intercept all tools, including built-ins and completion recovery.
 	// Internal guards validate the resulting call after caller Before hooks.
@@ -249,6 +255,8 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		Messages:  initialMessages,
 		Tools:     tools,
 		MaxSteps:  maxSteps,
+
+		MaxParallelToolCalls: cfg.MaxParallelToolCalls,
 		StopWhen: core.AnyCondition(
 			core.StepCountIs(maxSteps),
 			budgetIs(cfg.Budget.MaxTokens, compact),
@@ -370,12 +378,15 @@ func addUsage(a, b chat.Usage) chat.Usage {
 }
 
 // runState is the shared mutable state that tool wrappers write and stop
-// conditions read. All access happens from the generation loop's tool
-// execution, which core runs sequentially, plus post-run classification —
-// no locking needed.
+// conditions read. Stop conditions and classification run between steps,
+// after every call has returned; within a step, finish and check run
+// exclusively, so only change tracking and the loop breaker see concurrent
+// calls and need locks.
 type runState struct {
-	gate      gateState
-	loop      loopState
+	gate gateState
+	loop loopState
+
+	mu        sync.Mutex
 	changes   []string
 	changeSet map[string]bool
 
@@ -386,6 +397,8 @@ type runState struct {
 
 // recordChange remembers a mutated path once, in first-touch order.
 func (s *runState) recordChange(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.changeSet == nil {
 		s.changeSet = make(map[string]bool)
 	}
@@ -486,6 +499,7 @@ func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, 
 	}
 
 	// Extra tools join before wrapping so replacements are tracked too.
+	declareConcurrency(set, cfg.WorkDir)
 	for name, tool := range cfg.Extra {
 		set[name] = tool
 	}
@@ -502,6 +516,34 @@ func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, 
 	// Path protection is a [core.ToolHook] instead; see ProtectPathsHook.
 	set = changeTrackedToolSet(set, state)
 	return loopBrokenToolSet(set, &state.loop), nil
+}
+
+// declareConcurrency marks which built-ins may overlap in a parallel step:
+// searches run alongside anything, and file reads and writes are ordered per
+// path. Shell and every other built-in stay exclusive.
+func declareConcurrency(set core.ToolSet, workdir string) {
+	byPath := func(input string) core.Concurrency {
+		path := pathFromArgs(input)
+		if path == "" {
+			return core.Concurrency{}
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(workdir, path)
+		}
+		return core.Concurrency{Parallel: true, Key: filepath.Clean(path)}
+	}
+	for name, tool := range set {
+		declared := *tool
+		switch name {
+		case "grep", "find":
+			declared.Concurrency = core.RunParallel
+		case "read", "write", "edit":
+			declared.Concurrency = byPath
+		default:
+			continue
+		}
+		set[name] = &declared
+	}
 }
 
 // readOnlyTools are the built-ins available to ReadOnly (planner) runs.

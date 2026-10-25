@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/samcharles93/ai-sdk/core"
 )
@@ -22,6 +23,7 @@ const (
 
 // loopState tracks consecutive identical tool calls for one run.
 type loopState struct {
+	mu       sync.Mutex
 	lastKey  string
 	streak   int
 	blockedN int
@@ -55,6 +57,8 @@ func loopBrokenToolSet(set core.ToolSet, l *loopState) core.ToolSet {
 // blocks set hardStop, which the run's stop condition observes.
 func (l *loopState) check(name, argsJSON string) (message string, blocked bool) {
 	key, justification := parseToolCallKey(name, argsJSON)
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	if key != l.lastKey {
 		l.lastKey = key
