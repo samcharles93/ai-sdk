@@ -658,13 +658,13 @@ func classify(ctx context.Context, cfg Config, state *runState, res core.Generat
 			}
 		}
 		r.Status, r.StopReason = StatusPassed, StopFinished
-	case len(state.changes) == 0:
-		r.Status, r.StopReason = StatusIdle, StopIdle
-		r.Detail = lastText(res)
 	case len(res.Steps) >= maxSteps ||
 		(cfg.Budget.MaxTokens > 0 && res.TotalUsage.TotalTokens >= cfg.Budget.MaxTokens):
 		r.Status, r.StopReason = StatusParked, StopBudgetExhausted
 		r.Detail = fmt.Sprintf("stopped after %d/%d steps, %d tokens", len(res.Steps), maxSteps, res.TotalUsage.TotalTokens)
+	case len(state.changes) == 0:
+		r.Status, r.StopReason = StatusIdle, StopIdle
+		r.Detail = lastText(res)
 	default:
 		// The model went quiet mid-mission without calling finish.
 		r.Status, r.StopReason = StatusParked, StopEndedWithoutFinish

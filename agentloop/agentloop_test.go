@@ -233,6 +233,45 @@ func TestTokenBudgetParks(t *testing.T) {
 	}
 }
 
+func TestBudgetOutranksIdle(t *testing.T) {
+	// An exhausted budget is a stronger signal than "nothing changed":
+	// a read-only run that ran out of steps has work left, not nothing
+	// to do.
+	tests := []struct {
+		name     string
+		cfg      Config
+		want     Status
+		wantStop string
+	}{
+		{
+			name:     "step budget on a read-only run",
+			cfg:      Config{ReadOnly: true, Budget: Budget{MaxSteps: 1}},
+			want:     StatusParked,
+			wantStop: StopBudgetExhausted,
+		},
+		{
+			name:     "token budget with no changes",
+			cfg:      Config{Budget: Budget{MaxTokens: 20, MaxSteps: 20}},
+			want:     StatusParked,
+			wantStop: StopBudgetExhausted,
+		},
+		{
+			name:     "text stop below both limits stays idle",
+			cfg:      Config{Budget: Budget{MaxTokens: 1000, MaxSteps: 20}},
+			want:     StatusIdle,
+			wantStop: StopIdle,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			res := runScript(t, t.TempDir(), tc.cfg, toolStep("find", `{"path":".","pattern":"*"}`))
+			if res.Status != tc.want || res.StopReason != tc.wantStop {
+				t.Fatalf("got %s/%s, want %s/%s", res.Status, res.StopReason, tc.want, tc.wantStop)
+			}
+		})
+	}
+}
+
 func TestEndedWithoutFinishParks(t *testing.T) {
 	res := runScript(
 		t, t.TempDir(), Config{},
