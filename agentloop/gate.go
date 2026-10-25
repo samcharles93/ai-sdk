@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -143,20 +144,33 @@ func runGate(ctx context.Context, cmds []GateCommand, workdir string) (string, e
 		cmd := exec.CommandContext(ctx, gc.Argv[0], gc.Argv[1:]...)
 		cmd.Dir = workdir
 		out, err := cmd.CombinedOutput()
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		switch {
 		case gc.ExpectFailure && err == nil:
 			msg := fmt.Sprintf("[%s] expected this command to FAIL (e.g. reproducing tests for an unfixed bug), but it passed:\n%s",
 				gc.Name, truncateOutput(out))
 			return msg, fmt.Errorf("gate %s: expected failure but command passed", gc.Name)
+		case gc.ExpectFailure && !exited(err):
+			// The command never ran: a missing executable is an
+			// infrastructure fault, and letting it satisfy an inverted
+			// gate would report a repro that produced nothing.
+			msg := fmt.Sprintf("[%s] %s could not run:\n%s", gc.Name, strings.Join(gc.Argv, " "), truncateOutput(out))
+			return msg, fmt.Errorf("gate %s: %w", gc.Name, err)
 		case !gc.ExpectFailure && err != nil:
-			if ctx.Err() != nil {
-				return "", ctx.Err()
-			}
 			msg := fmt.Sprintf("[%s] %s\n%s", gc.Name, strings.Join(gc.Argv, " "), truncateOutput(out))
 			return msg, fmt.Errorf("gate %s: %w", gc.Name, err)
 		}
 	}
 	return "", nil
+}
+
+// exited reports whether err is a command that started and finished, as
+// opposed to one that could not be started at all.
+func exited(err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr)
 }
 
 func truncateOutput(out []byte) string {

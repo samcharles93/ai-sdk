@@ -2,11 +2,64 @@ package agentloop
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/samcharles93/ai-sdk/core"
 )
+
+func TestRunGateExpectFailure(t *testing.T) {
+	// Inversion applies to a command that ran and exited nonzero. A
+	// command that never ran (missing executable) or a run that was
+	// cancelled is a gate infrastructure failure, not a passing repro.
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		argv    []string
+		wantErr bool
+		wantIs  error
+	}{
+		{
+			name: "nonzero exit satisfies the inverted gate",
+			ctx:  context.Background(),
+			argv: []string{"sh", "-c", "exit 1"},
+		},
+		{
+			name:    "passing command fails the inverted gate",
+			ctx:     context.Background(),
+			argv:    []string{"sh", "-c", "exit 0"},
+			wantErr: true,
+		},
+		{
+			name:    "missing executable fails the inverted gate",
+			ctx:     context.Background(),
+			argv:    []string{"ai-sdk-no-such-binary"},
+			wantErr: true,
+		},
+		{
+			name:    "cancelled command fails the inverted gate",
+			ctx:     cancelled,
+			argv:    []string{"sh", "-c", "exit 1"},
+			wantErr: true,
+			wantIs:  context.Canceled,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := runGate(tc.ctx, []GateCommand{{Name: "gate", Argv: tc.argv, ExpectFailure: true}}, t.TempDir())
+			if gotErr := err != nil; gotErr != tc.wantErr {
+				t.Fatalf("err = %v, want error %t", err, tc.wantErr)
+			}
+			if tc.wantIs != nil && !errors.Is(err, tc.wantIs) {
+				t.Fatalf("err = %v, want %v", err, tc.wantIs)
+			}
+		})
+	}
+}
 
 // protectAll returns a predicate that matches every non-empty path.
 func protectAll(string) bool { return true }
