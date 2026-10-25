@@ -89,14 +89,24 @@ func (openAICompatibleClass) New(ctx context.Context, cfg ProviderConfig, model 
 	// voice-less request is rejected rather than silently sending OpenAI's
 	// "alloy" to a backend that does not have that voice.
 	voice, format := speechDefaults(cfg.Options, model.Extra, "", "")
+	// A streaming style is configuration, not a guess: the self-hosted
+	// servers differ (Kokoro takes stream:true, others stream_format), so the
+	// operator names the convention and only then is StreamSpeech enabled.
+	style := modelOption(cfg.Options, model.Extra, "speech_stream_style")
+	switch openai.SpeechStreamStyle(style) {
+	case "", openai.SpeechStreamSSE, openai.SpeechStreamAudio, openai.SpeechStreamFlag:
+	default:
+		return ProviderSet{}, fmt.Errorf("runtime/%s: unknown speech_stream_style %q: %w", cfg.Class, style, speech.ErrInvalidRequest)
+	}
 	p, err := openai.New(openai.Config{
 		APIKey:         apiKey,
 		BaseURL:        model.providerURL(cfg.BaseURL),
 		HTTPClient:     httpClient,
 		Compatible:     true,
-		Speech:         &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format},
+		Speech:         &openai.SpeechConfig{DefaultVoice: voice, DefaultFormat: format, StreamStyle: openai.SpeechStreamStyle(style)},
 		MaxInputChars:  speechMaxInputChars(cfg.Options, model.Extra, 0),
 		DiscoverVoices: true,
+		Streaming:      style != "",
 	})
 	if err != nil {
 		return ProviderSet{}, fmt.Errorf("runtime/%s: %w", cfg.Class, err)

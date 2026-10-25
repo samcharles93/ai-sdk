@@ -63,7 +63,27 @@ type Config struct {
 type SpeechConfig struct {
 	DefaultVoice  string
 	DefaultFormat string
+	// StreamStyle selects how StreamSpeech asks the server to stream. Empty
+	// keeps the model-name heuristic (SSE for gpt-4o-mini-tts, raw audio for
+	// tts-1). A self-hosted server whose streaming flag differs from OpenAI's
+	// stream_format sets it explicitly.
+	StreamStyle SpeechStreamStyle
 }
+
+// SpeechStreamStyle is the streaming wire convention a server implements.
+type SpeechStreamStyle string
+
+const (
+	// SpeechStreamSSE sends stream_format=sse and expects base64 audio deltas
+	// as server-sent events.
+	SpeechStreamSSE SpeechStreamStyle = "sse"
+	// SpeechStreamAudio sends stream_format=audio and expects raw chunked
+	// container bytes.
+	SpeechStreamAudio SpeechStreamStyle = "audio"
+	// SpeechStreamFlag sends the boolean stream:true (no stream_format) and
+	// expects raw chunked container bytes, the Kokoro-FastAPI convention.
+	SpeechStreamFlag SpeechStreamStyle = "flag"
+)
 
 // Provider implements chat.Provider over OpenAI wire protocols.
 type Provider struct {

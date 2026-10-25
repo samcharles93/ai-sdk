@@ -72,7 +72,10 @@ func (p *Provider) StreamSpeech(ctx context.Context, req speech.GenerateSpeechRe
 		return nil, speech.ErrStreamNotSupported
 	}
 	mode := tts.StreamFormatSSE
-	if !supportsSSESpeech(req.Model) {
+	switch {
+	case p.speech != nil && p.speech.StreamStyle != "":
+		mode = tts.StreamFormat(p.speech.StreamStyle)
+	case !supportsSSESpeech(req.Model):
 		mode = tts.StreamFormatAudio
 	}
 	stream, _, err := tts.Stream(ctx, p.ttsConfig(), req, mode)

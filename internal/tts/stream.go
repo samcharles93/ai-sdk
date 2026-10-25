@@ -23,6 +23,10 @@ const (
 	StreamFormatAudio StreamFormat = "audio"
 	// StreamFormatSSE streams base64 audio deltas as server-sent events.
 	StreamFormatSSE StreamFormat = "sse"
+	// StreamFormatFlag selects streaming with the chat-style boolean stream
+	// flag instead of stream_format, for self-hosted servers that follow that
+	// convention (Kokoro-FastAPI). The response is chunked audio.
+	StreamFormatFlag StreamFormat = "flag"
 )
 
 // Stream starts a streaming speech synthesis. In SSE mode the returned stream
@@ -35,7 +39,11 @@ func Stream(ctx context.Context, cfg Config, req speech.GenerateSpeechRequest, m
 	if err != nil {
 		return nil, "", err
 	}
-	body["stream_format"] = string(mode)
+	if mode == StreamFormatFlag {
+		body["stream"] = true
+	} else {
+		body["stream_format"] = string(mode)
+	}
 
 	buf, err := json.Marshal(body)
 	if err != nil {

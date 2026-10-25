@@ -115,6 +115,53 @@ func TestStream_RawAudio(t *testing.T) {
 	}
 }
 
+func TestStream_Flag(t *testing.T) {
+	// Kokoro-FastAPI selects streaming with the boolean stream flag and
+	// answers with chunked audio, not stream_format and not SSE.
+	body := []byte("chunked-wav-bytes")
+	var gotBody map[string]any
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	stream, format, err := Stream(context.Background(), testConfig(srv), speechRequest(), StreamFormatFlag)
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	defer stream.Close()
+
+	if gotBody["stream"] != true {
+		t.Fatalf("stream = %v, want true", gotBody["stream"])
+	}
+	if _, ok := gotBody["stream_format"]; ok {
+		t.Fatalf("stream_format must be omitted with the flag convention: %v", gotBody)
+	}
+	if format != "mp3" {
+		t.Fatalf("format = %q, want mp3", format)
+	}
+
+	var got []byte
+	for {
+		chunk, err := stream.Next(context.Background())
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		if chunk.Done {
+			break
+		}
+		got = append(got, chunk.Data...)
+	}
+	if string(got) != string(body) {
+		t.Fatalf("audio = %q, want %q", got, body)
+	}
+}
+
 func TestStream_EstablishmentErrors(t *testing.T) {
 	t.Run("non-2xx is classified", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

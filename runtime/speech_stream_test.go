@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -51,6 +52,81 @@ func TestSpeechStreamOpenAIClass(t *testing.T) {
 	}
 	if string(got) != string(want) {
 		t.Fatalf("audio = %q, want %q", got, want)
+	}
+}
+
+// TestSpeechStreamKokoroClass covers the self-hosted streaming path: the
+// operator names Kokoro's wire convention, the generic class then sends
+// stream:true and surfaces chunked audio through Runtime.SpeechStream.
+func TestSpeechStreamKokoroClass(t *testing.T) {
+	want := []byte("RIFF-chunked-wav")
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write(want)
+	}))
+	defer srv.Close()
+
+	RegisterBuiltinClasses()
+	rt := NewRuntime(Config{Providers: map[string]ProviderConfig{
+		"kokoro": {
+			ID:      "kokoro",
+			Class:   "openai-compatible",
+			BaseURL: srv.URL,
+			Auth:    AuthConfig{Type: AuthTypeNone},
+			Options: map[string]any{"speech_stream_style": "flag", "speech_default_voice": "af_heart"},
+		},
+	}})
+
+	stream, err := rt.SpeechStream(context.Background(), "kokoro/kokoro", speech.GenerateSpeechRequest{Text: "hi"})
+	if err != nil {
+		t.Fatalf("SpeechStream: %v", err)
+	}
+	defer stream.Close()
+
+	if gotBody["stream"] != true {
+		t.Errorf("stream = %v, want true (body %v)", gotBody["stream"], gotBody)
+	}
+	if _, ok := gotBody["stream_format"]; ok {
+		t.Errorf("stream_format must be omitted: %v", gotBody)
+	}
+
+	var got []byte
+	for {
+		chunk, err := stream.Next(context.Background())
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		if chunk.Done {
+			break
+		}
+		got = append(got, chunk.Data...)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("audio = %q, want %q", got, want)
+	}
+}
+
+func TestSpeechStreamStyleRejectsUnknownValue(t *testing.T) {
+	// The style is config, so a typo must surface as a config error rather
+	// than a malformed stream_format on the wire.
+	RegisterBuiltinClasses()
+	rt := NewRuntime(Config{Providers: map[string]ProviderConfig{
+		"kokoro": {
+			ID:      "kokoro",
+			Class:   "openai-compatible",
+			BaseURL: "http://127.0.0.1:1",
+			Auth:    AuthConfig{Type: AuthTypeNone},
+			Options: map[string]any{"speech_stream_style": "chunked"},
+		},
+	}})
+
+	_, err := rt.SpeechStream(context.Background(), "kokoro/kokoro", speech.GenerateSpeechRequest{Text: "hi"})
+	if !errors.Is(err, speech.ErrInvalidRequest) {
+		t.Fatalf("error = %v, want ErrInvalidRequest", err)
 	}
 }
 
