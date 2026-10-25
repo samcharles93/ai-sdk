@@ -42,7 +42,8 @@ type Config struct {
 	// Deployment is the model deployment name. Required.
 	Deployment string
 	// APIVersion overrides the API version query parameter.
-	// Defaults to "2024-02-01".
+	// Defaults to "2024-02-01", which predates max_completion_tokens:
+	// reasoning deployments need "2024-09-01-preview" or later.
 	APIVersion string
 	// HTTPClient overrides the client used for requests. If nil, requests are
 	// bounded only by their caller contexts.
@@ -301,11 +302,17 @@ func (p *Provider) buildChatBody(req chat.Request, stream bool) (map[string]any,
 			return nil, nil, fmt.Errorf("azure: unknown tool_choice type %q: %w", req.ToolChoice.Type, chat.ErrInvalidRequest)
 		}
 	}
-	if req.Temperature != 0 {
+	if req.Temperature != 0 && req.ModelInfo.TemperatureSupported() {
 		body["temperature"] = req.Temperature
 	}
 	if req.MaxTokens != 0 {
-		body["max_tokens"] = req.MaxTokens
+		// Reasoning deployments reject max_tokens; the runtime resolves
+		// the flag from catalog metadata onto the request.
+		if req.ModelInfo.Reasoning {
+			body["max_completion_tokens"] = req.MaxTokens
+		} else {
+			body["max_tokens"] = req.MaxTokens
+		}
 	}
 	if req.TopP != 0 {
 		body["top_p"] = req.TopP

@@ -17,6 +17,66 @@ import (
 	"github.com/samcharles93/ai-sdk/image"
 )
 
+// falseValue is a ModelInfo.Temperature explicit false ("this model rejects
+// temperature"), as opposed to nil ("unknown").
+var falseValue = false
+
+func TestChat_BodyShapesFromResolvedModelFlags(t *testing.T) {
+	// The runtime resolves model flags onto the request. Azure must shape
+	// the body from them: an o-series or gpt-5 deployment rejects
+	// max_tokens, and a model flagged temperature-unsupported rejects
+	// temperature.
+	tests := []struct {
+		name       string
+		info       chat.ModelInfo
+		wantMaxKey string
+		wantTemp   bool
+	}{
+		{name: "classic model", wantMaxKey: "max_tokens", wantTemp: true},
+		{name: "reasoning model", info: chat.ModelInfo{Reasoning: true}, wantMaxKey: "max_completion_tokens", wantTemp: true},
+		{name: "temperature unsupported", info: chat.ModelInfo{Temperature: &falseValue}, wantMaxKey: "max_tokens"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+					t.Errorf("decode body: %v", err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+			}))
+			defer srv.Close()
+
+			p, err := New(Config{APIKey: "k", Endpoint: srv.URL, Deployment: "d"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.Chat(context.Background(), chat.Request{
+				Model:       "gpt-5.4",
+				Messages:    []chat.Message{{Role: chat.RoleUser, Content: "x"}},
+				ModelInfo:   tc.info,
+				MaxTokens:   64,
+				Temperature: 0.5,
+			}); err != nil {
+				t.Fatalf("Chat: %v", err)
+			}
+
+			if gotBody[tc.wantMaxKey] != float64(64) {
+				t.Errorf("%s = %v, want 64 (body %v)", tc.wantMaxKey, gotBody[tc.wantMaxKey], gotBody)
+			}
+			for _, key := range []string{"max_tokens", "max_completion_tokens"} {
+				if key != tc.wantMaxKey && gotBody[key] != nil {
+					t.Errorf("body sent %s = %v, want it omitted", key, gotBody[key])
+				}
+			}
+			if _, ok := gotBody["temperature"]; ok != tc.wantTemp {
+				t.Errorf("temperature present = %v, want %v (body %v)", ok, tc.wantTemp, gotBody)
+			}
+		})
+	}
+}
+
 func TestChat_RateLimit_TypedProviderError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "7")

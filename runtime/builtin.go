@@ -43,7 +43,7 @@ func RegisterBuiltinClasses() {
 
 	MustRegisterClass(openAICompatibleClass{})
 	MustRegisterClass(anthropicClass())
-	MustRegisterClass(azureClass())
+	MustRegisterClass(azureClass{})
 	MustRegisterClass(cohereClass())
 	MustRegisterClass(deepseekClass())
 	MustRegisterClass(geminiClass())
@@ -326,14 +326,57 @@ func anthropicClass() ProviderClass {
 	}
 }
 
-func azureClass() ProviderClass {
-	return simpleClass{
-		name: "azure",
-		caps: []Capability{CapabilityChat, CapabilityEmbed, CapabilityImage},
-		build: func(apiKey, baseURL string, httpClient *http.Client) (providerSetBuilder, error) {
-			return azure.New(azure.Config{APIKey: apiKey, Endpoint: baseURL, HTTPClient: httpClient})
-		},
+// azureClass builds the Azure OpenAI provider. Unlike a simpleClass it needs
+// the resolved model: the deployment name defaults to the model and the
+// api-version is a query parameter no shared builder can supply.
+type azureClass struct{}
+
+func (azureClass) Name() string { return "azure" }
+
+func (azureClass) Supports(cap Capability) bool {
+	switch cap {
+	case CapabilityChat, CapabilityEmbed, CapabilityImage:
+		return true
+	default:
+		return false
 	}
+}
+
+func (c azureClass) New(ctx context.Context, cfg ProviderConfig, model ModelInfo) (ProviderSet, error) {
+	auth, err := resolveAuth(ctx, cfg)
+	if err != nil {
+		return ProviderSet{}, err
+	}
+	apiKey := auth.Token
+	if strings.TrimSpace(apiKey) == "" && cfg.Auth.Type != AuthTypeNone {
+		return ProviderSet{}, fmt.Errorf("runtime/%s: no bearer token resolved for provider %q", c.Name(), cfg.ID)
+	}
+	deployment := modelOption(cfg.Options, model.Extra, "deployment")
+	if deployment == "" {
+		deployment = model.ID
+	}
+	p, err := azure.New(azure.Config{
+		APIKey:     apiKey,
+		Endpoint:   model.providerURL(cfg.BaseURL),
+		Deployment: deployment,
+		APIVersion: modelOption(cfg.Options, model.Extra, "api_version"),
+		HTTPClient: cfg.httpClient(),
+	})
+	if err != nil {
+		return ProviderSet{}, fmt.Errorf("runtime/%s: %w", c.Name(), err)
+	}
+	return ProviderSet{Chat: p, Embed: p, Image: p}, nil
+}
+
+// modelOption reads a class option, preferring the per-model Extra entry over
+// the provider-level Options entry.
+func modelOption(options, extra map[string]any, key string) string {
+	for _, m := range []map[string]any{extra, options} {
+		if v, ok := m[key].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 func cohereClass() ProviderClass {
