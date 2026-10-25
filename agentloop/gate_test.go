@@ -65,7 +65,7 @@ func TestRunGateExpectFailure(t *testing.T) {
 func protectAll(string) bool { return true }
 
 func TestProtectPathsHook_SkipsWriteOnMatch(t *testing.T) {
-	hook := ProtectPathsHook(protectAll)
+	hook := ProtectPathsHook("", protectAll)
 
 	skip, err := hook.BeforeToolExecute(context.Background(), &core.ToolCall{
 		ToolName: "write",
@@ -89,7 +89,7 @@ func TestProtectPathsHook_SkipsWriteOnMatch(t *testing.T) {
 }
 
 func TestProtectPathsHook_AllowsWriteOnNoMatch(t *testing.T) {
-	hook := ProtectPathsHook(func(string) bool { return false })
+	hook := ProtectPathsHook("", func(string) bool { return false })
 
 	skip, err := hook.BeforeToolExecute(context.Background(), &core.ToolCall{
 		ToolName: "write",
@@ -106,7 +106,7 @@ func TestProtectPathsHook_AllowsWriteOnNoMatch(t *testing.T) {
 func TestProtectPathsHook_OnlyAppliesToWriteAndEdit(t *testing.T) {
 	// A predicate that matches everything must NOT block tools other
 	// than write/edit — read/grep/shell etc. flow through normally.
-	hook := ProtectPathsHook(protectAll)
+	hook := ProtectPathsHook("", protectAll)
 
 	for _, name := range []string{"read", "grep", "find", "shell", "finish"} {
 		t.Run(name, func(t *testing.T) {
@@ -127,7 +127,7 @@ func TestProtectPathsHook_OnlyAppliesToWriteAndEdit(t *testing.T) {
 func TestProtectPathsHook_NoOpAfterToolExecute(t *testing.T) {
 	// AfterToolExecute is unused by ProtectPathsHook — call it and
 	// verify it doesn't mutate the result.
-	hook := ProtectPathsHook(protectAll)
+	hook := ProtectPathsHook("", protectAll)
 	res := &core.ToolResult{ToolName: "write", Output: "unchanged"}
 	hook.AfterToolExecute(context.Background(), core.ToolCall{ToolName: "write"}, res)
 	if res.Output != "unchanged" {

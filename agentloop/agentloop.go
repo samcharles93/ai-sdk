@@ -1,9 +1,9 @@
 // Package agentloop runs a single autonomous agent mission to completion:
-// one model, a jailed toolset, a quality gate that must pass before the
-// run can succeed, budgets that bound it, and a structured result that
-// reports what happened. It is the building block for headless agent
-// pipelines (eval_loop, archie workflows); orchestration across missions
-// lives with the caller.
+// one model, a toolset whose file tools are confined to the work directory, a
+// quality gate that must pass before the run can succeed, budgets that bound
+// it, and a structured result that reports what happened. It is the building
+// block for headless agent pipelines (eval_loop, archie workflows);
+// orchestration across missions lives with the caller.
 package agentloop
 
 import (
@@ -114,8 +114,9 @@ type Config struct {
 	Model     string
 	ModelInfo chat.ModelInfo
 
-	// WorkDir is the directory the toolset is jailed to and gate
-	// commands run in.
+	// WorkDir is the directory the file tools are confined to and gate
+	// commands run in. The shell tool starts there but is not confined to
+	// it, and Extra tools are not confined at all.
 	WorkDir string
 
 	// SystemTmpl is a text/template rendered with PromptData. Empty
@@ -155,9 +156,12 @@ type Config struct {
 	// ReadOnly registers only read/grep/find (planner/analysis missions).
 	ReadOnly bool
 	// ProtectPaths, when non-nil, blocks write/edit on matching paths
-	// (relative, as the model supplies them) with an in-band refusal —
-	// an environmental constraint where a prompt rule would be advisory
-	// (e.g. a TDD fix stage protecting the committed repro tests).
+	// with an in-band refusal — an environmental constraint where a prompt
+	// rule would be advisory (e.g. a TDD fix stage protecting the committed
+	// repro tests). The predicate receives the canonical WorkDir-relative
+	// path, so equivalent spellings of one file reach the same decision; a
+	// path escaping WorkDir arrives absolute. It is a policy hook, not a
+	// sandbox: shell and Extra tools are not covered.
 	ProtectPaths func(path string) bool
 	// Extra tools are merged into the toolset after the built-ins and
 	// wrapped with them; an Extra named write or edit replaces the built-in
@@ -246,7 +250,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		return nil, nil
 	}, nil))
 	if cfg.ProtectPaths != nil {
-		toolHooks = append(toolHooks, ProtectPathsHook(cfg.ProtectPaths))
+		toolHooks = append(toolHooks, ProtectPathsHook(cfg.WorkDir, cfg.ProtectPaths))
 	}
 
 	res, genErr := core.GenerateText(ctx, provider, core.GenerateOptions{
@@ -481,8 +485,9 @@ func resolveProvider(ctx context.Context, cfg Config) (chat.Provider, string, ch
 	return provider, model, info, nil
 }
 
-// buildToolSet assembles built-ins (jailed to WorkDir), wraps them with
-// change tracking and the loop breaker, and adds the finish/write_note tools.
+// buildToolSet assembles built-ins (file tools confined to WorkDir), wraps them
+// with change tracking and the loop breaker, and adds the finish/write_note
+// tools.
 func buildToolSet(cfg Config, state *runState, log *slog.Logger) (core.ToolSet, error) {
 	reg := toolkit.NewRegistry()
 	if err := toolkit.RegisterBuiltins(reg, cfg.WorkDir); err != nil {

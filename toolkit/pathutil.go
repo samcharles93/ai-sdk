@@ -23,6 +23,28 @@ func resolvePath(cwd, path string) string {
 	return filepath.Clean(filepath.Join(cwd, path))
 }
 
+// CanonicalPath returns the file a path argument refers to, expressed relative
+// to cwd when it resolves inside it (absolute otherwise). Equivalent spellings
+// — "spec.txt", "@spec.txt", "./spec.txt", an absolute path under cwd — all
+// yield the same result, so a caller's path policy and the tool agree on which
+// file is meant.
+func CanonicalPath(cwd, path string) string {
+	resolved := resolvePath(cwd, path)
+	base, err := filepath.Abs(cwd)
+	if err != nil {
+		return resolved
+	}
+	abs, err := filepath.Abs(resolved)
+	if err != nil {
+		return resolved
+	}
+	rel, err := filepath.Rel(base, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return abs
+	}
+	return rel
+}
+
 // isConfined checks whether target is within (or equal to) the base directory.
 // Returns false if target escapes via ../ or is an unrelated absolute path.
 func isConfined(base, target string) bool {

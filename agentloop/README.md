@@ -15,6 +15,20 @@ the resulting call before execution. After hooks retain core's semantics: they
 run even when execution was refused. Hooks that replace a result do not change
 the run's internal completion or gate state.
 
+## Path protection
+
+`Config.ProtectPaths` refuses `write` and `edit` calls on matching paths. The
+predicate receives the canonical WorkDir-relative path, so every spelling of one
+file (`spec.txt`, `./spec.txt`, `@spec.txt`, an absolute path under WorkDir)
+reaches the same decision; a path that escapes WorkDir arrives absolute.
+
+This is a policy hook, not a sandbox. `shell` starts in WorkDir but is not
+confined to it, and `Extra` tools run unrestricted — only calls named `write` or
+`edit` are checked, whichever toolset they came from. Anything reachable through
+shell or a custom tool bypasses path protection, so confine the process itself
+(container, worktree, least-privilege user) when a mission must not escape
+WorkDir.
+
 ## Gate checkpoints
 
 When `Gate.Commands` is nonempty, the model gets a `check` tool. It can complete

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/samcharles93/ai-sdk/core"
+	"github.com/samcharles93/ai-sdk/toolkit"
 )
 
 // GateCommand is one command in the quality gate, run in the work
@@ -51,21 +52,24 @@ type gateState struct {
 const gateOutputLimit = 4096
 
 // ProtectPathsHook returns a [core.ToolHook] that denies write/edit tool
-// calls whose "path" argument matches the supplied predicate, surfacing
-// the refusal as an in-band [core.Skip] (the same shape as a tool
-// error). Other tools and non-matching calls pass through unmodified.
+// calls whose resolved path matches the supplied predicate, surfacing the
+// refusal as an in-band [core.Skip] (the same shape as a tool error). The
+// predicate receives the canonical WorkDir-relative path (see
+// [toolkit.CanonicalPath]), so every spelling of one file reaches the same
+// decision. Other tools and non-matching calls pass through unmodified.
 //
 // This is the hook equivalent of the prior protectedToolSet wrapper —
 // the same policy is now expressed declaratively on
 // [core.GenerateOptions.ToolHooks] rather than by hand-wrapping every
 // Tool.Execute closure in the toolset.
-func ProtectPathsHook(protect func(string) bool) core.ToolHook {
+func ProtectPathsHook(workdir string, protect func(string) bool) core.ToolHook {
 	return core.ToolHookFuncs(
 		func(_ context.Context, call *core.ToolCall) (*core.Skip, error) {
 			if call.ToolName != "write" && call.ToolName != "edit" {
 				return nil, nil
 			}
-			if path := pathFromArgs(call.Input); path != "" && protect(path) {
+			path := toolkit.CanonicalPath(workdir, pathFromArgs(call.Input))
+			if path != "" && protect(path) {
 				return &core.Skip{
 					Error: "blocked: " + path + " is protected in this stage and must not be modified. It is part of the mission's specification — change the code it exercises instead.",
 				}, nil

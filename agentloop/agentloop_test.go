@@ -470,6 +470,7 @@ func TestProtectPathsBlocksWrites(t *testing.T) {
 		t, dir,
 		Config{ProtectPaths: func(p string) bool { return strings.HasSuffix(p, "_test.go") }},
 		toolStep("write", `{"path":"x_test.go","content":"nope"}`),
+		toolStep("write", `{"path":"./x_test.go","content":"nope"}`), // same file, another spelling
 		toolStep("write", `{"path":"x.go","content":"package x"}`),
 		toolStep("finish", `{"status":"passed","summary":"done"}`),
 	)
