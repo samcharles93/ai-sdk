@@ -20,9 +20,8 @@ import (
 	"github.com/samcharles93/ai-sdk/rerank"
 )
 
-const (
-	defaultBaseURL = "https://api.cohere.com/v1"
-)
+// DefaultBaseURL is the base URL used when Config.BaseURL is empty.
+const DefaultBaseURL = "https://api.cohere.com/v1"
 
 // Config configures a Cohere Provider.
 type Config struct {
@@ -57,7 +56,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	base := cfg.BaseURL
 	if base == "" {
-		base = defaultBaseURL
+		base = DefaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient

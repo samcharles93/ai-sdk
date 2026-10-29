@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	defaultBaseURL   = "https://api.anthropic.com"
+	// DefaultBaseURL is the base URL used when Config.BaseURL is empty.
+	DefaultBaseURL   = "https://api.anthropic.com"
 	defaultMaxTokens = 4096
 	anthropicVersion = "2023-06-01"
 )
@@ -138,7 +139,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	base := cfg.BaseURL
 	if base == "" {
-		base = defaultBaseURL
+		base = DefaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient
