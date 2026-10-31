@@ -1,9 +1,14 @@
 # AI SDK (Go)
 
-An independent, provider-agnostic AI SDK built for Go. Chat, embeddings,
-image generation, speech, transcription, structured object generation,
-video, reranking, and music generation — through typed interfaces,
-composable middleware, and a configurable provider runtime.
+**An independent, provider-agnostic AI SDK built for Go.**
+
+Chat, embeddings, image generation, speech, transcription, structured object
+generation, video, reranking, and music generation — through typed
+interfaces, composable middleware, and a configurable provider runtime.
+
+Domain interfaces live in the top-level domain packages (`chat`, `embed`,
+`image`, and the rest); concrete providers in `provider/*`; the
+`provider/model` resolver in `runtime/`.
 
 ```
 go get github.com/samcharles93/ai-sdk
@@ -279,6 +284,13 @@ The project uses `gofumpt` for formatting and `golangci-lint` with `govet`,
 `staticcheck`, `unused`, `nilerr`, and `misspell` enabled.
 
 ---
+
+## Documentation
+
+- [Examples](ai-sdk-examples/README.md)
+- [Agent missions](agentloop/README.md)
+- [In-process TTS spike](ai-sdk-local/README.md)
+- [Development rules](AGENTS.md)
 
 ## Acknowledgements
 
