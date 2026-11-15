@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/samcharles93/ai-sdk/chat"
 )
@@ -43,6 +44,51 @@ var (
 	// loop stops with this error.
 	ErrModelHookPanic = errors.New("agentloop: model hook panicked")
 )
+
+// DivergenceError reports the journal position whose entry did not match the
+// call being replayed, with both sides of the mismatch. It unwraps to
+// [ErrJournalDiverged], so errors.Is keeps working while a run engine can read
+// the position with errors.As and record why the run stopped.
+type DivergenceError struct {
+	// Position is the journal position that failed the check.
+	Position int64
+	// Held is the entry the journal holds there.
+	Held         EntryKind
+	HeldToolName string
+	HeldDigest   string
+	// Want is the call replay expected at that position.
+	Want         EntryKind
+	WantToolName string
+	WantDigest   string
+}
+
+func (e *DivergenceError) Error() string {
+	if e.HeldToolName != "" || e.WantToolName != "" {
+		return fmt.Sprintf("%v: position %d holds kind %q tool %q with digest %s, replay expects kind %q tool %q with digest %s",
+			ErrJournalDiverged, e.Position, e.Held, e.HeldToolName, e.HeldDigest, e.Want, e.WantToolName, e.WantDigest)
+	}
+	return fmt.Sprintf("%v: position %d holds kind %q with digest %s, replay expects kind %q with digest %s",
+		ErrJournalDiverged, e.Position, e.Held, e.HeldDigest, e.Want, e.WantDigest)
+}
+
+// Unwrap reports the sentinel callers match with errors.Is.
+func (e *DivergenceError) Unwrap() error { return ErrJournalDiverged }
+
+// JournalRejectedError reports the position whose record the journal refused,
+// alongside the journal's own error.
+type JournalRejectedError struct {
+	// Position is the journal position the loop tried to record.
+	Position int64
+	// Err is the error the journal returned.
+	Err error
+}
+
+func (e *JournalRejectedError) Error() string {
+	return fmt.Sprintf("%v: position %d: %v", ErrJournalRejected, e.Position, e.Err)
+}
+
+// Unwrap exposes both the sentinel and the journal's own error to errors.Is.
+func (e *JournalRejectedError) Unwrap() []error { return []error{ErrJournalRejected, e.Err} }
 
 // Stop reasons reported in LoopResult.StopReason in addition to the ones
 // shared with Run.

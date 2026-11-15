@@ -125,27 +125,33 @@ func (s *fakeStream) Next(context.Context) (chat.Chunk, error) {
 
 func (s *fakeStream) Close() error { return nil }
 
-// memJournal is the in-memory Journal used by the tests.
+// memJournal is the in-memory Journal used by the tests. It stores the JSON
+// encoding of each entry and decodes on lookup, so every replay test also
+// proves the record survives a real serialisation round-trip: a field that
+// does not encode would otherwise replay differently from how it was made.
 type memJournal struct {
 	mu       sync.Mutex
-	entries  map[int64]Entry
+	entries  map[int64]json.RawMessage
 	rejectAt map[int64]error
 	records  []Entry
 }
 
 func newMemJournal() *memJournal {
-	return &memJournal{entries: map[int64]Entry{}, rejectAt: map[int64]error{}}
+	return &memJournal{entries: map[int64]json.RawMessage{}, rejectAt: map[int64]error{}}
 }
 
 func (j *memJournal) Lookup(_ context.Context, pos int64) (*Entry, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	e, ok := j.entries[pos]
+	raw, ok := j.entries[pos]
 	if !ok {
 		return nil, nil
 	}
-	c := e
-	return &c, nil
+	var e Entry
+	if err := json.Unmarshal(raw, &e); err != nil {
+		return nil, err
+	}
+	return &e, nil
 }
 
 func (j *memJournal) Record(_ context.Context, e Entry) error {
@@ -154,8 +160,25 @@ func (j *memJournal) Record(_ context.Context, e Entry) error {
 	if err, ok := j.rejectAt[e.Position]; ok {
 		return err
 	}
-	j.entries[e.Position] = e
+	raw, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	j.entries[e.Position] = raw
 	j.records = append(j.records, e)
+	return nil
+}
+
+// put overwrites the entry at pos, which is how a test tampers with a
+// recorded entry before replaying it.
+func (j *memJournal) put(pos int64, e Entry) error {
+	raw, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.entries[pos] = raw
 	return nil
 }
 
@@ -165,9 +188,9 @@ func (j *memJournal) prefix(pos int64) *memJournal {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	out := newMemJournal()
-	for p, e := range j.entries {
+	for p, raw := range j.entries {
 		if p < pos {
-			out.entries[p] = e
+			out.entries[p] = append(json.RawMessage(nil), raw...)
 		}
 	}
 	return out
@@ -176,14 +199,15 @@ func (j *memJournal) prefix(pos int64) *memJournal {
 func (j *memJournal) recordCount() int {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return len(j.records)
+	return len(j.entries)
 }
 
 func (j *memJournal) entry(pos int64) (Entry, bool) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	e, ok := j.entries[pos]
-	return e, ok
+	e, err := j.Lookup(context.Background(), pos)
+	if err != nil || e == nil {
+		return Entry{}, false
+	}
+	return *e, true
 }
 
 func usage(p, c int) chat.Usage {
@@ -241,8 +265,9 @@ func entriesOfKind(j *memJournal, kind EntryKind) []int64 {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	var out []int64
-	for pos, e := range j.entries {
-		if e.Kind == kind {
+	for pos, raw := range j.entries {
+		var e Entry
+		if json.Unmarshal(raw, &e) == nil && e.Kind == kind {
 			out = append(out, pos)
 		}
 	}
@@ -339,13 +364,19 @@ func TestRunLoopDivergenceStopsRun(t *testing.T) {
 		e, _ := j2.entry(toolPos)
 		e.Input = `{"a":9,"b":9}`                         // a different history yields a different call...
 		e.Digest = digestToolCall("add", `{"a":9,"b":9}`) // ...and a different digest
-		j2.entries[toolPos] = e
+		if err := j2.put(toolPos, e); err != nil {
+			t.Fatalf("tamper: %v", err)
+		}
 
 		p2 := &fakeProvider{steps: script}
 		counts2 := map[string]int{}
 		res2, err := RunLoop(ctx, loopCfg(p2, j2, countingTools(counts2)))
-		if !errors.Is(err, ErrJournalDiverged) {
-			t.Fatalf("err = %v, want ErrJournalDiverged", err)
+		var diverged *DivergenceError
+		if !errors.As(err, &diverged) {
+			t.Fatalf("err = %v, want *DivergenceError", err)
+		}
+		if diverged.Position != toolPos || diverged.Want != EntryTool || diverged.WantToolName != "add" {
+			t.Fatalf("divergence = %+v, want tool add at position %d", diverged, toolPos)
 		}
 		if res2.StopReason != StopJournalDiverged {
 			t.Fatalf("stop_reason = %q", res2.StopReason)
@@ -361,12 +392,15 @@ func TestRunLoopDivergenceStopsRun(t *testing.T) {
 		j2 := j1.prefix(int64(j1.recordCount()))
 		e, _ := j2.entry(modelPos)
 		e.Digest = "deadbeef"
-		j2.entries[modelPos] = e
+		if err := j2.put(modelPos, e); err != nil {
+			t.Fatalf("tamper: %v", err)
+		}
 
 		p2 := &fakeProvider{steps: script}
 		res2, err := RunLoop(ctx, loopCfg(p2, j2, countingTools(map[string]int{})))
-		if !errors.Is(err, ErrJournalDiverged) {
-			t.Fatalf("err = %v, want ErrJournalDiverged", err)
+		var diverged *DivergenceError
+		if !errors.As(err, &diverged) || diverged.Position != modelPos || diverged.Want != EntryModel {
+			t.Fatalf("err = %v, want *DivergenceError for the model call at position %d", err, modelPos)
 		}
 		if res2.StopReason != StopJournalDiverged || p2.callCount() != 0 {
 			t.Fatalf("stop_reason=%q provider calls=%d", res2.StopReason, p2.callCount())
@@ -391,8 +425,15 @@ func TestRunLoopRejectedRecordStopsRun(t *testing.T) {
 	})
 	p1 := &fakeProvider{steps: script}
 	res1, err := RunLoop(ctx, loopCfg(p1, j, tools1))
+	var rejected *JournalRejectedError
+	if !errors.As(err, &rejected) || rejected.Position != 1 {
+		t.Fatalf("err = %v, want *JournalRejectedError at position 1", err)
+	}
 	if !errors.Is(err, ErrJournalRejected) {
-		t.Fatalf("err = %v, want ErrJournalRejected", err)
+		t.Fatalf("err = %v, want it to match ErrJournalRejected", err)
+	}
+	if rejected.Err == nil || rejected.Err.Error() != "lease lost" {
+		t.Fatalf("rejected cause = %v, want the journal's own error", rejected.Err)
 	}
 	if res1.StopReason != StopJournalRejected {
 		t.Fatalf("stop_reason = %q", res1.StopReason)

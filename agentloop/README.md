@@ -18,7 +18,10 @@ persistence and leases):
   model verbatim and nothing runs again.
 - A fresh result is recorded before the loop continues. A rejected record
   (e.g. a lost lease) stops the loop at once with `ErrJournalRejected` and no
-  further calls; a digest mismatch stops it with `ErrJournalDiverged`.
+  further calls; a digest mismatch stops it with `ErrJournalDiverged`. Both
+  are also available typed, as `*JournalRejectedError` and
+  `*DivergenceError`, carrying the position and the mismatch for a run
+  engine to record.
 - A run killed at any point resumes from the journal with an identical
   transcript and no repeated tool calls. Cancellation mid-call records
   nothing, so the position simply re-runs on resume.

@@ -341,10 +341,10 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 		}
 		if entry != nil {
 			if entry.Kind != kind || entry.Digest != digest {
-				return chat.Response{}, fmt.Errorf(
-					"%w: position %d holds kind %q with digest %s, replay expects kind %q with digest %s",
-					ErrJournalDiverged, pos, entry.Kind, entry.Digest, kind, digest,
-				)
+				return chat.Response{}, &DivergenceError{
+					Position: pos, Held: entry.Kind, HeldDigest: entry.Digest,
+					Want: kind, WantDigest: digest,
+				}
 			}
 			s.replayed++
 			s.spent = addUsage(s.spent, entry.Usage)
@@ -409,7 +409,7 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 	}
 	if s.journal != nil {
 		if rerr := s.journal.Record(ctx, entry); rerr != nil {
-			return resp, fmt.Errorf("%w: position %d: %w", ErrJournalRejected, pos, rerr)
+			return resp, &JournalRejectedError{Position: pos, Err: rerr}
 		}
 	}
 	return resp, err
@@ -432,10 +432,10 @@ func (s *journalState) runTool(ctx context.Context, call core.ToolCall, set core
 		}
 		if entry != nil {
 			if entry.Kind != EntryTool || entry.ToolName != call.ToolName || entry.Digest != digest {
-				return core.ToolResult{}, chat.Message{}, fmt.Errorf(
-					"%w: position %d holds kind %q tool %q with digest %s, replay expects tool %q with digest %s",
-					ErrJournalDiverged, pos, entry.Kind, entry.ToolName, entry.Digest, call.ToolName, digest,
-				)
+				return core.ToolResult{}, chat.Message{}, &DivergenceError{
+					Position: pos, Held: entry.Kind, HeldToolName: entry.ToolName, HeldDigest: entry.Digest,
+					Want: EntryTool, WantToolName: call.ToolName, WantDigest: digest,
+				}
 			}
 			s.replayed++
 			res := core.ToolResult{ToolCallID: entry.ToolCallID, ToolName: entry.ToolName, Output: entry.Output, Error: entry.Error}
@@ -499,7 +499,7 @@ func (s *journalState) runTool(ctx context.Context, call core.ToolCall, set core
 	}
 	if s.journal != nil {
 		if rerr := s.journal.Record(ctx, entry); rerr != nil {
-			return res, chat.Message{}, fmt.Errorf("%w: position %d: %w", ErrJournalRejected, pos, rerr)
+			return res, chat.Message{}, &JournalRejectedError{Position: pos, Err: rerr}
 		}
 	}
 	runAfterHooks(tctx, hooks, call, &res)

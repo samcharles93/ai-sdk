@@ -2,8 +2,10 @@ package core
 
 import "context"
 
-type replayedContextKey struct{}
-type idempotencyKeyContextKey struct{}
+type (
+	replayedContextKey       struct{}
+	idempotencyKeyContextKey struct{}
+)
 
 // WithReplayed returns a context that marks the call as driven from a
 // checkpoint journal replay rather than a live provider or tool invocation.
