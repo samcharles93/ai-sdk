@@ -17,7 +17,8 @@ import (
 	errx "github.com/samcharles93/ai-sdk/error"
 )
 
-const defaultBaseURL = "http://localhost:11434"
+// DefaultBaseURL is the base URL used when Config.BaseURL is empty.
+const DefaultBaseURL = "http://localhost:11434"
 
 // Config configures a Provider.
 type Config struct {
@@ -39,7 +40,7 @@ type Provider struct {
 func New(cfg Config) *Provider {
 	base := cfg.BaseURL
 	if base == "" {
-		base = defaultBaseURL
+		base = DefaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient

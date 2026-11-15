@@ -32,7 +32,8 @@ import (
 )
 
 const (
-	defaultBaseURL = "https://api.minimax.io"
+	// DefaultBaseURL is the base URL used when Config.BaseURL is empty.
+	DefaultBaseURL = "https://api.minimax.io"
 
 	// defaultModel is the only model documented for the v2 video endpoint.
 	defaultModel = "MiniMax-H3"
@@ -53,7 +54,7 @@ const (
 type Config struct {
 	// APIKey authenticates every request as a Bearer token. Required.
 	APIKey string
-	// BaseURL overrides the API host. Empty uses defaultBaseURL.
+	// BaseURL overrides the API host. Empty uses [DefaultBaseURL].
 	BaseURL string
 	// HTTPClient overrides the client used for requests. If nil, requests are
 	// bounded only by their caller contexts.
@@ -74,7 +75,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	base := cfg.BaseURL
 	if base == "" {
-		base = defaultBaseURL
+		base = DefaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient

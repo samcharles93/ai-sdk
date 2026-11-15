@@ -19,8 +19,8 @@ import (
 	errx "github.com/samcharles93/ai-sdk/error"
 )
 
-// defaultBaseURL is the production Gemini API host.
-const defaultBaseURL = "https://generativelanguage.googleapis.com"
+// DefaultBaseURL is the base URL used when Config.BaseURL is empty.
+const DefaultBaseURL = "https://generativelanguage.googleapis.com"
 
 // Config configures a Gemini Provider.
 type Config struct {
@@ -45,7 +45,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	base := cfg.BaseURL
 	if base == "" {
-		base = defaultBaseURL
+		base = DefaultBaseURL
 	}
 	// Catalog base URLs carry the API version; paths add it themselves.
 	base = strings.TrimSuffix(strings.TrimRight(base, "/"), "/v1beta")

@@ -18,9 +18,8 @@ import (
 	errx "github.com/samcharles93/ai-sdk/error"
 )
 
-const (
-	defaultBaseURL = "https://api.openai.com"
-)
+// DefaultBaseURL is the base URL used when Config.BaseURL is empty.
+const DefaultBaseURL = "https://api.openai.com"
 
 type Config struct {
 	// APIKey authenticates requests to OpenAI.
@@ -110,10 +109,10 @@ type wireAPI interface {
 func New(cfg Config) (*Provider, error) {
 	base := strings.TrimSpace(cfg.BaseURL)
 	if base == "" {
-		base = defaultBaseURL
+		base = DefaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
-	if cfg.APIKey == "" && base == defaultBaseURL {
+	if cfg.APIKey == "" && base == DefaultBaseURL {
 		return nil, fmt.Errorf("openai: APIKey is required for api.openai.com: %w", chat.ErrInvalidRequest)
 	}
 	client := cfg.HTTPClient

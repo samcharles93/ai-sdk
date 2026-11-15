@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	defaultBaseURL      = "https://api.openai.com"
+	// DefaultBaseURL is the base URL used when Config.BaseURL is empty.
+	DefaultBaseURL      = "https://api.openai.com"
 	chatCompletionsPath = "/chat/completions"
 )
 
@@ -48,10 +49,10 @@ var _ object.Provider = (*Provider)(nil)
 func New(cfg Config) (*Provider, error) {
 	base := strings.TrimSpace(cfg.BaseURL)
 	if base == "" {
-		base = defaultBaseURL
+		base = DefaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
-	if cfg.APIKey == "" && base == defaultBaseURL {
+	if cfg.APIKey == "" && base == DefaultBaseURL {
 		return nil, fmt.Errorf("openaiobject: APIKey is required for api.openai.com: %w", object.ErrInvalidRequest)
 	}
 	client := cfg.HTTPClient

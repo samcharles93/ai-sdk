@@ -15,9 +15,8 @@ import (
 	errx "github.com/samcharles93/ai-sdk/error"
 )
 
-const (
-	defaultBaseURL = "https://api.perplexity.ai"
-)
+// DefaultBaseURL is the base URL used when Config.BaseURL is empty.
+const DefaultBaseURL = "https://api.perplexity.ai"
 
 // Config configures a Perplexity Provider.
 type Config struct {
@@ -47,7 +46,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	base := cfg.BaseURL
 	if base == "" {
-		base = defaultBaseURL
+		base = DefaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
 	hc := cfg.HTTPClient
