@@ -3,6 +3,37 @@
 `Run` executes one mission with built-in tools, optional custom tools, budgets,
 and a structured result. Orchestration between missions belongs to the caller.
 
+## Checkpointed loops
+
+`RunLoop` is the general agent loop underneath: it runs with only the caller's
+tools — no built-in file or shell tools, no `WorkDir`, gate, preflight or notes.
+When `LoopConfig.Journal` is set, every model call, tool call and compaction
+takes a stable sequence position and is checkpointed through the caller's
+`Journal` interface (ai-sdk owns no storage; the caller's run engine provides
+persistence and leases):
+
+- Before each call the loop looks the entry up at its position. A recorded
+  entry is verified against its kind and a digest of the request or tool
+  input, then replayed: the model response or tool result goes back to the
+  model verbatim and nothing runs again.
+- A fresh result is recorded before the loop continues. A rejected record
+  (e.g. a lost lease) stops the loop at once with `ErrJournalRejected` and no
+  further calls; a digest mismatch stops it with `ErrJournalDiverged`.
+- A run killed at any point resumes from the journal with an identical
+  transcript and no repeated tool calls. Cancellation mid-call records
+  nothing, so the position simply re-runs on resume.
+- Each tool call sees a position-derived idempotency key
+  (`core.IdempotencyKey`), stable across replays, so tools with side effects
+  can deduplicate. A tool can report `ErrOutcomeUnknown`; the loop records it
+  as unknown, never retries it, and stops with `StopOutcomeUnknown`.
+- Budgets span resumptions: token and step budgets include usage recorded in
+  earlier attempts and refuse the next model call before it is made.
+  `LoopResult.Messages` carries the full journal-derived transcript and
+  `Usage` the totals. Hooks still fire for replayed calls, flagged with
+  `core.Replayed(ctx)` so telemetry and cost are not double counted.
+
+`Run` without a journal behaves exactly as before.
+
 ## Observe and intercept
 
 Set `Config.ToolHooks` and `Config.ModelHooks` using the existing `core` hook
