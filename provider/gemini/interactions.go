@@ -5,7 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -61,7 +62,7 @@ var _ chat.Provider = (*Interactions)(nil)
 type interactionsOptions struct {
 	// Background runs the request as a stored background interaction,
 	// required for long decode (max_output_tokens above 65,536).
-	Background        bool   `json:"background,omitempty"`
+	Background        bool   `json:"background,omitzero"`
 	ThinkingLevel     string `json:"thinking_level,omitempty"`
 	ThinkingSummaries string `json:"thinking_summaries,omitempty"`
 }
@@ -69,7 +70,7 @@ type interactionsOptions struct {
 // interactionsMessageOptions is the message provider-options bucket "gemini"
 // carrying the model steps of an assistant turn for verbatim replay.
 type interactionsMessageOptions struct {
-	InteractionSteps []json.RawMessage `json:"interaction_steps,omitempty"`
+	InteractionSteps []jsontext.Value `json:"interaction_steps,omitempty"`
 }
 
 // --- wire types -------------------------------------------------------------
@@ -83,15 +84,15 @@ type ixContent struct {
 }
 
 type ixStep struct {
-	Type      string          `json:"type"`
-	Content   []ixContent     `json:"content,omitempty"`
-	ID        string          `json:"id,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	Arguments json.RawMessage `json:"arguments,omitempty"`
-	CallID    string          `json:"call_id,omitempty"`
-	Result    []ixContent     `json:"result,omitempty"`
-	Signature string          `json:"signature,omitempty"`
-	Summary   []ixContent     `json:"summary,omitempty"`
+	Type      string         `json:"type"`
+	Content   []ixContent    `json:"content,omitempty"`
+	ID        string         `json:"id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Arguments jsontext.Value `json:"arguments,omitzero"`
+	CallID    string         `json:"call_id,omitempty"`
+	Result    []ixContent    `json:"result,omitempty"`
+	Signature string         `json:"signature,omitempty"`
+	Summary   []ixContent    `json:"summary,omitempty"`
 }
 
 type ixUsage struct {
@@ -117,23 +118,23 @@ type ixError struct {
 }
 
 type ixInteraction struct {
-	ID     string            `json:"id"`
-	Status string            `json:"status"`
-	Steps  []json.RawMessage `json:"steps"`
-	Usage  *ixUsage          `json:"usage"`
-	Errors []ixError         `json:"errors"`
+	ID     string           `json:"id"`
+	Status string           `json:"status"`
+	Steps  []jsontext.Value `json:"steps"`
+	Usage  *ixUsage         `json:"usage"`
+	Errors []ixError        `json:"errors"`
 }
 
 type ixEvent struct {
-	EventType     string          `json:"event_type"`
-	EventID       string          `json:"event_id"`
-	Index         int             `json:"index"`
-	Step          *ixStep         `json:"step"`
-	Delta         json.RawMessage `json:"delta"`
-	Interaction   *ixInteraction  `json:"interaction"`
-	InteractionID string          `json:"interaction_id"`
-	Status        string          `json:"status"`
-	Error         *ixError        `json:"error"`
+	EventType     string         `json:"event_type"`
+	EventID       string         `json:"event_id"`
+	Index         int            `json:"index"`
+	Step          *ixStep        `json:"step"`
+	Delta         jsontext.Value `json:"delta"`
+	Interaction   *ixInteraction `json:"interaction"`
+	InteractionID string         `json:"interaction_id"`
+	Status        string         `json:"status"`
+	Error         *ixError       `json:"error"`
 }
 
 type ixDelta struct {
@@ -183,7 +184,7 @@ func mediaKind(mimeType string) string {
 	return "document"
 }
 
-func assistantSteps(m chat.Message) ([]json.RawMessage, error) {
+func assistantSteps(m chat.Message) ([]jsontext.Value, error) {
 	opts, err := chat.ProviderOptionsFor[interactionsMessageOptions](m.ProviderOptions, "gemini")
 	if err != nil {
 		return nil, err
@@ -196,16 +197,16 @@ func assistantSteps(m chat.Message) ([]json.RawMessage, error) {
 		steps = append(steps, ixStep{Type: "model_output", Content: content})
 	}
 	for _, tc := range m.ToolCalls {
-		args := json.RawMessage(`{}`)
+		args := jsontext.Value(`{}`)
 		if strings.TrimSpace(tc.Arguments) != "" {
-			if !json.Valid([]byte(tc.Arguments)) {
+			if !jsontext.Value([]byte(tc.Arguments)).IsValid() {
 				return nil, fmt.Errorf("assistant tool call %q has invalid JSON arguments: %w", tc.Name, chat.ErrInvalidRequest)
 			}
-			args = json.RawMessage(tc.Arguments)
+			args = jsontext.Value(tc.Arguments)
 		}
 		steps = append(steps, ixStep{Type: "function_call", ID: tc.ID, Name: tc.Name, Arguments: args})
 	}
-	raw := make([]json.RawMessage, 0, len(steps))
+	raw := make([]jsontext.Value, 0, len(steps))
 	for _, s := range steps {
 		b, err := json.Marshal(s)
 		if err != nil {
@@ -386,7 +387,7 @@ func (p *Interactions) fetch(ctx context.Context, method, path string, body any)
 	}
 	defer resp.Body.Close()
 	var ix ixInteraction
-	if err := json.NewDecoder(resp.Body).Decode(&ix); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &ix); err != nil {
 		return ixInteraction{}, fmt.Errorf("gemini: decode interaction: %w", err)
 	}
 	return ix, nil
@@ -451,7 +452,7 @@ func interactionResponse(model string, ix ixInteraction) (chat.Response, error) 
 		return chat.Response{}, err
 	}
 	out := chat.Response{ID: ix.ID, Model: model, Role: chat.RoleAssistant}
-	var replay []json.RawMessage
+	var replay []jsontext.Value
 	var text strings.Builder
 	for i, raw := range ix.Steps {
 		var step ixStep
@@ -562,7 +563,7 @@ type ixStepAcc struct {
 	sum  strings.Builder
 }
 
-func (a *ixStepAcc) raw() json.RawMessage {
+func (a *ixStepAcc) raw() jsontext.Value {
 	s := a.step
 	switch s.Type {
 	case "model_output":
@@ -570,11 +571,11 @@ func (a *ixStepAcc) raw() json.RawMessage {
 			s.Content = append(s.Content, ixContent{Type: "text", Text: a.text.String()})
 		}
 	case "function_call":
-		if a.args.Len() > 0 && json.Valid([]byte(a.args.String())) {
-			s.Arguments = json.RawMessage(a.args.String())
+		if a.args.Len() > 0 && jsontext.Value([]byte(a.args.String())).IsValid() {
+			s.Arguments = jsontext.Value(a.args.String())
 		}
 		if len(s.Arguments) == 0 {
-			s.Arguments = json.RawMessage(`{}`)
+			s.Arguments = jsontext.Value(`{}`)
 		}
 	case "thought":
 		if a.sum.Len() > 0 {
@@ -766,7 +767,7 @@ func (s *ixStream) complete(ix *ixInteraction) (chat.Chunk, bool, error) {
 		}
 	}
 	chunk.FinishReason = finishReason(s.status, len(s.toolIndex) > 0)
-	replay := make([]json.RawMessage, 0, len(s.order))
+	replay := make([]jsontext.Value, 0, len(s.order))
 	for _, idx := range s.order {
 		acc := s.steps[idx]
 		if acc.step.Type == "function_call" && acc.args.Len() == 0 && len(acc.step.Arguments) > 0 {

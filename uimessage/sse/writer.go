@@ -7,7 +7,7 @@ package sse
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"io"
 	"net/http"
@@ -82,7 +82,7 @@ func (w *Writer) WriteChunk(c uimessage.Chunk) error {
 }
 
 // WriteRaw writes a pre-encoded JSON payload as an SSE event.
-func (w *Writer) WriteRaw(payload json.RawMessage) error {
+func (w *Writer) WriteRaw(payload jsontext.Value) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if _, err := fmt.Fprintf(w.w, "data: %s\n\n", payload); err != nil {

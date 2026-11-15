@@ -7,7 +7,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -95,9 +96,9 @@ type cohereChatMessage struct {
 }
 
 type cohereToolDef struct {
-	Name                 string          `json:"name"`
-	Description          string          `json:"description"`
-	ParameterDefinitions json.RawMessage `json:"parameter_definitions,omitempty"`
+	Name                 string         `json:"name"`
+	Description          string         `json:"description"`
+	ParameterDefinitions jsontext.Value `json:"parameter_definitions,omitzero"`
 }
 
 type cohereChatRequest struct {
@@ -106,30 +107,30 @@ type cohereChatRequest struct {
 	Model       string              `json:"model"`
 	Stream      bool                `json:"stream"`
 	Tools       []cohereToolDef     `json:"tools,omitempty"`
-	MaxTokens   int                 `json:"max_tokens,omitempty"`
-	Temperature float32             `json:"temperature,omitempty"`
-	P           float32             `json:"p,omitempty"`
-	K           int                 `json:"k,omitempty"`
+	MaxTokens   int                 `json:"max_tokens,omitzero"`
+	Temperature float32             `json:"temperature,omitzero"`
+	P           float32             `json:"p,omitzero"`
+	K           int                 `json:"k,omitzero"`
 }
 
 type cohereToolCall struct {
-	Name       string          `json:"name"`
-	Parameters json.RawMessage `json:"parameters"`
+	Name       string         `json:"name"`
+	Parameters jsontext.Value `json:"parameters"`
 }
 
 type cohereChatResponse struct {
-	Text         string            `json:"text"`
-	GenerationID string            `json:"generation_id"`
-	ChatHistory  []json.RawMessage `json:"chat_history,omitempty"`
-	FinishReason string            `json:"finish_reason,omitempty"`
-	ToolCalls    []cohereToolCall  `json:"tool_calls,omitempty"`
-	Meta         *cohereMeta       `json:"meta,omitempty"`
-	IsFinished   bool              `json:"is_finished,omitempty"`
+	Text         string           `json:"text"`
+	GenerationID string           `json:"generation_id"`
+	ChatHistory  []jsontext.Value `json:"chat_history,omitempty"`
+	FinishReason string           `json:"finish_reason,omitempty"`
+	ToolCalls    []cohereToolCall `json:"tool_calls,omitempty"`
+	Meta         *cohereMeta      `json:"meta,omitzero"`
+	IsFinished   bool             `json:"is_finished,omitzero"`
 }
 
 type cohereMeta struct {
-	Tokens      *cohereTokens      `json:"tokens,omitempty"`
-	BilledUnits *cohereBilledUnits `json:"billed_units,omitempty"`
+	Tokens      *cohereTokens      `json:"tokens,omitzero"`
+	BilledUnits *cohereBilledUnits `json:"billed_units,omitzero"`
 }
 
 type cohereTokens struct {
@@ -163,7 +164,7 @@ type cohereStreamEvent struct {
 	Text         string              `json:"text,omitempty"`
 	ToolCalls    []cohereToolCall    `json:"tool_calls,omitempty"`
 	FinishReason string              `json:"finish_reason,omitempty"`
-	Response     *cohereChatResponse `json:"response,omitempty"`
+	Response     *cohereChatResponse `json:"response,omitzero"`
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +297,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 	}
 
 	var cr cohereChatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &cr); err != nil {
 		return chat.Response{}, fmt.Errorf("cohere: decode response: %w", err)
 	}
 
@@ -538,11 +539,11 @@ type cohereEmbedResponse struct {
 	ID         string           `json:"id"`
 	Texts      []string         `json:"texts"`
 	Embeddings [][]float32      `json:"embeddings"`
-	Meta       *cohereEmbedMeta `json:"meta,omitempty"`
+	Meta       *cohereEmbedMeta `json:"meta,omitzero"`
 }
 
 type cohereEmbedMeta struct {
-	BilledUnits *cohereBilledUnits `json:"billed_units,omitempty"`
+	BilledUnits *cohereBilledUnits `json:"billed_units,omitzero"`
 }
 
 // Embed produces one embedding vector per entry in req.Inputs.
@@ -582,7 +583,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 	}
 
 	var er cohereEmbedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&er); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &er); err != nil {
 		return embed.Response{}, fmt.Errorf("cohere: decode embed response: %w", err)
 	}
 
@@ -613,7 +614,7 @@ type cohereRerankRequest struct {
 	Query     string   `json:"query"`
 	Documents []string `json:"documents"`
 	Model     string   `json:"model"`
-	TopN      int      `json:"top_n,omitempty"`
+	TopN      int      `json:"top_n,omitzero"`
 }
 
 type cohereRerankResult struct {
@@ -623,11 +624,11 @@ type cohereRerankResult struct {
 
 type cohereRerankResponse struct {
 	Results []cohereRerankResult `json:"results"`
-	Meta    *cohereRerankMeta    `json:"meta,omitempty"`
+	Meta    *cohereRerankMeta    `json:"meta,omitzero"`
 }
 
 type cohereRerankMeta struct {
-	BilledUnits *cohereBilledUnits `json:"billed_units,omitempty"`
+	BilledUnits *cohereBilledUnits `json:"billed_units,omitzero"`
 }
 
 // Rerank re-orders documents by relevance to the query.
@@ -671,7 +672,7 @@ func (p *Provider) Rerank(ctx context.Context, req rerank.Request) (rerank.Respo
 	}
 
 	var rr cohereRerankResponse
-	if err := json.NewDecoder(resp.Body).Decode(&rr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &rr); err != nil {
 		return rerank.Response{}, fmt.Errorf("cohere: decode rerank response: %w", err)
 	}
 

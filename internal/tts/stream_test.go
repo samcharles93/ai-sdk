@@ -3,7 +3,7 @@ package tts
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +20,7 @@ func TestStream_SSE(t *testing.T) {
 	var gotBody map[string]any
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -78,7 +78,7 @@ func TestStream_RawAudio(t *testing.T) {
 	var gotBody map[string]any
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
 		w.Header().Set("Content-Type", "audio/mpeg")
@@ -122,7 +122,7 @@ func TestStream_Flag(t *testing.T) {
 	var gotBody map[string]any
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
 		w.Header().Set("Content-Type", "audio/wav")

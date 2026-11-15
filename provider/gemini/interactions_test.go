@@ -2,7 +2,8 @@ package gemini
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -29,7 +30,7 @@ func newTestInteractions(t *testing.T, h http.HandlerFunc) *Interactions {
 }
 
 func TestInteractionsRequestEncoding(t *testing.T) {
-	thought := json.RawMessage(`{"type":"thought","signature":"sig"}`)
+	thought := jsontext.Value(`{"type":"thought","signature":"sig"}`)
 	tests := []struct {
 		name     string
 		req      chat.Request
@@ -50,7 +51,7 @@ func TestInteractionsRequestEncoding(t *testing.T) {
 					},
 					{Role: chat.RoleTool, ToolCallID: "c1", Content: "sunny"},
 				},
-				Tools:           []chat.Tool{{Name: "get_weather", Parameters: json.RawMessage(`{"type":"object"}`)}},
+				Tools:           []chat.Tool{{Name: "get_weather", Parameters: jsontext.Value(`{"type":"object"}`)}},
 				ToolChoice:      &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "get_weather"},
 				ProviderOptions: map[string]any{"gemini": map[string]any{"thinking_level": "high"}},
 			},

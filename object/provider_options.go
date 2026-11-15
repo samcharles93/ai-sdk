@@ -1,7 +1,7 @@
 package object
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 )
 

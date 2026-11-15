@@ -3,7 +3,7 @@ package ollama
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,10 +17,10 @@ import (
 func TestChat_Multimodal_ImagePart(t *testing.T) {
 	var got ollamaRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+		if err := json.UnmarshalRead(r.Body, &got); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model": "llava",
 			"message": map[string]any{
 				"role":    "assistant",
@@ -69,7 +69,7 @@ func TestChat_Multimodal_ImagePart(t *testing.T) {
 // parts emit a warning rather than being silently dropped.
 func TestChat_Multimodal_ImagePartURL_Warns(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"message": map[string]any{"role": "assistant", "content": "ok"},
 			"done":    true,
 		})

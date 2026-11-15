@@ -5,7 +5,7 @@ package xai
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,21 +30,21 @@ type wireVideoCreateResponse struct {
 
 type wireVideoStatusResponse struct {
 	Status   string          `json:"status,omitempty"`
-	Video    *wireVideoInfo  `json:"video,omitempty"`
+	Video    *wireVideoInfo  `json:"video,omitzero"`
 	Model    string          `json:"model,omitempty"`
-	Usage    *wireVideoUsage `json:"usage,omitempty"`
-	Progress float64         `json:"progress,omitempty"`
-	Error    *wireVideoError `json:"error,omitempty"`
+	Usage    *wireVideoUsage `json:"usage,omitzero"`
+	Progress float64         `json:"progress,omitzero"`
+	Error    *wireVideoError `json:"error,omitzero"`
 }
 
 type wireVideoInfo struct {
 	URL               string  `json:"url,omitempty"`
-	Duration          float64 `json:"duration,omitempty"`
-	RespectModeration *bool   `json:"respect_moderation,omitempty"`
+	Duration          float64 `json:"duration,omitzero"`
+	RespectModeration *bool   `json:"respect_moderation,omitzero"`
 }
 
 type wireVideoUsage struct {
-	CostInUsdTicks float64 `json:"cost_in_usd_ticks,omitempty"`
+	CostInUsdTicks float64 `json:"cost_in_usd_ticks,omitzero"`
 }
 
 type wireVideoError struct {
@@ -55,10 +55,10 @@ type wireVideoError struct {
 // VideoOptions carries xAI-specific video generation options.
 type VideoOptions struct {
 	Resolution     string `json:"resolution,omitempty"`
-	PollIntervalMs int    `json:"poll_interval_ms,omitempty"`
+	PollIntervalMs int    `json:"poll_interval_ms,omitzero"`
 	// PollTimeoutMs optionally limits the complete polling phase. Zero leaves
 	// polling bounded only by the GenerateVideo caller's context.
-	PollTimeoutMs int `json:"poll_timeout_ms,omitempty"`
+	PollTimeoutMs int `json:"poll_timeout_ms,omitzero"`
 }
 
 // videoCompatOptions captures the legacy untyped xAI video fields so callers
@@ -193,7 +193,7 @@ func (p *Provider) GenerateVideo(ctx context.Context, req video.GenerateVideoReq
 	}
 
 	var createResp wireVideoCreateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &createResp); err != nil {
 		return video.GenerateVideoResponse{}, fmt.Errorf("xai: decode create response: %w", err)
 	}
 
@@ -277,7 +277,7 @@ func (p *Provider) pollVideoStatus(ctx context.Context, requestID string) (*wire
 	}
 
 	var status wireVideoStatusResponse
-	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &status); err != nil {
 		return nil, fmt.Errorf("xai: decode status response: %w", err)
 	}
 

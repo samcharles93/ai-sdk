@@ -39,7 +39,7 @@ package togetherai
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -110,15 +110,15 @@ func (p *Provider) Name() string { return providerName }
 type Options struct {
 	// Steps is the number of generation steps (higher → typically better quality).
 	// Image generation only.
-	Steps int `json:"steps,omitempty"`
+	Steps int `json:"steps,omitzero"`
 	// Guidance is the classifier-free guidance scale. Image generation only.
-	Guidance float64 `json:"guidance,omitempty"`
+	Guidance float64 `json:"guidance,omitzero"`
 	// NegativePrompt mirrors domain-level negative prompt but takes
 	// precedence when set. Image generation only.
 	NegativePrompt string `json:"negative_prompt,omitempty"`
 	// DisableSafetyChecker disables Together AI's NSFW filter (not all
 	// models support this — Flux Schnell Free and Flux Pro reject it).
-	DisableSafetyChecker bool `json:"disable_safety_checker,omitempty"`
+	DisableSafetyChecker bool `json:"disable_safety_checker,omitzero"`
 	// RankFields specifies which fields to use for ranking when
 	// documents are JSON objects. Rerank only.
 	RankFields []string `json:"rank_fields,omitempty"`

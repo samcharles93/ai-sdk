@@ -2,7 +2,8 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,7 +56,7 @@ func TestGrepUsesIndexCandidatesAsAdvisoryFileSet(t *testing.T) {
 	createGrepTestFile(t, tmp, "indexed.txt", "needle\n")
 	createGrepTestFile(t, tmp, "excluded.txt", "needle\n")
 	tool := NewGrepTool(tmp, staticGrepIndex{files: []string{indexed}})
-	result, err := tool.Execute(context.Background(), json.RawMessage(`{"pattern":"needle"}`), nil)
+	result, err := tool.Execute(context.Background(), jsontext.Value(`{"pattern":"needle"}`), nil)
 	if err != nil || result.IsError {
 		t.Fatalf("grep result = %#v, err = %v", result, err)
 	}
@@ -69,7 +70,7 @@ func TestGrepRetriesDirectSearchWhenIndexedCandidatesAreStale(t *testing.T) {
 	createGrepTestFile(t, tmp, "live.txt", "needle\n")
 	missing := filepath.Join(tmp, "deleted.txt")
 	tool := NewGrepTool(tmp, staticGrepIndex{files: []string{missing}})
-	result, err := tool.Execute(context.Background(), json.RawMessage(`{"pattern":"needle"}`), nil)
+	result, err := tool.Execute(context.Background(), jsontext.Value(`{"pattern":"needle"}`), nil)
 	if err != nil || result.IsError {
 		t.Fatalf("grep result = %#v, err = %v", result, err)
 	}
@@ -85,7 +86,7 @@ func TestGrepDiscardsPartialIndexedOutputOnCandidateError(t *testing.T) {
 	createGrepTestFile(t, tmp, "also-live.txt", "needle\n")
 	missing := filepath.Join(tmp, "deleted.txt")
 	tool := NewGrepTool(tmp, staticGrepIndex{files: []string{live, missing}})
-	result, err := tool.Execute(context.Background(), json.RawMessage(`{"pattern":"needle"}`), nil)
+	result, err := tool.Execute(context.Background(), jsontext.Value(`{"pattern":"needle"}`), nil)
 	if err != nil || result.IsError {
 		t.Fatalf("grep result = %#v, err = %v", result, err)
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 
@@ -118,7 +118,7 @@ type Entry struct {
 	// Input is the tool call's JSON arguments, as the model sent them.
 	Input string `json:"input,omitempty"`
 	// Message is the assistant turn for model and compact entries.
-	Message *chat.Message `json:"message,omitempty"`
+	Message *chat.Message `json:"message,omitzero"`
 	// FinishReason is the wire finish reason of a model entry.
 	FinishReason string `json:"finish_reason,omitempty"`
 	// Usage is the token usage of this call (model and compact entries).
@@ -128,7 +128,7 @@ type Entry struct {
 	Error  string `json:"error,omitempty"`
 	// Unknown marks a tool entry whose outcome is unknown: recorded, never
 	// retried, and it stops the run.
-	Unknown bool `json:"unknown,omitempty"`
+	Unknown bool `json:"unknown,omitzero"`
 }
 
 // response rebuilds the chat response a model entry stands for.

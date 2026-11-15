@@ -85,15 +85,15 @@ type ModelConfig struct {
 	ID               string `json:"id"`
 	Name             string `json:"name,omitempty"`
 	URL              string `json:"url,omitempty"`
-	ContextWindow    int    `json:"context_window,omitempty"`
-	MaxOutputTokens  int    `json:"max_output_tokens,omitempty"`
-	Reasoning        bool   `json:"reasoning,omitempty"`
-	ToolCall         bool   `json:"tool_call,omitempty"`
-	StructuredOutput bool   `json:"structured_output,omitempty"`
+	ContextWindow    int    `json:"context_window,omitzero"`
+	MaxOutputTokens  int    `json:"max_output_tokens,omitzero"`
+	Reasoning        bool   `json:"reasoning,omitzero"`
+	ToolCall         bool   `json:"tool_call,omitzero"`
+	StructuredOutput bool   `json:"structured_output,omitzero"`
 	// Temperature reports whether the model accepts a temperature parameter.
 	// nil means unspecified (unknown), true/false override catalog metadata
 	// explicitly.
-	Temperature *bool `json:"temperature,omitempty"`
+	Temperature *bool `json:"temperature,omitzero"`
 	// Capabilities optionally declares the model's capabilities, overriding
 	// metadata-derived ones. When non-empty it is authoritative: a capability
 	// absent from the list is treated as unsupported even when catalog
@@ -105,10 +105,10 @@ type ModelConfig struct {
 
 // CostConfig carries per-token pricing metadata.
 type CostConfig struct {
-	Input      float64 `json:"input,omitempty"`
-	Output     float64 `json:"output,omitempty"`
-	CacheRead  float64 `json:"cache_read,omitempty"`
-	CacheWrite float64 `json:"cache_write,omitempty"`
+	Input      float64 `json:"input,omitzero"`
+	Output     float64 `json:"output,omitzero"`
+	CacheRead  float64 `json:"cache_read,omitzero"`
+	CacheWrite float64 `json:"cache_write,omitzero"`
 }
 
 // ModelInfo is the runtime's normalised view of a model, combining

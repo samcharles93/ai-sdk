@@ -8,7 +8,8 @@ package agentloop
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -557,7 +558,7 @@ var readOnlyTools = map[string]bool{"read": true, "grep": true, "find": true}
 // finishTool lets the model end the run deliberately and supply the
 // summary that becomes the PR body / notes write-back.
 func finishTool(state *runState) *core.Tool {
-	params := json.RawMessage(`{
+	params := jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"status": {"type": "string", "enum": ["passed", "blocked"], "description": "passed: mission accomplished. blocked: cannot make further progress; explain why in summary."},
@@ -592,7 +593,7 @@ func finishTool(state *runState) *core.Tool {
 
 // writeNoteTool appends a verified observation to the caller's NotesStore.
 func writeNoteTool(notes NotesStore) *core.Tool {
-	params := json.RawMessage(`{
+	params := jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"note": {"type": "string", "description": "The observation worth remembering across runs."},

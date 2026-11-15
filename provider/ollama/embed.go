@@ -3,7 +3,7 @@ package ollama
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -79,7 +79,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 	}
 
 	var oer ollamaEmbedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&oer); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &oer); err != nil {
 		return embed.Response{}, fmt.Errorf("ollama: decode response: %w", err)
 	}
 

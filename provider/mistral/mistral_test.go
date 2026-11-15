@@ -2,7 +2,7 @@ package mistral
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -43,7 +43,7 @@ func TestChat_NonStreaming(t *testing.T) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		gotCT = r.Header.Get("Content-Type")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"mistral-resp-1",
@@ -134,7 +134,7 @@ func TestChat_RateLimit_TypedProviderError(t *testing.T) {
 func TestChatStream_SSE(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if body["stream"] != true {
 			t.Errorf("stream flag missing: %v", body["stream"])
 		}
@@ -217,7 +217,7 @@ func TestEmbed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"embd-1",

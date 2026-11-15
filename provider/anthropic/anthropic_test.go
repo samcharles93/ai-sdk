@@ -2,7 +2,8 @@ package anthropic
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -43,7 +44,7 @@ func TestChat_NonStreaming(t *testing.T) {
 		gotPath = r.URL.Path
 		gotAPIKey = r.Header.Get("x-api-key")
 		gotVersion = r.Header.Get("anthropic-version")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"msg_01",
@@ -100,7 +101,7 @@ func TestChat_NonStreaming(t *testing.T) {
 func TestChat_ToolUse(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"msg_02",
@@ -126,7 +127,7 @@ func TestChat_ToolUse(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`),
+			Parameters:  jsontext.Value(`{"type":"object","properties":{"location":{"type":"string"}}}`),
 		}},
 		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceAuto},
 	})
@@ -167,7 +168,7 @@ func TestChat_ToolUse(t *testing.T) {
 func TestChat_SystemMessage(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"msg_03","model":"claude-sonnet-4-20250514","role":"assistant",
@@ -213,7 +214,7 @@ func TestChat_SystemMessage(t *testing.T) {
 func TestChat_SystemMessage_CacheDisabled(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"msg_03b","model":"claude-sonnet-4-20250514","role":"assistant",
@@ -247,7 +248,7 @@ func TestChat_SystemMessage_CacheDisabled(t *testing.T) {
 func TestChat_ToolResult(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"msg_04","model":"claude-sonnet-4-20250514","role":"assistant",
@@ -295,7 +296,7 @@ func TestChat_ToolResult(t *testing.T) {
 func TestChatStream_SSE(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if body["stream"] != true {
 			t.Errorf("stream flag missing: %v", body["stream"])
 		}
@@ -423,7 +424,7 @@ func TestChatStream_ToolUse(t *testing.T) {
 		Messages: []chat.Message{{Role: chat.RoleUser, Content: "weather?"}},
 		Tools: []chat.Tool{{
 			Name:       "get_weather",
-			Parameters: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`),
+			Parameters: jsontext.Value(`{"type":"object","properties":{"location":{"type":"string"}}}`),
 		}},
 	})
 	if err != nil {
@@ -582,7 +583,7 @@ func TestChat_EmptyModel(t *testing.T) {
 func TestChat_Image(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"msg_img","model":"claude-sonnet-4-20250514","role":"assistant",
@@ -629,7 +630,7 @@ func TestChat_Image(t *testing.T) {
 func TestChat_ToolChoiceTool(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"msg_tct","model":"claude-sonnet-4-20250514","role":"assistant",
@@ -646,7 +647,7 @@ func TestChat_ToolChoiceTool(t *testing.T) {
 		Messages: []chat.Message{{Role: chat.RoleUser, Content: "weather?"}},
 		Tools: []chat.Tool{{
 			Name:       "get_weather",
-			Parameters: json.RawMessage(`{"type":"object"}`),
+			Parameters: jsontext.Value(`{"type":"object"}`),
 		}},
 		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "get_weather"},
 	})
@@ -665,7 +666,7 @@ func TestChat_ToolChoiceTool(t *testing.T) {
 // gotBody and returns a minimal valid response.
 func testServer(gotBody *map[string]any) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(gotBody)
+		_ = json.UnmarshalRead(r.Body, gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"msg_test","model":"claude-sonnet-4-20250514","role":"assistant",

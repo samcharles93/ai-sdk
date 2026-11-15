@@ -1,7 +1,7 @@
 package decide
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 )
@@ -116,10 +116,10 @@ type (
 		Name       string           `json:"name"`
 		Type       Kind             `json:"type"`
 		Confidence float64          `json:"confidence"`
-		Predicate  *PredicateAnswer `json:"predicate,omitempty"`
-		Choice     *ChoiceAnswer    `json:"choice,omitempty"`
-		Score      *ScoreAnswer     `json:"score,omitempty"`
-		Refusal    *RefusalAnswer   `json:"refusal,omitempty"`
+		Predicate  *PredicateAnswer `json:"predicate,omitzero"`
+		Choice     *ChoiceAnswer    `json:"choice,omitzero"`
+		Score      *ScoreAnswer     `json:"score,omitzero"`
+		Refusal    *RefusalAnswer   `json:"refusal,omitzero"`
 	}
 )
 

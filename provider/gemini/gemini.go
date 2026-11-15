@@ -7,7 +7,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -67,15 +68,15 @@ var _ chat.Provider = (*Provider)(nil)
 // wireFunctionCall is the Gemini representation of a model-issued tool call.
 // args is an OBJECT (not a string) on the wire.
 type wireFunctionCall struct {
-	Name string          `json:"name"`
-	Args json.RawMessage `json:"args,omitempty"`
+	Name string         `json:"name"`
+	Args jsontext.Value `json:"args,omitzero"`
 }
 
 // wireFunctionResponse is the Gemini representation of a tool result fed back
 // to the model. Note that on the wire this rides under role "user", not "tool".
 type wireFunctionResponse struct {
-	Name     string          `json:"name"`
-	Response json.RawMessage `json:"response"`
+	Name     string         `json:"name"`
+	Response jsontext.Value `json:"response"`
 }
 
 // wirePart is one element of a contents[].parts array. Exactly one of Text,
@@ -84,10 +85,10 @@ type wireFunctionResponse struct {
 // shape.
 type wirePart struct {
 	Text             string                `json:"text,omitempty"`
-	InlineData       *wireInlineData       `json:"inlineData,omitempty"`
-	FileData         *wireFileData         `json:"fileData,omitempty"`
-	FunctionCall     *wireFunctionCall     `json:"functionCall,omitempty"`
-	FunctionResponse *wireFunctionResponse `json:"functionResponse,omitempty"`
+	InlineData       *wireInlineData       `json:"inlineData,omitzero"`
+	FileData         *wireFileData         `json:"fileData,omitzero"`
+	FunctionCall     *wireFunctionCall     `json:"functionCall,omitzero"`
+	FunctionResponse *wireFunctionResponse `json:"functionResponse,omitzero"`
 }
 
 // wireInlineData carries base64-encoded multimodal bytes inline.
@@ -120,7 +121,7 @@ type wireUsage struct {
 
 type wireResponse struct {
 	Candidates    []wireCandidate `json:"candidates"`
-	UsageMetadata *wireUsage      `json:"usageMetadata,omitempty"`
+	UsageMetadata *wireUsage      `json:"usageMetadata,omitzero"`
 }
 
 // --- helpers ---------------------------------------------------------------
@@ -227,9 +228,9 @@ func buildBody(req chat.Request) ([]byte, []chat.Warning, error) {
 			parts, _, ws := partsFromMessage(m)
 			allWarnings = append(allWarnings, ws...)
 			for _, tc := range m.ToolCalls {
-				var args json.RawMessage
+				var args jsontext.Value
 				if strings.TrimSpace(tc.Arguments) == "" {
-					args = json.RawMessage(`{}`)
+					args = jsontext.Value(`{}`)
 				} else {
 					if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
 						return nil, nil, fmt.Errorf("gemini: assistant tool call %q has invalid JSON arguments: %w", tc.Name, chat.ErrInvalidRequest)
@@ -252,16 +253,16 @@ func buildBody(req chat.Request) ([]byte, []chat.Warning, error) {
 			if name == "" {
 				name = m.ToolCallID
 			}
-			var resp json.RawMessage
+			var resp jsontext.Value
 			if strings.TrimSpace(m.Content) == "" {
-				resp = json.RawMessage(`{}`)
+				resp = jsontext.Value(`{}`)
 			} else if err := json.Unmarshal([]byte(m.Content), &resp); err != nil {
 				// Not valid JSON — wrap as {"output": <content>}.
 				wrapped, mErr := json.Marshal(map[string]string{"output": m.Content})
 				if mErr != nil {
 					return nil, nil, fmt.Errorf("gemini: wrap tool result: %w", mErr)
 				}
-				resp = json.RawMessage(wrapped)
+				resp = jsontext.Value(wrapped)
 			}
 			contents = append(contents, wireContent{
 				Role: "user",
@@ -294,7 +295,7 @@ func buildBody(req chat.Request) ([]byte, []chat.Warning, error) {
 				d["description"] = t.Description
 			}
 			if len(t.Parameters) > 0 {
-				d["parameters"] = json.RawMessage(t.Parameters)
+				d["parameters"] = jsontext.Value(t.Parameters)
 			}
 			decls = append(decls, d)
 		}
@@ -441,7 +442,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 	}
 
 	var wr wireResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return chat.Response{}, fmt.Errorf("gemini: decode response: %w", err)
 	}
 

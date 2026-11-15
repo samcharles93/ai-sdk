@@ -2,7 +2,8 @@ package tts
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -54,9 +55,9 @@ func ListVoices(ctx context.Context, cfg Config, model string) ([]speech.Voice, 
 	}
 
 	var payload struct {
-		Voices []json.RawMessage `json:"voices"`
+		Voices []jsontext.Value `json:"voices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &payload); err != nil {
 		return nil, fmt.Errorf("%s: decode voices response: %w", cfg.Provider, err)
 	}
 
@@ -75,7 +76,7 @@ func ListVoices(ctx context.Context, cfg Config, model string) ([]speech.Voice, 
 }
 
 // decodeVoice accepts either a bare string (legacy Kokoro) or an object.
-func decodeVoice(raw json.RawMessage) (speech.Voice, error) {
+func decodeVoice(raw jsontext.Value) (speech.Voice, error) {
 	var id string
 	if err := json.Unmarshal(raw, &id); err == nil {
 		return speech.Voice{ID: id, Name: id}, nil

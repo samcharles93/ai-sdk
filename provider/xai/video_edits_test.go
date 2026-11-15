@@ -2,7 +2,7 @@ package xai
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +21,7 @@ func startVideoSrv(t *testing.T) (*httptest.Server, *string, *map[string]any) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			gotPath = r.URL.Path
-			_ = json.NewDecoder(r.Body).Decode(&gotBody)
+			_ = json.UnmarshalRead(r.Body, &gotBody)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"request_id":"req-1"}`)
 			return

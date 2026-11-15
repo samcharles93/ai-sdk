@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -52,7 +52,7 @@ func TestOpenAICompatibleSpeechDefaults(t *testing.T) {
 			var gotBody map[string]any
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++
-				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 					t.Fatalf("decode body: %v", err)
 				}
 				_, _ = w.Write([]byte("audio"))
@@ -103,7 +103,7 @@ func TestOpenAICompatibleSpeechDefaults(t *testing.T) {
 func TestOpenAIClassKeepsAlloyDefault(t *testing.T) {
 	var gotBody map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		_, _ = w.Write([]byte("audio"))

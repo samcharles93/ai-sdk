@@ -2,7 +2,7 @@ package gemini
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -22,7 +22,7 @@ func TestEmbed_Success(t *testing.T) {
 	p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotKey = r.URL.Query().Get("key")
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		_, _ = io.WriteString(w, `{"embeddings":[{"values":[0.1,0.2,0.3]},{"values":[0.4,0.5,0.6]}]}`)

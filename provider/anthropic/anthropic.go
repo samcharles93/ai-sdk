@@ -5,7 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -49,7 +50,7 @@ type anthropicProviderOptions struct {
 	// the Anthropic API). Not supported on adaptive-only models (see
 	// adaptiveOnlyModelPrefixes) — set ReasoningEffort instead, which
 	// returns an error explaining the rename.
-	ThinkingBudgetTokens int `json:"thinking_budget_tokens,omitempty"`
+	ThinkingBudgetTokens int `json:"thinking_budget_tokens,omitzero"`
 
 	// DisableSystemCache opts out of the default behaviour of marking the
 	// system prompt as an ephemeral cache breakpoint. Caching is on by
@@ -59,7 +60,7 @@ type anthropicProviderOptions struct {
 	// once, then subsequent reads of that prefix cost ~0.1x. A one-off,
 	// single-turn call pays that 1.25x premium for no benefit, which is
 	// what this flag is for.
-	DisableSystemCache bool `json:"disable_system_cache,omitempty"`
+	DisableSystemCache bool `json:"disable_system_cache,omitzero"`
 }
 
 // reasoningEffortBudget maps symbolic effort levels to thinking budget
@@ -157,16 +158,16 @@ func (p *Provider) Name() string { return "anthropic" }
 // wireContent is a single content block in the Anthropic wire format.
 // It handles text, image, tool_use, tool_result, and thinking blocks.
 type wireContent struct {
-	Type      string          `json:"type"`
-	Text      string          `json:"text,omitempty"`
-	ID        string          `json:"id,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
-	ToolUseID string          `json:"tool_use_id,omitempty"`
-	Content   string          `json:"content,omitempty"`
-	Thinking  string          `json:"thinking,omitempty"`
-	Signature string          `json:"signature,omitempty"`
-	Source    *wireSource     `json:"source,omitempty"`
+	Type      string         `json:"type"`
+	Text      string         `json:"text,omitempty"`
+	ID        string         `json:"id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Input     jsontext.Value `json:"input,omitzero"`
+	ToolUseID string         `json:"tool_use_id,omitempty"`
+	Content   string         `json:"content,omitempty"`
+	Thinking  string         `json:"thinking,omitempty"`
+	Signature string         `json:"signature,omitempty"`
+	Source    *wireSource    `json:"source,omitzero"`
 }
 
 type wireSource struct {
@@ -183,8 +184,8 @@ type wireMessage struct {
 type wireUsage struct {
 	InputTokens              int `json:"input_tokens"`
 	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitzero"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitzero"`
 }
 
 // usageFromWire converts Anthropic's usage accounting into [chat.Usage].
@@ -218,34 +219,34 @@ type wireResponse struct {
 }
 
 type wireToolDef struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	InputSchema jsontext.Value `json:"input_schema"`
 }
 
 // --- SSE streaming wire types ------------------------------------------------
 
 type wireSSEEvent struct {
 	Type         string          `json:"type"`
-	Message      *wireSSEMsgData `json:"message,omitempty"`
-	Index        int             `json:"index,omitempty"`
-	ContentBlock *wireContent    `json:"content_block,omitempty"`
-	Delta        json.RawMessage `json:"delta,omitempty"`
-	Usage        *wireSSEUsage   `json:"usage,omitempty"`
+	Message      *wireSSEMsgData `json:"message,omitzero"`
+	Index        int             `json:"index,omitzero"`
+	ContentBlock *wireContent    `json:"content_block,omitzero"`
+	Delta        jsontext.Value  `json:"delta,omitzero"`
+	Usage        *wireSSEUsage   `json:"usage,omitzero"`
 }
 
 type wireSSEMsgData struct {
 	ID    string        `json:"id"`
 	Model string        `json:"model"`
 	Role  string        `json:"role"`
-	Usage *wireSSEUsage `json:"usage,omitempty"`
+	Usage *wireSSEUsage `json:"usage,omitzero"`
 }
 
 type wireSSEUsage struct {
 	InputTokens              int `json:"input_tokens"`
 	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitzero"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitzero"`
 }
 
 // wireContentDelta is decoded from [wireSSEEvent.Delta] for
@@ -433,7 +434,7 @@ func (p *Provider) buildBody(req chat.Request, stream bool) (map[string]any, []c
 			if len(t.Parameters) > 0 {
 				td.InputSchema = t.Parameters
 			} else {
-				td.InputSchema = json.RawMessage(`{"type":"object","properties":{}}`)
+				td.InputSchema = jsontext.Value(`{"type":"object","properties":{}}`)
 			}
 			tools[i] = td
 		}
@@ -573,12 +574,12 @@ func buildAssistantContent(m chat.Message) ([]wireContent, []chat.Warning) {
 		}
 	}
 	for _, tc := range m.ToolCalls {
-		var input json.RawMessage
+		var input jsontext.Value
 		if strings.TrimSpace(tc.Arguments) == "" {
-			input = json.RawMessage(`{}`)
+			input = jsontext.Value(`{}`)
 		} else if err := json.Unmarshal([]byte(tc.Arguments), &input); err != nil {
 			// Wrap non-JSON content.
-			wrapped := json.RawMessage(fmt.Sprintf(`{"_content":%q}`, tc.Arguments))
+			wrapped := jsontext.Value(fmt.Sprintf(`{"_content":%q}`, tc.Arguments))
 			input = wrapped
 		}
 		blocks = append(blocks, wireContent{
@@ -674,7 +675,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 		return chat.Response{}, classifyHTTPError(resp)
 	}
 	var wr wireResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return chat.Response{}, fmt.Errorf("anthropic: decode response: %w", err)
 	}
 	out := chat.Response{

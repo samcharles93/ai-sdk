@@ -2,7 +2,7 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,7 +119,7 @@ func TestApplyEdits(t *testing.T) {
 func TestParseEditParams_Quirks(t *testing.T) {
 	t.Run("edits as JSON-encoded string", func(t *testing.T) {
 		params := `{"path": "f.txt", "edits": "[{\"old_text\": \"a\", \"new_text\": \"b\"}]"}`
-		p, err := parseEditParams(json.RawMessage(params))
+		p, err := parseEditParams(jsontext.Value(params))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -130,7 +130,7 @@ func TestParseEditParams_Quirks(t *testing.T) {
 
 	t.Run("flat old_text and new_text", func(t *testing.T) {
 		params := `{"path": "f.txt", "old_text": "a", "new_text": "b", "replace_all": true}`
-		p, err := parseEditParams(json.RawMessage(params))
+		p, err := parseEditParams(jsontext.Value(params))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -141,7 +141,7 @@ func TestParseEditParams_Quirks(t *testing.T) {
 
 	t.Run("canonical form unchanged", func(t *testing.T) {
 		params := `{"path": "f.txt", "edits": [{"old_text": "a", "new_text": "b"}, {"old_text": "c", "new_text": "d"}]}`
-		p, err := parseEditParams(json.RawMessage(params))
+		p, err := parseEditParams(jsontext.Value(params))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -152,7 +152,7 @@ func TestParseEditParams_Quirks(t *testing.T) {
 
 	t.Run("invalid edits payload errors", func(t *testing.T) {
 		params := `{"path": "f.txt", "edits": "not json"}`
-		if _, err := parseEditParams(json.RawMessage(params)); err == nil {
+		if _, err := parseEditParams(jsontext.Value(params)); err == nil {
 			t.Fatal("expected error for undecodable edits")
 		}
 	})
@@ -168,7 +168,7 @@ func TestEditTool_PreservesCRLFAndBOM(t *testing.T) {
 	tool := NewEditTool(tmp, NewMutationQueue(), nil)
 	// old_text uses LF: matching must succeed against the CRLF file.
 	params := `{"path": "f.txt", "edits": [{"old_text": "foo\nbar", "new_text": "baz\nqux"}]}`
-	res, err := tool.Execute(context.Background(), json.RawMessage(params), nil)
+	res, err := tool.Execute(context.Background(), jsontext.Value(params), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestEditTool_AtomicOnDisk(t *testing.T) {
 	tool := NewEditTool(tmp, NewMutationQueue(), nil)
 	// First edit is valid, second fails: the file must be left untouched.
 	params := `{"path": "f.txt", "edits": [{"old_text": "one", "new_text": "1"}, {"old_text": "missing", "new_text": "x"}]}`
-	res, err := tool.Execute(context.Background(), json.RawMessage(params), nil)
+	res, err := tool.Execute(context.Background(), jsontext.Value(params), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestEditTool_PopulatesDiffDetails(t *testing.T) {
 
 	tool := NewEditTool(tmp, NewMutationQueue(), nil)
 	params := `{"path": "f.txt", "edits": [{"old_text": "two", "new_text": "TWO"}]}`
-	res, err := tool.Execute(context.Background(), json.RawMessage(params), nil)
+	res, err := tool.Execute(context.Background(), jsontext.Value(params), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

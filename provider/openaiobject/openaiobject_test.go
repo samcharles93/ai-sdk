@@ -2,7 +2,8 @@ package openaiobject
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -19,7 +20,9 @@ func TestGenerateObject_Success(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		var body map[string]any
+		_ = json.UnmarshalRead(r.Body, &body)
+		gotBody = body
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"chatcmpl-obj-1",
@@ -64,11 +67,13 @@ func TestGenerateObject_Success(t *testing.T) {
 }
 
 func TestGenerateObject_SchemaEnforcement(t *testing.T) {
-	schema := json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`)
+	schema := jsontext.Value(`{"type":"object","properties":{"city":{"type":"string"}}}`)
 
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		var body map[string]any
+		_ = json.UnmarshalRead(r.Body, &body)
+		gotBody = body
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"chatcmpl-obj-2",

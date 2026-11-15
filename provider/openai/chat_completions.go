@@ -1,7 +1,7 @@
 package openai
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"strings"
@@ -53,12 +53,12 @@ type chatCompletionsUsage struct {
 	TotalTokens         int `json:"total_tokens"`
 	PromptTokensDetails *struct {
 		CachedTokens int `json:"cached_tokens"`
-	} `json:"prompt_tokens_details,omitempty"`
+	} `json:"prompt_tokens_details,omitzero"`
 	// PromptCacheHitTokens is DeepSeek's cache-use field. Its API reports
 	// cache hits as prompt_cache_hit_tokens/prompt_cache_miss_tokens rather
 	// than OpenAI's nested prompt_tokens_details, so DeepSeek reached through
 	// this OpenAI-compatible provider reads it as a fallback.
-	PromptCacheHitTokens int `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheHitTokens int `json:"prompt_cache_hit_tokens,omitzero"`
 }
 
 func (u chatCompletionsUsage) cachedTokens() int {
@@ -85,7 +85,7 @@ type chatCompletionsDeltaToolCall struct {
 	Index    int                          `json:"index"`
 	ID       string                       `json:"id,omitempty"`
 	Type     string                       `json:"type,omitempty"`
-	Function *chatCompletionsFunctionCall `json:"function,omitempty"`
+	Function *chatCompletionsFunctionCall `json:"function,omitzero"`
 }
 
 type chatCompletionsDelta struct {
@@ -113,7 +113,7 @@ type chatCompletionsStreamChunk struct {
 	ID      string                        `json:"id"`
 	Model   string                        `json:"model"`
 	Choices []chatCompletionsStreamChoice `json:"choices"`
-	Usage   *chatCompletionsUsage         `json:"usage,omitempty"`
+	Usage   *chatCompletionsUsage         `json:"usage,omitzero"`
 }
 
 func (api chatCompletionsAPI) buildBody(req chat.Request, stream bool) (map[string]any, []chat.Warning, error) {
@@ -256,7 +256,7 @@ func applyChatCompletionsToolChoice(body map[string]any, choice *chat.ToolChoice
 
 func (chatCompletionsAPI) decodeResponse(reader io.Reader, warnings []chat.Warning) (chat.Response, error) {
 	var wireResponse chatCompletionsResponse
-	if err := json.NewDecoder(reader).Decode(&wireResponse); err != nil {
+	if err := json.UnmarshalRead(reader, &wireResponse); err != nil {
 		return chat.Response{}, fmt.Errorf("openai: decode chat completions response: %w", err)
 	}
 	response := chat.Response{

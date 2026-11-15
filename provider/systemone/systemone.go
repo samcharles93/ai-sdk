@@ -4,7 +4,7 @@ package systemone
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"math"
 	"net/http"
@@ -76,7 +76,7 @@ func (p *Provider) request(ctx context.Context, method, path string, body []byte
 		}
 		return fmt.Errorf("systemone: HTTP %d: %w", resp.StatusCode, base)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := json.UnmarshalRead(resp.Body, out); err != nil {
 		return fmt.Errorf("systemone: decode: %w", err)
 	}
 	return nil

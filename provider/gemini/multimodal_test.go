@@ -3,7 +3,7 @@ package gemini
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +19,7 @@ func TestChat_Multimodal_InlineData(t *testing.T) {
 	var bodyBytes []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, _ = io.ReadAll(r.Body)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"candidates": []any{map[string]any{
 				"content": map[string]any{
 					"role":  "model",

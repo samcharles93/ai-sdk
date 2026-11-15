@@ -31,12 +31,12 @@ type StreamEvent struct {
 	Type           EventType         `json:"type"`
 	TextDelta      string            `json:"text_delta,omitempty"`
 	ReasoningDelta string            `json:"reasoning_delta,omitempty"`
-	ToolCall       *core.ToolCall    `json:"tool_call,omitempty"`
-	ToolResult     *core.ToolResult  `json:"tool_result,omitempty"`
-	StepResult     *core.StepResult  `json:"step_result,omitempty"`
+	ToolCall       *core.ToolCall    `json:"tool_call,omitzero"`
+	ToolResult     *core.ToolResult  `json:"tool_result,omitzero"`
+	StepResult     *core.StepResult  `json:"step_result,omitzero"`
 	Error          error             `json:"-"`
 	FinishReason   core.FinishReason `json:"finish_reason,omitempty"`
-	TotalUsage     *chat.Usage       `json:"total_usage,omitempty"`
+	TotalUsage     *chat.Usage       `json:"total_usage,omitzero"`
 }
 
 // Agent orchestrates multi-step reasoning and tool execution by wrapping
@@ -47,9 +47,9 @@ type Agent struct {
 	Model       string        `json:"model,omitempty"`
 	System      string        `json:"system,omitempty"`
 	Tools       core.ToolSet  `json:"-"`
-	MaxSteps    int           `json:"max_steps,omitempty"`
-	Temperature float32       `json:"temperature,omitempty"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
+	MaxSteps    int           `json:"max_steps,omitzero"`
+	Temperature float32       `json:"temperature,omitzero"`
+	MaxTokens   int           `json:"max_tokens,omitzero"`
 	// ProviderOptions carries provider-specific request options through to
 	// core.StreamText.
 	ProviderOptions map[string]any `json:"provider_options,omitempty"`

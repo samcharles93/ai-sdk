@@ -3,7 +3,8 @@ package toolkit
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,17 +17,17 @@ import (
 
 // FindParams are the parameters for the find tool.
 type FindParams struct {
-	Path     string `json:"path,omitempty"`      // directory to search in
-	Pattern  string `json:"pattern,omitempty"`   // glob pattern for file names
-	Type     string `json:"type,omitempty"`      // "file", "directory", or empty for both
-	MaxDepth int    `json:"max_depth,omitempty"` // max directory depth (0 = unlimited)
-	Exclude  string `json:"exclude,omitempty"`   // glob pattern to exclude (e.g. 'node_modules', '*.test.*')
+	Path     string `json:"path,omitempty"`     // directory to search in
+	Pattern  string `json:"pattern,omitempty"`  // glob pattern for file names
+	Type     string `json:"type,omitempty"`     // "file", "directory", or empty for both
+	MaxDepth int    `json:"max_depth,omitzero"` // max directory depth (0 = unlimited)
+	Exclude  string `json:"exclude,omitempty"`  // glob pattern to exclude (e.g. 'node_modules', '*.test.*')
 }
 
 var findSchema = Schema{
 	Name:        "find",
 	Description: fmt.Sprintf("Find files and directories by name pattern, or list a directory's contents. Respects .gitignore when fd is available. Returns a list of matching paths, truncated to %d results or %s (whichever is hit first). Omit pattern and set max_depth:1 to list a single directory. Use exclude to skip unwanted directories.", DefaultMaxLines, FormatSize(DefaultMaxBytes)),
-	Parameters: json.RawMessage(`{
+	Parameters: jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"path": {
@@ -64,7 +65,7 @@ func NewFindTool(cwd string) Tool {
 }
 
 func makeFindExecutor(cwd string) Executor {
-	return func(ctx context.Context, params json.RawMessage, _ UIBridge) (Result, error) {
+	return func(ctx context.Context, params jsontext.Value, _ UIBridge) (Result, error) {
 		var p FindParams
 		if err := json.Unmarshal(params, &p); err != nil {
 			return Result{Content: fmt.Sprintf("invalid parameters: %v", err), IsError: true}, nil

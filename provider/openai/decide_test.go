@@ -2,7 +2,8 @@ package openai
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,11 +29,11 @@ func TestDecideWire(t *testing.T) {
 					t.Errorf("bad request %s %s", r.Method, r.URL)
 				}
 				var body struct {
-					Input     json.RawMessage   `json:"input"`
+					Input     jsontext.Value    `json:"input"`
 					Questions []decide.Question `json:"questions"`
 					Safety    string            `json:"safety_identifier"`
 				}
-				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				if err := json.UnmarshalRead(r.Body, &body); err != nil {
 					t.Error(err)
 				}
 				if len(body.Questions) != 4 || body.Questions[0].Name != "p" || body.Questions[1].Name != "c" || body.Questions[2].Name != "s" || body.Questions[3].Name != "r" || body.Safety != "user" {
@@ -44,8 +45,8 @@ func TestDecideWire(t *testing.T) {
 				}
 				if messages {
 					var ms []struct {
-						Role    string
-						Content []map[string]string
+						Role    string              `json:"role"`
+						Content []map[string]string `json:"content"`
 					}
 					if err := json.Unmarshal(body.Input, &ms); err != nil {
 						t.Fatal(err)
@@ -98,7 +99,7 @@ func TestDecideRejectsInvalidPredicate(t *testing.T) {
 				_ = json.Unmarshal([]byte(payload), &a)
 				a["name"] = "p"
 				a["type"] = "predicate"
-				_ = json.NewEncoder(w).Encode(map[string]any{"answers": []any{a}})
+				_ = json.MarshalWrite(w, map[string]any{"answers": []any{a}})
 			}))
 			defer ts.Close()
 			p, err := New(Config{BaseURL: ts.URL})

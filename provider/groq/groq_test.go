@@ -2,7 +2,8 @@ package groq
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -42,7 +43,7 @@ func TestChat_NonStreaming(t *testing.T) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		gotCT = r.Header.Get("Content-Type")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"resp-1",
@@ -98,7 +99,7 @@ func TestChat_NonStreaming(t *testing.T) {
 func TestChat_ToolCalls(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"resp-tc",
@@ -129,7 +130,7 @@ func TestChat_ToolCalls(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object"}`),
+			Parameters:  jsontext.Value(`{"type":"object"}`),
 		}},
 	})
 	if err != nil {
@@ -160,7 +161,7 @@ func TestChat_ToolCalls(t *testing.T) {
 func TestChatStream_SSE(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if body["stream"] != true {
 			t.Errorf("stream flag missing: %v", body["stream"])
 		}
@@ -272,7 +273,7 @@ func TestChatStream_ToolCalls(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object"}`),
+			Parameters:  jsontext.Value(`{"type":"object"}`),
 		}},
 	})
 	if err != nil {

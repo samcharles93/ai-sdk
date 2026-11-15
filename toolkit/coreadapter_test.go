@@ -2,7 +2,7 @@ package toolkit_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"os"
 	"path/filepath"
@@ -42,7 +42,7 @@ func TestCoreToolSetReturnsFailuresAsErrors(t *testing.T) {
 	reg := toolkit.NewRegistry()
 	if err := reg.Register(toolkit.Tool{
 		Schema: toolkit.Schema{Name: "boom", Description: "always fails"},
-		Execute: func(ctx context.Context, params json.RawMessage, ui toolkit.UIBridge) (toolkit.Result, error) {
+		Execute: func(ctx context.Context, params jsontext.Value, ui toolkit.UIBridge) (toolkit.Result, error) {
 			return toolkit.Result{}, errors.New("kaboom")
 		},
 	}); err != nil {
@@ -51,7 +51,7 @@ func TestCoreToolSetReturnsFailuresAsErrors(t *testing.T) {
 
 	if err := reg.Register(toolkit.Tool{
 		Schema: toolkit.Schema{Name: "refuse", Description: "always refuses"},
-		Execute: func(ctx context.Context, params json.RawMessage, ui toolkit.UIBridge) (toolkit.Result, error) {
+		Execute: func(ctx context.Context, params jsontext.Value, ui toolkit.UIBridge) (toolkit.Result, error) {
 			return toolkit.Result{Content: "refused", IsError: true}, nil
 		},
 	}); err != nil {
@@ -71,7 +71,7 @@ func TestCoreToolSetPropagatesCancellation(t *testing.T) {
 	reg := toolkit.NewRegistry()
 	if err := reg.Register(toolkit.Tool{
 		Schema: toolkit.Schema{Name: "slow", Description: "waits for ctx"},
-		Execute: func(ctx context.Context, params json.RawMessage, ui toolkit.UIBridge) (toolkit.Result, error) {
+		Execute: func(ctx context.Context, params jsontext.Value, ui toolkit.UIBridge) (toolkit.Result, error) {
 			<-ctx.Done()
 			return toolkit.Result{}, ctx.Err()
 		},

@@ -3,7 +3,7 @@ package togetherai
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -72,7 +72,7 @@ func TestGenerateImage_Success(t *testing.T) {
 		capturedAuth = r.Header.Get("Authorization")
 		capturedBody = decodeBody(t, r)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"data": []map[string]any{{"b64_json": want}},
 		})
 	})
@@ -120,7 +120,7 @@ func TestGenerateImage_NMultiple(t *testing.T) {
 		if n, _ := body["n"].(float64); int(n) != 3 {
 			t.Errorf("n: %+v", body["n"])
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"data": []map[string]any{
 				{"b64_json": "a"}, {"b64_json": "b"}, {"b64_json": "c"},
 			},
@@ -141,7 +141,7 @@ func TestGenerateImage_ProviderOptionsTyped(t *testing.T) {
 	var captured map[string]any
 	_, p := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		captured = decodeBody(t, r)
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"b64_json": "x"}}})
+		_ = json.MarshalWrite(w, map[string]any{"data": []map[string]any{{"b64_json": "x"}}})
 	})
 	seed := int64(42)
 	_, err := p.GenerateImage(context.Background(), image.GenerateImageRequest{
@@ -185,7 +185,7 @@ func TestGenerateImage_ProviderOptionsAsMap(t *testing.T) {
 	var captured map[string]any
 	_, p := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		captured = decodeBody(t, r)
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"b64_json": "x"}}})
+		_ = json.MarshalWrite(w, map[string]any{"data": []map[string]any{{"b64_json": "x"}}})
 	})
 	_, err := p.GenerateImage(context.Background(), image.GenerateImageRequest{
 		Model: "m", Prompt: "p",
@@ -208,7 +208,7 @@ func TestGenerateImage_NegativePromptTopLevel(t *testing.T) {
 	var captured map[string]any
 	_, p := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		captured = decodeBody(t, r)
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"b64_json": "x"}}})
+		_ = json.MarshalWrite(w, map[string]any{"data": []map[string]any{{"b64_json": "x"}}})
 	})
 	_, err := p.GenerateImage(context.Background(), image.GenerateImageRequest{
 		Model: "m", Prompt: "p", NegativePrompt: "ugly",
@@ -227,7 +227,7 @@ func TestGenerateImage_AspectRatioWarn(t *testing.T) {
 		if _, ok := body["aspect_ratio"]; ok {
 			t.Errorf("aspect_ratio should not be sent on the wire")
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"b64_json": "x"}}})
+		_ = json.MarshalWrite(w, map[string]any{"data": []map[string]any{{"b64_json": "x"}}})
 	})
 	resp, err := p.GenerateImage(context.Background(), image.GenerateImageRequest{
 		Model: "m", Prompt: "p", AspectRatio: "16:9",
@@ -326,7 +326,7 @@ func TestGenerateImage_RateLimit_TypedProviderError(t *testing.T) {
 
 func TestGenerateImage_EmptyData(t *testing.T) {
 	_, p := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{}})
+		_ = json.MarshalWrite(w, map[string]any{"data": []map[string]any{}})
 	})
 	_, err := p.GenerateImage(context.Background(), image.GenerateImageRequest{Model: "m", Prompt: "p"})
 	if !errors.Is(err, image.ErrProviderUnavailable) {

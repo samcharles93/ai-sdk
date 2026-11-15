@@ -3,7 +3,8 @@ package openai
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"math"
 	"net/http"
@@ -76,11 +77,11 @@ func (p *Provider) Decide(ctx context.Context, req decide.Request) (decide.Respo
 		return decide.Response{}, fmt.Errorf("openai decisions: HTTP %d: %w", resp.StatusCode, base)
 	}
 	var wire struct {
-		Model   string            `json:"model"`
-		Answers []json.RawMessage `json:"answers"`
-		Usage   decide.Usage      `json:"usage"`
+		Model   string           `json:"model"`
+		Answers []jsontext.Value `json:"answers"`
+		Usage   decide.Usage     `json:"usage"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&wire); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wire); err != nil {
 		return decide.Response{}, fmt.Errorf("openai decisions: decode: %w", err)
 	}
 	if len(wire.Answers) != len(req.Questions) {

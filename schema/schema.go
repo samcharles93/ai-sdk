@@ -1,6 +1,9 @@
 package schema
 
-import "encoding/json"
+import (
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+)
 
 // JSONSchema is a builder for constructing JSON Schema objects that are
 // compatible with AI model tool definitions and structured outputs.
@@ -82,9 +85,9 @@ func (s *JSONSchema) Description(desc string) *JSONSchema {
 	return s
 }
 
-// Build returns the schema as a json.RawMessage suitable for use in tool
+// Build returns the schema as a jsontext.Value suitable for use in tool
 // definitions and structured output specifications.
-func (s *JSONSchema) Build() json.RawMessage {
+func (s *JSONSchema) Build() jsontext.Value {
 	b, _ := json.Marshal(s.schema)
 	return b
 }

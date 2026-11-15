@@ -2,7 +2,7 @@ package deepseek
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -191,7 +191,7 @@ func TestChat_ToolChoice(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			var body map[string]any
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				_ = json.NewDecoder(r.Body).Decode(&body)
+				_ = json.UnmarshalRead(r.Body, &body)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, `{"id":"x","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`)
 			}))

@@ -3,7 +3,7 @@ package openai
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -21,7 +21,7 @@ func TestStreamSpeech_SSE(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAccept = r.Header.Get("Accept")
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -87,7 +87,7 @@ func TestStreamSpeech_ModelFormatSelection(t *testing.T) {
 			var gotAccept string
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				gotAccept = r.Header.Get("Accept")
-				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 					t.Fatalf("decode request body: %v", err)
 				}
 				_, _ = io.WriteString(w, "audio")

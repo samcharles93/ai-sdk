@@ -14,7 +14,7 @@ const defaultMusicModel = "music-3.0"
 // MusicOptions carries MiniMax-specific music generation options.
 type MusicOptions struct {
 	// SampleRate is the sampling rate: 16000, 24000, 32000, or 44100.
-	SampleRate int `json:"sample_rate,omitempty"`
+	SampleRate int `json:"sample_rate,omitzero"`
 }
 
 // GenerateMusic generates a music track from a prompt (and optional lyrics)

@@ -2,7 +2,8 @@ package systemone
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -32,12 +33,12 @@ func TestDecideWire(t *testing.T) {
 					t.Errorf("bad request %s", r.URL)
 				}
 				var body struct {
-					Model     string
-					State     json.RawMessage
-					Images    []string
-					Questions map[string]question
+					Model     string              `json:"model"`
+					State     jsontext.Value      `json:"state"`
+					Images    []string            `json:"images"`
+					Questions map[string]question `json:"questions"`
 				}
-				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				if err := json.UnmarshalRead(r.Body, &body); err != nil {
 					t.Error(err)
 				}
 				if body.Model != "clef" || len(body.Questions) != 3 || body.Questions["z"].Type != "noul" {
@@ -54,12 +55,16 @@ func TestDecideWire(t *testing.T) {
 				if !ok || len(levels) != 2 || levels[0] != "low: can wait" || levels[1] != "high" {
 					t.Error(levels)
 				}
+				state := body.State.Clone()
+				if err := state.Canonicalize(); err != nil {
+					t.Fatalf("state canonicalise: %v", err)
+				}
 				if tt.images {
-					if len(body.Images) != 1 || body.Images[0] != "data:image/png;base64,AA==" || string(body.State) != `[{"content":"evidence","role":"user"}]` {
+					if len(body.Images) != 1 || body.Images[0] != "data:image/png;base64,AA==" || string(state) != `[{"content":"evidence","role":"user"}]` {
 						t.Errorf("images %+v", body)
 					}
-				} else if string(body.State) != `"evidence"` {
-					t.Error(string(body.State))
+				} else if string(state) != `"evidence"` {
+					t.Error(string(state))
 				}
 				w.WriteHeader(tt.status)
 				if tt.status != 200 {

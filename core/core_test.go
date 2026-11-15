@@ -2,7 +2,8 @@ package core
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -131,7 +132,7 @@ func TestGenerateText_SinglePromptNoTools(t *testing.T) {
 }
 
 func TestGenerateText_ToolLoop(t *testing.T) {
-	calc := NewTool("calc", "adds", json.RawMessage(`{}`),
+	calc := NewTool("calc", "adds", jsontext.Value(`{}`),
 		func(_ context.Context, in string) (string, error) {
 			var args struct {
 				A int `json:"a"`
@@ -215,7 +216,7 @@ func TestGenerateText_ReturnsPartialResultWhenOnStepFails(t *testing.T) {
 		FinishReason: "tool_calls",
 		Usage:        chat.Usage{PromptTokens: 8, CompletionTokens: 2, TotalTokens: 10},
 	}}}
-	tool := NewTool("noop", "does nothing", json.RawMessage(`{}`), func(context.Context, string) (string, error) {
+	tool := NewTool("noop", "does nothing", jsontext.Value(`{}`), func(context.Context, string) (string, error) {
 		return "ok", nil
 	})
 
@@ -253,7 +254,7 @@ func TestGenerateText_ToolLoopPreservesProviderMetadata(t *testing.T) {
 		return "contents", nil
 	})
 	metadata := map[string]any{
-		"openai": map[string]any{metadataKey: []json.RawMessage{json.RawMessage(`{"type":"reasoning","id":"rs_1"}`)}},
+		"openai": map[string]any{metadataKey: []jsontext.Value{jsontext.Value(`{"type":"reasoning","id":"rs_1"}`)}},
 	}
 	p := &fakeProvider{
 		chatScript: []chat.Response{
@@ -549,7 +550,7 @@ func TestStreamText_ToolLoopPreservesProviderMetadata(t *testing.T) {
 		Done:         true,
 		ProviderMetadata: map[string]any{
 			"openai": map[string]any{
-				"response_output": []json.RawMessage{json.RawMessage(`{"type":"reasoning","id":"rs_1"}`)},
+				"response_output": []jsontext.Value{jsontext.Value(`{"type":"reasoning","id":"rs_1"}`)},
 			},
 		},
 	}

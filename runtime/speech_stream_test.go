@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -62,7 +62,7 @@ func TestSpeechStreamKokoroClass(t *testing.T) {
 	want := []byte("RIFF-chunked-wav")
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Errorf("decode body: %v", err)
 		}
 		w.Header().Set("Content-Type", "audio/wav")

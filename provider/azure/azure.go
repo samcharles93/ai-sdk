@@ -15,7 +15,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -166,7 +166,7 @@ type wireDeltaToolCall struct {
 	Index    int               `json:"index"`
 	ID       string            `json:"id,omitempty"`
 	Type     string            `json:"type,omitempty"`
-	Function *wireFunctionCall `json:"function,omitempty"`
+	Function *wireFunctionCall `json:"function,omitzero"`
 }
 
 type wireDelta struct {
@@ -185,7 +185,7 @@ type wireStreamChunk struct {
 	ID      string             `json:"id"`
 	Model   string             `json:"model"`
 	Choices []wireStreamChoice `json:"choices"`
-	Usage   *wireUsage         `json:"usage,omitempty"`
+	Usage   *wireUsage         `json:"usage,omitzero"`
 }
 
 // --- chat request building -------------------------------------------------
@@ -388,7 +388,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 		return chat.Response{}, p.classifyChatError(resp)
 	}
 	var wr wireResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return chat.Response{}, fmt.Errorf("azure: decode response: %w", err)
 	}
 	out := chat.Response{
@@ -715,7 +715,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 		return embed.Response{}, p.classifyEmbedError(resp)
 	}
 	var wr wireEmbedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return embed.Response{}, fmt.Errorf("azure: decode response: %w", err)
 	}
 	out := embed.Response{
@@ -740,7 +740,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 type wireImageRequest struct {
 	Model  string `json:"model"`
 	Prompt string `json:"prompt"`
-	N      int    `json:"n,omitempty"`
+	N      int    `json:"n,omitzero"`
 	Size   string `json:"size,omitempty"`
 }
 
@@ -820,7 +820,7 @@ func (p *Provider) GenerateImage(ctx context.Context, req image.GenerateImageReq
 		return image.GenerateImageResponse{}, p.classifyImageError(resp)
 	}
 	var wr wireImageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return image.GenerateImageResponse{}, fmt.Errorf("azure: decode response: %w", err)
 	}
 	out := image.GenerateImageResponse{

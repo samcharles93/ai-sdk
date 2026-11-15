@@ -2,7 +2,8 @@ package openai
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -63,7 +64,7 @@ func TestChat_NonStreaming(t *testing.T) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		gotCT = r.Header.Get("Content-Type")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"resp-1",
@@ -148,7 +149,7 @@ func TestChat_ToolCalls(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object"}`),
+			Parameters:  jsontext.Value(`{"type":"object"}`),
 		}},
 	})
 	if err != nil {
@@ -175,7 +176,7 @@ func TestChat_ToolCalls(t *testing.T) {
 func TestChatStream_SSE(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if body["stream"] != true {
 			t.Errorf("stream flag missing: %v", body["stream"])
 		}
@@ -287,7 +288,7 @@ func TestChatStream_ToolCalls(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object"}`),
+			Parameters:  jsontext.Value(`{"type":"object"}`),
 		}},
 	})
 	if err != nil {
@@ -454,7 +455,7 @@ func TestChat_ReasoningEffortWithTools_UsesResponsesReasoningShape(t *testing.T)
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"resp-1",
@@ -475,7 +476,7 @@ func TestChat_ReasoningEffortWithTools_UsesResponsesReasoningShape(t *testing.T)
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object"}`),
+			Parameters:  jsontext.Value(`{"type":"object"}`),
 		}},
 		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "get_weather"},
 		ProviderOptions: map[string]any{
@@ -549,7 +550,7 @@ func TestChat_ResponsesAPI_TopLevelFunctionCall(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object"}`),
+			Parameters:  jsontext.Value(`{"type":"object"}`),
 		}},
 		ProviderOptions: map[string]any{
 			"openai": openaiProviderOptions{ReasoningEffort: "low"},
@@ -630,7 +631,7 @@ func TestResponsesOutputItemsRoundTripForToolContinuation(t *testing.T) {
 			},
 			{Role: chat.RoleTool, ToolCallID: "call_123", Content: "ok"},
 		},
-		Tools: []chat.Tool{{Name: "run_shell", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		Tools: []chat.Tool{{Name: "run_shell", Parameters: jsontext.Value(`{"type":"object"}`)}},
 	}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -764,7 +765,7 @@ func TestResponsesBuildBodyUsesNativeToolHistoryItems(t *testing.T) {
 			}}},
 			{Role: chat.RoleTool, ToolCallID: "fc_123", Parts: chat.Parts{chat.TextPart{Text: "contents"}}},
 		},
-		Tools:      []chat.Tool{{Name: "read", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		Tools:      []chat.Tool{{Name: "read", Parameters: jsontext.Value(`{"type":"object"}`)}},
 		ToolChoice: &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "read"},
 		ProviderOptions: map[string]any{
 			"openai": openaiProviderOptions{ReasoningEffort: "medium", ReasoningSummary: "auto"},
@@ -869,7 +870,7 @@ func TestSelectWireAPI(t *testing.T) {
 func TestChat_ResponsesAPI_RenamesAndDropsUnsupportedFields(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"resp-3",
@@ -894,7 +895,7 @@ func TestChat_ResponsesAPI_RenamesAndDropsUnsupportedFields(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object"}`),
+			Parameters:  jsontext.Value(`{"type":"object"}`),
 		}},
 		ProviderOptions: map[string]any{
 			"openai": openaiProviderOptions{ReasoningEffort: "low"},
@@ -1099,7 +1100,7 @@ func TestChat_ReasoningModelRequestParams(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotBody map[string]any
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				_ = json.UnmarshalRead(r.Body, &gotBody)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, `{"id":"x","model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
 			}))
@@ -1159,7 +1160,7 @@ func TestChat_CachedTokens_ResponsesAPI(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object"}`),
+			Parameters:  jsontext.Value(`{"type":"object"}`),
 		}},
 		ProviderOptions: map[string]any{
 			"openai": openaiProviderOptions{ReasoningEffort: "low"},

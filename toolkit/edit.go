@@ -2,7 +2,8 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"sort"
@@ -19,13 +20,13 @@ type EditParams struct {
 type EditAction struct {
 	OldText    string `json:"old_text"`
 	NewText    string `json:"new_text"`
-	ReplaceAll bool   `json:"replace_all,omitempty"`
+	ReplaceAll bool   `json:"replace_all,omitzero"`
 }
 
 var editSchema = Schema{
 	Name:        "edit",
 	Description: "Edit an existing file using exact text replacement. Each edit specifies old_text (must match exactly including whitespace) and new_text. Every old_text is matched against the original file and must be unique in it; set replace_all to true to replace every occurrence instead. Edits must not overlap - merge nearby changes into one edit. All edits are validated first and applied atomically: on any failure the file is left unchanged.",
-	Parameters: json.RawMessage(`{
+	Parameters: jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"path": {
@@ -72,13 +73,13 @@ func NewEditTool(cwd string, mq *MutationQueue, rt *ReadTracker) Tool {
 // observed in the wild: sending edits as a JSON-encoded string instead of an
 // array, and sending a single flat old_text/new_text pair at the top level
 // instead of inside edits[].
-func parseEditParams(params json.RawMessage) (EditParams, error) {
+func parseEditParams(params jsontext.Value) (EditParams, error) {
 	var wire struct {
-		Path       string          `json:"path"`
-		Edits      json.RawMessage `json:"edits"`
-		OldText    *string         `json:"old_text"`
-		NewText    *string         `json:"new_text"`
-		ReplaceAll bool            `json:"replace_all"`
+		Path       string         `json:"path"`
+		Edits      jsontext.Value `json:"edits"`
+		OldText    *string        `json:"old_text"`
+		NewText    *string        `json:"new_text"`
+		ReplaceAll bool           `json:"replace_all"`
 	}
 	if err := json.Unmarshal(params, &wire); err != nil {
 		return EditParams{}, err
@@ -91,7 +92,7 @@ func parseEditParams(params json.RawMessage) (EditParams, error) {
 		// Some models double-encode the array as a JSON string.
 		var asString string
 		if err := json.Unmarshal(raw, &asString); err == nil {
-			raw = json.RawMessage(asString)
+			raw = jsontext.Value(asString)
 		}
 		if err := json.Unmarshal(raw, &p.Edits); err != nil {
 			return EditParams{}, fmt.Errorf("invalid edits: %w", err)
@@ -111,7 +112,7 @@ func parseEditParams(params json.RawMessage) (EditParams, error) {
 }
 
 func makeEditExecutor(cwd string, mq *MutationQueue, rt *ReadTracker) Executor {
-	return func(ctx context.Context, params json.RawMessage, _ UIBridge) (Result, error) {
+	return func(ctx context.Context, params jsontext.Value, _ UIBridge) (Result, error) {
 		p, err := parseEditParams(params)
 		if err != nil {
 			return Result{Content: fmt.Sprintf("invalid parameters: %v", err), IsError: true}, nil

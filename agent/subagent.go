@@ -2,7 +2,8 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -131,7 +132,7 @@ func (s Subagent) Tool() *core.Tool {
 	if name == "" {
 		name = "subagent"
 	}
-	params := json.RawMessage(`{
+	params := jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"prompt": {

@@ -77,6 +77,19 @@ func TestGenerateTypedObject_UnknownFieldIsDecodeError(t *testing.T) {
 	}
 }
 
+// Member names are matched exactly, so a provider that renames a field by case
+// is an error rather than a silently zeroed value.
+func TestGenerateTypedObject_CaseMismatchIsDecodeError(t *testing.T) {
+	p := &typedFakeObjectProvider{
+		generateResult: object.Object{Content: `{"Name":"Alice","Age":30}`},
+	}
+
+	_, err := GenerateTypedObject[profile](context.Background(), p, object.Request{Model: "m"})
+	if !errors.Is(err, ErrObjectDecode) {
+		t.Fatalf("err = %v, want wrapping ErrObjectDecode", err)
+	}
+}
+
 func TestGenerateTypedObject_ProviderErrorPropagates(t *testing.T) {
 	wantErr := errors.New("boom")
 	p := &typedFakeObjectProvider{generateErr: wantErr}

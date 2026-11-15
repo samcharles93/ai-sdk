@@ -1,7 +1,7 @@
 package core
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 
 	"github.com/samcharles93/ai-sdk/chat"
@@ -164,11 +164,11 @@ type StreamPart struct {
 	// fragments for one ToolCallID reproduces the assembled call's Input.
 	ToolInputDelta string `json:"tool_input_delta,omitempty"`
 	// ToolCall holds a new tool call (Type == "tool-call").
-	ToolCall *ToolCall `json:"tool_call,omitempty"`
+	ToolCall *ToolCall `json:"tool_call,omitzero"`
 	// ToolResult holds a tool execution outcome (Type == "tool-result").
-	ToolResult *ToolResult `json:"tool_result,omitempty"`
+	ToolResult *ToolResult `json:"tool_result,omitzero"`
 	// Warning holds a provider warning (Type == "warning").
-	Warning *chat.Warning `json:"warning,omitempty"`
+	Warning *chat.Warning `json:"warning,omitzero"`
 	// Error holds stream-level error details (Type == "error").
 	// It is serialised as ErrorString over the wire and reconstructed
 	// as errors.New(ErrorString) on deserialisation.
@@ -177,11 +177,11 @@ type StreamPart struct {
 	// Use MarshalJSON/UnmarshalJSON to convert to/from Error.
 	ErrorString string `json:"error,omitempty"`
 	// StepResult holds step-completion data (Type == "finish-step").
-	StepResult *StepResult `json:"step_result,omitempty"`
+	StepResult *StepResult `json:"step_result,omitzero"`
 	// FinishReason holds the final reason (Type == "finish").
 	FinishReason FinishReason `json:"finish_reason,omitempty"`
 	// TotalUsage holds the aggregate usage (Type == "finish").
-	TotalUsage *chat.Usage `json:"total_usage,omitempty"`
+	TotalUsage *chat.Usage `json:"total_usage,omitzero"`
 }
 
 // MarshalJSON serialises a StreamPart to JSON, converting the Error field

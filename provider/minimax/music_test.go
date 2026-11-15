@@ -3,7 +3,7 @@ package minimax
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -20,7 +20,7 @@ func TestGenerateMusic_Success(t *testing.T) {
 
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -118,7 +118,7 @@ func TestGenerateMusic_MapsRequestFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotBody map[string]any
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 					t.Fatalf("decode body: %v", err)
 				}
 				w.WriteHeader(http.StatusOK)

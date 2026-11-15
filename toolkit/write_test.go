@@ -2,7 +2,7 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,7 +14,7 @@ func TestWriteTool_PopulatesDiffDetails_NewFile(t *testing.T) {
 
 	tool := NewWriteTool(tmp, NewMutationQueue(), nil)
 	params := `{"path": "f.txt", "content": "hello\n"}`
-	res, err := tool.Execute(context.Background(), json.RawMessage(params), nil)
+	res, err := tool.Execute(context.Background(), jsontext.Value(params), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestWriteTool_PopulatesDiffDetails_Overwrite(t *testing.T) {
 
 	tool := NewWriteTool(tmp, NewMutationQueue(), nil)
 	params := `{"path": "f.txt", "content": "new content\n", "overwrite": true}`
-	res, err := tool.Execute(context.Background(), json.RawMessage(params), nil)
+	res, err := tool.Execute(context.Background(), jsontext.Value(params), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

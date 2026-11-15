@@ -2,7 +2,8 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"strings"
@@ -12,10 +13,10 @@ import (
 // ReadParams are the parameters for the read tool.
 type ReadParams struct {
 	Path   string `json:"path"`
-	File   string `json:"file,omitempty"`   // compatibility alias used by some providers
-	Offset int    `json:"offset,omitempty"` // start line (1-based)
-	Limit  int    `json:"limit,omitempty"`  // max lines to read
-	Full   bool   `json:"full,omitempty"`   // explicitly allow a full-file response
+	File   string `json:"file,omitempty"`  // compatibility alias used by some providers
+	Offset int    `json:"offset,omitzero"` // start line (1-based)
+	Limit  int    `json:"limit,omitzero"`  // max lines to read
+	Full   bool   `json:"full,omitzero"`   // explicitly allow a full-file response
 }
 
 // DefaultReadLines is the bounded line count used when no explicit read limit
@@ -30,7 +31,7 @@ var readSchema = Schema{
 	// when both are empty. We intentionally do NOT use anyOf here
 	// because the OpenAI Responses API rejects schemas with
 	// anyOf/oneOf/allOf at the top level of the parameters object.
-	Parameters: json.RawMessage(`{
+	Parameters: jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"path": {
@@ -67,7 +68,7 @@ func NewReadTool(cwd string, rt *ReadTracker) Tool {
 }
 
 func makeReadExecutor(cwd string, rt *ReadTracker) Executor {
-	return func(ctx context.Context, params json.RawMessage, _ UIBridge) (Result, error) {
+	return func(ctx context.Context, params jsontext.Value, _ UIBridge) (Result, error) {
 		var p ReadParams
 		if err := json.Unmarshal(params, &p); err != nil {
 			return Result{Content: fmt.Sprintf("invalid parameters: %v", err), IsError: true}, nil

@@ -2,7 +2,8 @@ package openai
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"strings"
@@ -22,7 +23,7 @@ type responsesUsage struct {
 	CompletionTokens   int `json:"completion_tokens"`
 	InputTokensDetails *struct {
 		CachedTokens int `json:"cached_tokens"`
-	} `json:"input_tokens_details,omitempty"`
+	} `json:"input_tokens_details,omitzero"`
 }
 
 func (u responsesUsage) toUsage() chat.Usage {
@@ -50,17 +51,17 @@ type responsesOutputItem struct {
 	Type      string             `json:"type"`
 	Role      string             `json:"role"`
 	Content   []responsesContent `json:"content"`
-	Summary   json.RawMessage    `json:"summary"`
+	Summary   jsontext.Value     `json:"summary"`
 	CallID    string             `json:"call_id"`
 	Name      string             `json:"name"`
 	Arguments string             `json:"arguments"`
 }
 
 type responsesResponse struct {
-	ID     string            `json:"id"`
-	Model  string            `json:"model"`
-	Output []json.RawMessage `json:"output"`
-	Usage  responsesUsage    `json:"usage"`
+	ID     string           `json:"id"`
+	Model  string           `json:"model"`
+	Output []jsontext.Value `json:"output"`
+	Usage  responsesUsage   `json:"usage"`
 }
 
 func (responsesAPI) buildBody(req chat.Request, stream bool) (map[string]any, []chat.Warning, error) {
@@ -226,7 +227,7 @@ func applyResponsesToolChoice(body map[string]any, choice *chat.ToolChoice) erro
 
 func (responsesAPI) decodeResponse(reader io.Reader, warnings []chat.Warning) (chat.Response, error) {
 	var wireResponse responsesResponse
-	if err := json.NewDecoder(reader).Decode(&wireResponse); err != nil {
+	if err := json.UnmarshalRead(reader, &wireResponse); err != nil {
 		return chat.Response{}, fmt.Errorf("openai: decode responses api response: %w", err)
 	}
 	response := chat.Response{
@@ -236,7 +237,7 @@ func (responsesAPI) decodeResponse(reader io.Reader, warnings []chat.Warning) (c
 	if len(wireResponse.Output) > 0 {
 		response.ProviderMetadata = map[string]any{
 			"openai": openaiMessageOptions{
-				ResponseOutput: append([]json.RawMessage(nil), wireResponse.Output...),
+				ResponseOutput: append([]jsontext.Value(nil), wireResponse.Output...),
 			},
 		}
 	}
@@ -277,7 +278,7 @@ func (responsesAPI) decodeResponse(reader io.Reader, warnings []chat.Warning) (c
 	return response, nil
 }
 
-func decodeResponsesSummary(raw json.RawMessage) string {
+func decodeResponsesSummary(raw jsontext.Value) string {
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
 	}
@@ -318,8 +319,8 @@ func (responsesAPI) parseStreamEvent(data []byte) (chat.Chunk, bool, error) {
 		} `json:"item"`
 		Usage    *responsesUsage `json:"usage"`
 		Response *struct {
-			Output []json.RawMessage `json:"output"`
-			Usage  *responsesUsage   `json:"usage"`
+			Output []jsontext.Value `json:"output"`
+			Usage  *responsesUsage  `json:"usage"`
 		} `json:"response"`
 	}
 	if err := json.Unmarshal(data, &event); err != nil {
@@ -358,7 +359,7 @@ func (responsesAPI) parseStreamEvent(data []byte) (chat.Chunk, bool, error) {
 		if event.Response != nil && len(event.Response.Output) > 0 {
 			chunk.ProviderMetadata = map[string]any{
 				"openai": openaiMessageOptions{
-					ResponseOutput: append([]json.RawMessage(nil), event.Response.Output...),
+					ResponseOutput: append([]jsontext.Value(nil), event.Response.Output...),
 				},
 			}
 		}
@@ -400,12 +401,12 @@ func firstNonEmpty(values ...string) string {
 // This is a lossy conversion: it favours safety (the call succeeds)
 // over schema strictness. Downstream tool executors are expected to
 // validate parameters independently.
-func sanitiseResponsesSchema(params json.RawMessage) json.RawMessage {
+func sanitiseResponsesSchema(params jsontext.Value) jsontext.Value {
 	if len(params) == 0 || bytes.Equal(params, []byte("null")) {
 		return params
 	}
 
-	var schema map[string]json.RawMessage
+	var schema map[string]jsontext.Value
 	if err := json.Unmarshal(params, &schema); err != nil {
 		// Can't parse — return as-is and let the API reject it.
 		return params
@@ -431,5 +432,5 @@ func sanitiseResponsesSchema(params json.RawMessage) json.RawMessage {
 	if err != nil {
 		return params
 	}
-	return json.RawMessage(result)
+	return jsontext.Value(result)
 }

@@ -1,7 +1,7 @@
 package speech
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 )
 
@@ -16,9 +16,9 @@ type Options struct {
 	Instructions string `json:"instructions,omitempty"`
 	// Speed is the speaking rate multiplier, used when the request does not
 	// set one.
-	Speed float64 `json:"speed,omitempty"`
+	Speed float64 `json:"speed,omitzero"`
 	// SampleRate is the desired output sample rate in Hz, where supported.
-	SampleRate int `json:"sample_rate,omitempty"`
+	SampleRate int `json:"sample_rate,omitzero"`
 	// Voice overrides the provider default voice, where supported.
 	Voice string `json:"voice,omitempty"`
 	// Format overrides the provider default output format, where supported.

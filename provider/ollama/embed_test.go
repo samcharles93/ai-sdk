@@ -2,7 +2,7 @@ package ollama
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -21,10 +21,10 @@ func TestEmbed_Success(t *testing.T) {
 		if r.URL.Path != "/api/embed" {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
-		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+		if err := json.UnmarshalRead(r.Body, &got); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model":             "nomic-embed",
 			"embeddings":        [][]float32{{0.1, 0.2, 0.3}, {0.4, 0.5, 0.6}},
 			"prompt_eval_count": 7,
@@ -173,7 +173,7 @@ func TestEmbed_NoInputs(t *testing.T) {
 
 func TestEmbed_LengthMismatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model":             "nomic-embed",
 			"embeddings":        [][]float32{{0.1, 0.2}},
 			"prompt_eval_count": 3,

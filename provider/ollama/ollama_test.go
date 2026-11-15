@@ -2,7 +2,7 @@ package ollama
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -29,10 +29,10 @@ func TestChat_NonStreaming(t *testing.T) {
 		if r.URL.Path != "/api/chat" {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
-		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+		if err := json.UnmarshalRead(r.Body, &got); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model":      "llama3",
 			"created_at": "now",
 			"message": map[string]any{

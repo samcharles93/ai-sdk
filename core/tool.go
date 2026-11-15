@@ -2,7 +2,8 @@ package core
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"reflect"
 
@@ -17,7 +18,7 @@ type Tool struct {
 	// Description helps the model decide when to call this tool.
 	Description string `json:"description,omitempty"`
 	// Parameters is a JSON Schema describing the tool's input.
-	Parameters json.RawMessage `json:"parameters,omitempty"`
+	Parameters jsontext.Value `json:"parameters,omitzero"`
 	// Execute is called when the model requests this tool.
 	// It receives the JSON-encoded input arguments and returns the tool's
 	// output verbatim, or an error.
@@ -49,7 +50,7 @@ type ToolSet map[string]*Tool
 
 // NewTool creates a Tool with the given name, description, JSON Schema
 // parameters, and execute function.
-func NewTool(name, description string, parameters json.RawMessage, execute func(ctx context.Context, input string) (string, error)) *Tool {
+func NewTool(name, description string, parameters jsontext.Value, execute func(ctx context.Context, input string) (string, error)) *Tool {
 	return &Tool{
 		Name:        name,
 		Description: description,

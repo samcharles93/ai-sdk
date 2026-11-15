@@ -2,7 +2,8 @@ package agentloop
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -140,13 +141,13 @@ func (s *fakeStream) Close() error { return nil }
 // does not encode would otherwise replay differently from how it was made.
 type memJournal struct {
 	mu       sync.Mutex
-	entries  map[int64]json.RawMessage
+	entries  map[int64]jsontext.Value
 	rejectAt map[int64]error
 	records  []Entry
 }
 
 func newMemJournal() *memJournal {
-	return &memJournal{entries: map[int64]json.RawMessage{}, rejectAt: map[int64]error{}}
+	return &memJournal{entries: map[int64]jsontext.Value{}, rejectAt: map[int64]error{}}
 }
 
 func (j *memJournal) Lookup(_ context.Context, pos int64) (*Entry, error) {
@@ -199,7 +200,7 @@ func (j *memJournal) prefix(pos int64) *memJournal {
 	out := newMemJournal()
 	for p, raw := range j.entries {
 		if p < pos {
-			out.entries[p] = append(json.RawMessage(nil), raw...)
+			out.entries[p] = append(jsontext.Value(nil), raw...)
 		}
 	}
 	return out

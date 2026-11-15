@@ -1,7 +1,7 @@
 package util
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"slices"
 	"strings"
 )
@@ -23,7 +23,7 @@ func RepairPartialJSON(s string) string {
 	minEnd := max(len(s)-partialJSONTrimWindow, 0)
 	for end := len(s); end > minEnd; end-- {
 		candidate := closeBrackets(s[:end])
-		if json.Valid([]byte(candidate)) {
+		if jsontext.Value([]byte(candidate)).IsValid() {
 			return candidate
 		}
 	}

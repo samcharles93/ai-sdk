@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -201,7 +201,7 @@ func TestChatCompletionsDialectIsClassScoped(t *testing.T) {
 		t.Run(tt.class, func(t *testing.T) {
 			var gotBody map[string]any
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				_ = json.UnmarshalRead(r.Body, &gotBody)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, `{"id":"x","model":"reasoner","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
 			}))

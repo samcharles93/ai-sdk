@@ -13,10 +13,10 @@ type GenerateSpeechRequest struct {
 	// the field reject a non-empty value with ErrInvalidRequest.
 	Instructions string `json:"instructions,omitempty"`
 	// Speed is the speaking rate multiplier (e.g. 1.0 is normal).
-	Speed float64 `json:"speed,omitempty"`
+	Speed float64 `json:"speed,omitzero"`
 	// SampleRate is the desired output sample rate in Hz for models that
 	// support it (for example Groq). Zero leaves the provider default.
-	SampleRate int `json:"sample_rate,omitempty"`
+	SampleRate int `json:"sample_rate,omitzero"`
 	// Format is the output audio format (e.g. "mp3", "wav").
 	Format string `json:"format,omitempty"`
 	// ProviderOptions carries provider-specific options.
@@ -64,5 +64,5 @@ type SpeechChunk struct {
 	// Done marks the final chunk, which carries no Data.
 	Done bool `json:"done"`
 	// Usage is populated on the Done chunk when the provider reports it.
-	Usage *Usage `json:"usage,omitempty"`
+	Usage *Usage `json:"usage,omitzero"`
 }

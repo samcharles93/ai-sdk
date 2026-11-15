@@ -12,7 +12,7 @@ package whisper
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -34,7 +34,7 @@ const endpoint = "/audio/transcriptions"
 type wireTranscriptionResponse struct {
 	Text     string                     `json:"text"`
 	Language string                     `json:"language,omitempty"`
-	Duration float64                    `json:"duration,omitempty"`
+	Duration float64                    `json:"duration,omitzero"`
 	Segments []wireTranscriptionSegment `json:"segments,omitempty"`
 	Words    []wireTranscriptionWord    `json:"words,omitempty"`
 }
@@ -46,10 +46,10 @@ type wireTranscriptionSegment struct {
 	End              float64 `json:"end"`
 	Text             string  `json:"text"`
 	Tokens           []int   `json:"tokens,omitempty"`
-	Temperature      float64 `json:"temperature,omitempty"`
-	AvgLogprob       float64 `json:"avg_logprob,omitempty"`
-	CompressionRatio float64 `json:"compression_ratio,omitempty"`
-	NoSpeechProb     float64 `json:"no_speech_prob,omitempty"`
+	Temperature      float64 `json:"temperature,omitzero"`
+	AvgLogprob       float64 `json:"avg_logprob,omitzero"`
+	CompressionRatio float64 `json:"compression_ratio,omitzero"`
+	NoSpeechProb     float64 `json:"no_speech_prob,omitzero"`
 }
 
 type wireTranscriptionWord struct {
@@ -125,7 +125,7 @@ func Transcribe(ctx context.Context, cfg Config, req transcribe.TranscribeReques
 	}
 
 	var wr wireTranscriptionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return transcribe.TranscribeResponse{}, fmt.Errorf("%s: decode transcription response: %w", cfg.Provider, err)
 	}
 

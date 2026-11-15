@@ -3,7 +3,8 @@ package core
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -135,7 +136,7 @@ func StreamTypedObject[T any](ctx context.Context, provider object.Provider, req
 
 // objectResultJSON extracts the raw JSON text a provider's ObjectResult
 // carries. Providers may return an object.Object (Content holds the JSON
-// text), a string/[]byte/json.RawMessage directly, or any other value
+// text), a string/[]byte/jsontext.Value directly, or any other value
 // that round-trips through json.Marshal.
 func objectResultJSON(result object.ObjectResult) ([]byte, error) {
 	switch v := result.(type) {
@@ -143,7 +144,7 @@ func objectResultJSON(result object.ObjectResult) ([]byte, error) {
 		return []byte(v.Content), nil
 	case *object.Object:
 		return []byte(v.Content), nil
-	case json.RawMessage:
+	case jsontext.Value:
 		return v, nil
 	case []byte:
 		return v, nil
@@ -158,7 +159,5 @@ func objectResultJSON(result object.ObjectResult) ([]byte, error) {
 // so schema drift between a provider's response and T is caught here
 // instead of silently discarding data.
 func decodeStrict(raw []byte, out any) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	return dec.Decode(out)
+	return json.Unmarshal(raw, out, json.RejectUnknownMembers(true))
 }

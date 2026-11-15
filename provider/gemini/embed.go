@@ -3,7 +3,7 @@ package gemini
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -115,7 +115,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 	}
 
 	var wr embedWireResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return embed.Response{}, fmt.Errorf("gemini: decode response: %w", err)
 	}
 

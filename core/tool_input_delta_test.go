@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"testing"
 
@@ -12,7 +12,7 @@ import (
 // stubTool is a no-op tool that just needs to exist so the loop will
 // execute the call; these tests assert on the stream, not the result.
 func stubTool(name string) *Tool {
-	return NewTool(name, "test tool", json.RawMessage(`{"type":"object"}`),
+	return NewTool(name, "test tool", jsontext.Value(`{"type":"object"}`),
 		func(_ context.Context, _ string) (string, error) { return "ok", nil })
 }
 

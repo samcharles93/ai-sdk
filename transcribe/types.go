@@ -11,7 +11,7 @@ type TranscribeRequest struct {
 	// Prompt is an optional guiding text for the transcription style.
 	Prompt string `json:"prompt,omitempty"`
 	// Temperature controls sampling randomness.
-	Temperature float32 `json:"temperature,omitempty"`
+	Temperature float32 `json:"temperature,omitzero"`
 	// ProviderOptions carries provider-specific options.
 	ProviderOptions map[string]any `json:"provider_options,omitempty"`
 }
@@ -31,13 +31,13 @@ type TranscriptionSegment struct {
 	// Tokens are the token IDs for this segment, if available.
 	Tokens []int `json:"tokens,omitempty"`
 	// Temperature is the sampling temperature used for this segment.
-	Temperature float64 `json:"temperature,omitempty"`
+	Temperature float64 `json:"temperature,omitzero"`
 	// AvgLogprob is the average log probability of the segment.
-	AvgLogprob float64 `json:"avg_logprob,omitempty"`
+	AvgLogprob float64 `json:"avg_logprob,omitzero"`
 	// CompressionRatio is the compression ratio of the segment.
-	CompressionRatio float64 `json:"compression_ratio,omitempty"`
+	CompressionRatio float64 `json:"compression_ratio,omitzero"`
 	// NoSpeechProb is the probability that the segment contains no speech.
-	NoSpeechProb float64 `json:"no_speech_prob,omitempty"`
+	NoSpeechProb float64 `json:"no_speech_prob,omitzero"`
 }
 
 // TranscribeResponse is the result of a transcription request.
@@ -49,7 +49,7 @@ type TranscribeResponse struct {
 	// Language is the detected language.
 	Language string `json:"language,omitempty"`
 	// Duration is the total duration of the audio in seconds.
-	Duration float64 `json:"duration,omitempty"`
+	Duration float64 `json:"duration,omitzero"`
 	// Warnings contains non-fatal warnings.
 	Warnings []string `json:"warnings,omitempty"`
 }

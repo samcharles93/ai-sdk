@@ -13,10 +13,10 @@ type GenerateMusicRequest struct {
 	Lyrics string `json:"lyrics,omitempty"`
 	// Instrumental requests instrumental music (no vocals). When true,
 	// Lyrics is not required.
-	Instrumental bool `json:"instrumental,omitempty"`
+	Instrumental bool `json:"instrumental,omitzero"`
 	// LyricsOptimizer requests the provider to write lyrics from Prompt
 	// when Lyrics is empty.
-	LyricsOptimizer bool `json:"lyrics_optimizer,omitempty"`
+	LyricsOptimizer bool `json:"lyrics_optimizer,omitzero"`
 	// Format is the output audio format (e.g. "mp3", "wav", "pcm").
 	Format string `json:"format,omitempty"`
 	// ProviderOptions carries provider-specific options.

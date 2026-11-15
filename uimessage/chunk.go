@@ -1,7 +1,7 @@
 package uimessage
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 )
@@ -102,9 +102,9 @@ func (ErrorChunk) isChunk()         {}
 type ToolInputStartChunk struct {
 	ToolCallID       string           `json:"toolCallId"`
 	ToolName         string           `json:"toolName"`
-	ProviderExecuted *bool            `json:"providerExecuted,omitempty"`
+	ProviderExecuted *bool            `json:"providerExecuted,omitzero"`
 	ProviderMetadata ProviderMetadata `json:"providerMetadata,omitempty"`
-	Dynamic          *bool            `json:"dynamic,omitempty"`
+	Dynamic          *bool            `json:"dynamic,omitzero"`
 	Title            string           `json:"title,omitempty"`
 }
 
@@ -123,9 +123,9 @@ type ToolInputAvailableChunk struct {
 	ToolCallID       string           `json:"toolCallId"`
 	ToolName         string           `json:"toolName"`
 	Input            any              `json:"input"`
-	ProviderExecuted *bool            `json:"providerExecuted,omitempty"`
+	ProviderExecuted *bool            `json:"providerExecuted,omitzero"`
 	ProviderMetadata ProviderMetadata `json:"providerMetadata,omitempty"`
-	Dynamic          *bool            `json:"dynamic,omitempty"`
+	Dynamic          *bool            `json:"dynamic,omitzero"`
 	Title            string           `json:"title,omitempty"`
 }
 
@@ -136,9 +136,9 @@ type ToolInputErrorChunk struct {
 	ToolCallID       string           `json:"toolCallId"`
 	ToolName         string           `json:"toolName"`
 	Input            any              `json:"input"`
-	ProviderExecuted *bool            `json:"providerExecuted,omitempty"`
+	ProviderExecuted *bool            `json:"providerExecuted,omitzero"`
 	ProviderMetadata ProviderMetadata `json:"providerMetadata,omitempty"`
-	Dynamic          *bool            `json:"dynamic,omitempty"`
+	Dynamic          *bool            `json:"dynamic,omitzero"`
 	ErrorText        string           `json:"errorText"`
 	Title            string           `json:"title,omitempty"`
 }
@@ -151,7 +151,7 @@ func (ToolInputErrorChunk) isChunk()         {}
 type ToolApprovalRequestChunk struct {
 	ApprovalID  string `json:"approvalId"`
 	ToolCallID  string `json:"toolCallId"`
-	IsAutomatic *bool  `json:"isAutomatic,omitempty"`
+	IsAutomatic *bool  `json:"isAutomatic,omitzero"`
 }
 
 func (ToolApprovalRequestChunk) TypeName() string { return "tool-approval-request" }
@@ -161,7 +161,7 @@ type ToolApprovalResponseChunk struct {
 	ApprovalID       string           `json:"approvalId"`
 	Approved         bool             `json:"approved"`
 	Reason           string           `json:"reason,omitempty"`
-	ProviderExecuted *bool            `json:"providerExecuted,omitempty"`
+	ProviderExecuted *bool            `json:"providerExecuted,omitzero"`
 	ProviderMetadata ProviderMetadata `json:"providerMetadata,omitempty"`
 }
 
@@ -173,10 +173,10 @@ func (ToolApprovalResponseChunk) isChunk()         {}
 type ToolOutputAvailableChunk struct {
 	ToolCallID       string           `json:"toolCallId"`
 	Output           any              `json:"output"`
-	ProviderExecuted *bool            `json:"providerExecuted,omitempty"`
+	ProviderExecuted *bool            `json:"providerExecuted,omitzero"`
 	ProviderMetadata ProviderMetadata `json:"providerMetadata,omitempty"`
-	Dynamic          *bool            `json:"dynamic,omitempty"`
-	Preliminary      *bool            `json:"preliminary,omitempty"`
+	Dynamic          *bool            `json:"dynamic,omitzero"`
+	Preliminary      *bool            `json:"preliminary,omitzero"`
 }
 
 func (ToolOutputAvailableChunk) TypeName() string { return "tool-output-available" }
@@ -185,9 +185,9 @@ func (ToolOutputAvailableChunk) isChunk()         {}
 type ToolOutputErrorChunk struct {
 	ToolCallID       string           `json:"toolCallId"`
 	ErrorText        string           `json:"errorText"`
-	ProviderExecuted *bool            `json:"providerExecuted,omitempty"`
+	ProviderExecuted *bool            `json:"providerExecuted,omitzero"`
 	ProviderMetadata ProviderMetadata `json:"providerMetadata,omitempty"`
-	Dynamic          *bool            `json:"dynamic,omitempty"`
+	Dynamic          *bool            `json:"dynamic,omitzero"`
 }
 
 func (ToolOutputErrorChunk) TypeName() string { return "tool-output-error" }
@@ -299,7 +299,7 @@ type DataChunk struct {
 	Name      string `json:"-"`
 	ID        string `json:"id,omitempty"`
 	Data      any    `json:"data"`
-	Transient *bool  `json:"transient,omitempty"`
+	Transient *bool  `json:"transient,omitzero"`
 }
 
 func (d DataChunk) TypeName() string { return "data-" + d.Name }

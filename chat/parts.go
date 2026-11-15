@@ -1,7 +1,8 @@
 package chat
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -52,7 +53,7 @@ func (ps Parts) MarshalJSON() ([]byte, error) {
 	if ps == nil {
 		return []byte("null"), nil
 	}
-	out := make([]json.RawMessage, len(ps))
+	out := make([]jsontext.Value, len(ps))
 	for i, p := range ps {
 		raw, err := marshalPart(p)
 		if err != nil {
@@ -70,7 +71,7 @@ func (ps *Parts) UnmarshalJSON(data []byte) error {
 		*ps = nil
 		return nil
 	}
-	var raws []json.RawMessage
+	var raws []jsontext.Value
 	if err := json.Unmarshal(data, &raws); err != nil {
 		return fmt.Errorf("chat.Parts: %w", err)
 	}
@@ -250,7 +251,7 @@ func (ps Parts) Validate() error {
 // --- internal: discriminated-union codec ----------------------------------
 
 // partEnvelope is the wire shape for a single Part: a "type" tag plus
-// the part's own fields, flattened. We re-use json.RawMessage so that
+// the part's own fields, flattened. We re-use jsontext.Value so that
 // the part's fields are emitted at the top level next to "type".
 type partEnvelope struct {
 	Type PartType `json:"type"`
@@ -286,7 +287,7 @@ func marshalPart(p Part) ([]byte, error) {
 	return out, nil
 }
 
-func unmarshalPart(raw json.RawMessage) (Part, error) {
+func unmarshalPart(raw jsontext.Value) (Part, error) {
 	var env partEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return nil, err

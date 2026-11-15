@@ -2,14 +2,14 @@ package toolkit_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"testing"
 
 	"github.com/samcharles93/ai-sdk/toolkit"
 )
 
-func dummyExecutor(_ context.Context, _ json.RawMessage, _ toolkit.UIBridge) (toolkit.Result, error) {
+func dummyExecutor(_ context.Context, _ jsontext.Value, _ toolkit.UIBridge) (toolkit.Result, error) {
 	return toolkit.Result{Content: "ok"}, nil
 }
 
@@ -117,7 +117,7 @@ func TestRegistry_Schemas(t *testing.T) {
 		Schema: toolkit.Schema{
 			Name:        "read",
 			Description: "Read a file",
-			Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
+			Parameters:  jsontext.Value(`{"type":"object","properties":{"path":{"type":"string"}}}`),
 		},
 		Execute: dummyExecutor,
 		Source:  "builtin",
@@ -159,7 +159,7 @@ func TestRegistry_Validation(t *testing.T) {
 func TestRegistry_PluginToolSanitizesName(t *testing.T) {
 	r := toolkit.NewRegistry()
 	var gotPlugin, gotTool string
-	r.SetPluginToolExecutor(func(_ context.Context, pluginName, toolName string, _ json.RawMessage) (toolkit.Result, error) {
+	r.SetPluginToolExecutor(func(_ context.Context, pluginName, toolName string, _ jsontext.Value) (toolkit.Result, error) {
 		gotPlugin, gotTool = pluginName, toolName
 		return toolkit.Result{Content: "ok"}, nil
 	})

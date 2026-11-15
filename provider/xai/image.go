@@ -5,7 +5,7 @@ package xai
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -28,11 +28,11 @@ const (
 type wireImageRequest struct {
 	Model          string `json:"model"`
 	Prompt         string `json:"prompt"`
-	N              int    `json:"n,omitempty"`
+	N              int    `json:"n,omitzero"`
 	AspectRatio    string `json:"aspect_ratio,omitempty"`
 	OutputFormat   string `json:"output_format,omitempty"`
 	Quality        string `json:"quality,omitempty"`
-	SyncMode       bool   `json:"sync_mode,omitempty"`
+	SyncMode       bool   `json:"sync_mode,omitzero"`
 	Resolution     string `json:"resolution,omitempty"`
 	User           string `json:"user,omitempty"`
 	ResponseFormat string `json:"response_format"`
@@ -46,17 +46,17 @@ type wireImageDatum struct {
 
 type wireImageResponse struct {
 	Data  []wireImageDatum `json:"data"`
-	Usage *wireImageUsage  `json:"usage,omitempty"`
+	Usage *wireImageUsage  `json:"usage,omitzero"`
 }
 
 type wireImageUsage struct {
-	CostInUsdTicks float64 `json:"cost_in_usd_ticks,omitempty"`
+	CostInUsdTicks float64 `json:"cost_in_usd_ticks,omitzero"`
 }
 
 // ImageOptions carries xAI-specific image generation options.
 type ImageOptions struct {
 	OutputFormat string `json:"output_format,omitempty"`
-	SyncMode     bool   `json:"sync_mode,omitempty"`
+	SyncMode     bool   `json:"sync_mode,omitzero"`
 	AspectRatio  string `json:"aspect_ratio,omitempty"`
 	Resolution   string `json:"resolution,omitempty"`
 	Quality      string `json:"quality,omitempty"`
@@ -142,7 +142,7 @@ func (p *Provider) GenerateImage(ctx context.Context, req image.GenerateImageReq
 	}
 
 	var wr wireImageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return image.GenerateImageResponse{}, fmt.Errorf("xai: decode image response: %w", err)
 	}
 
@@ -257,7 +257,7 @@ func (p *Provider) EditImage(ctx context.Context, req image.EditImageRequest) (i
 	}
 
 	var wr wireImageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return image.EditImageResponse{}, fmt.Errorf("xai: decode edit response: %w", err)
 	}
 

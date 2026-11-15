@@ -2,7 +2,7 @@ package tts
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -20,7 +20,7 @@ func newSpeechServer(t *testing.T, status int, body string, capture func(map[str
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if capture != nil {
 			var reqBody map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			if err := json.UnmarshalRead(r.Body, &reqBody); err != nil {
 				t.Fatalf("decode request body: %v", err)
 			}
 			capture(reqBody)
@@ -51,7 +51,7 @@ func TestGenerate_Success(t *testing.T) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		gotContentType = r.Header.Get("Content-Type")
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
 		_, _ = io.WriteString(w, "audio-bytes")

@@ -2,7 +2,8 @@ package ollama
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -17,10 +18,10 @@ import (
 func TestChat_ToolCallNonStream(t *testing.T) {
 	var rawBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&rawBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &rawBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model":      "llama3",
 			"created_at": "now",
 			"message": map[string]any{
@@ -48,7 +49,7 @@ func TestChat_ToolCallNonStream(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_time",
 			Description: "current time",
-			Parameters:  json.RawMessage(`{"type":"object","properties":{"tz":{"type":"string"}}}`),
+			Parameters:  jsontext.Value(`{"type":"object","properties":{"tz":{"type":"string"}}}`),
 		}},
 	})
 	if err != nil {
@@ -88,10 +89,10 @@ func TestChat_ToolCallNonStream(t *testing.T) {
 func TestChat_ToolMessagesRoundTrip(t *testing.T) {
 	var rawBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&rawBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &rawBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model":       "llama3",
 			"message":     map[string]any{"role": "assistant", "content": "ok"},
 			"done":        true,
@@ -224,10 +225,10 @@ func TestChatStream_ToolCallChunk(t *testing.T) {
 func TestChat_ToolsRequestBody(t *testing.T) {
 	var rawBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&rawBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &rawBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model":       "llama3",
 			"message":     map[string]any{"role": "assistant", "content": "ok"},
 			"done":        true,
@@ -236,7 +237,7 @@ func TestChat_ToolsRequestBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	params := json.RawMessage(`{"type":"object","properties":{"x":{"type":"integer"}},"required":["x"]}`)
+	params := jsontext.Value(`{"type":"object","properties":{"x":{"type":"integer"}},"required":["x"]}`)
 	p := New(Config{BaseURL: srv.URL})
 	_, err := p.Chat(context.Background(), chat.Request{
 		Model:    "llama3",
@@ -278,8 +279,8 @@ func TestChat_ToolsRequestBody(t *testing.T) {
 func TestChat_ToolChoiceIgnoredCleanly(t *testing.T) {
 	var rawBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&rawBody)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.UnmarshalRead(r.Body, &rawBody)
+		_ = json.MarshalWrite(w, map[string]any{
 			"model":       "llama3",
 			"message":     map[string]any{"role": "assistant", "content": "ok"},
 			"done":        true,

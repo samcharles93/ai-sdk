@@ -2,7 +2,7 @@ package minimax
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +32,7 @@ func (f *fakeAPI) server() *httptest.Server {
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/v2/video_generation"):
 			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(r.Body, &body); err != nil {
 				f.t.Fatalf("decode create body: %v", err)
 			}
 			f.lastCreateBody = body

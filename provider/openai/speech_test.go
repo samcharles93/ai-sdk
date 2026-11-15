@@ -2,7 +2,7 @@ package openai
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +19,7 @@ func newSpeechServer(t *testing.T, status int, body string, capture func(map[str
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if capture != nil {
 			var reqBody map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			if err := json.UnmarshalRead(r.Body, &reqBody); err != nil {
 				t.Fatalf("decode request body: %v", err)
 			}
 			capture(reqBody)
@@ -36,7 +36,7 @@ func TestGenerateSpeech_Defaults(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
 		_, _ = w.Write([]byte("openai-audio"))

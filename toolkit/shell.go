@@ -3,7 +3,8 @@ package toolkit
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -28,13 +29,13 @@ const (
 // ShellParams are the parameters for the shell tool.
 type ShellParams struct {
 	Command string `json:"command"`
-	Timeout int    `json:"timeout,omitempty"` // optional seconds; zero uses the caller context
+	Timeout int    `json:"timeout,omitzero"` // optional seconds; zero uses the caller context
 }
 
 var shellSchema = Schema{
 	Name:        "shell",
 	Description: fmt.Sprintf("Execute a shell command. Uses PowerShell on Windows, bash on Linux/macOS. Returns stdout and stderr, truncated to the last %d lines or %s (whichever is hit first); when truncated, the full output is saved to a temp file whose path is included in the notice. Use for builds, tests, git, and other commands - prefer the dedicated grep, find, and read tools for searching and reading files.", DefaultMaxLines, FormatSize(DefaultMaxBytes)),
-	Parameters: json.RawMessage(`{
+	Parameters: jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"command": {
@@ -76,7 +77,7 @@ func (w *bridgeWriter) Write(p []byte) (n int, err error) {
 }
 
 func makeShellExecutor(cwd string, mq *MutationQueue) Executor {
-	return func(ctx context.Context, params json.RawMessage, bridge UIBridge) (Result, error) {
+	return func(ctx context.Context, params jsontext.Value, bridge UIBridge) (Result, error) {
 		var p ShellParams
 		if err := json.Unmarshal(params, &p); err != nil {
 			return Result{Content: fmt.Sprintf("invalid parameters: %v", err), IsError: true}, nil

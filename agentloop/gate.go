@@ -2,7 +2,8 @@ package agentloop
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -108,7 +109,7 @@ func changeTrackedToolSet(set core.ToolSet, state *runState) core.ToolSet {
 // checkTool lets the model validate a coordinated edit before continuing.
 func checkTool(g *gateState, cfg GateConfig, workdir string, log *slog.Logger) *core.Tool {
 	return core.NewTool("check", "Run the quality gate after completing a coherent set of edits. A failed check reports what needs fixing.",
-		json.RawMessage(`{"type":"object","properties":{}}`),
+		jsontext.Value(`{"type":"object","properties":{}}`),
 		func(ctx context.Context, _ string) (string, error) {
 			out, err := runGate(ctx, cfg.Commands, workdir)
 			if err == nil {

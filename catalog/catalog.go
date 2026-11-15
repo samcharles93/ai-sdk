@@ -5,7 +5,8 @@ package catalog
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -360,7 +361,7 @@ func (c *Catalog) fetchCatalog(ctx context.Context) ([]byte, error) {
 }
 
 func parseCatalogProviders(data []byte) (map[string]Provider, error) {
-	var top map[string]json.RawMessage
+	var top map[string]jsontext.Value
 	if err := json.Unmarshal(data, &top); err != nil {
 		return nil, fmt.Errorf("%w: invalid catalog JSON: %v", ErrUnavailable, err)
 	}

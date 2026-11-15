@@ -5,7 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -156,7 +157,7 @@ type Options struct {
 type openaiProviderOptions = Options
 
 type openaiMessageOptions struct {
-	ResponseOutput []json.RawMessage `json:"response_output,omitempty"`
+	ResponseOutput []jsontext.Value `json:"response_output,omitempty"`
 }
 
 func (p *Provider) selectWireAPI(req chat.Request) wireAPI {

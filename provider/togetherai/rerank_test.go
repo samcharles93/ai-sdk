@@ -2,7 +2,7 @@ package togetherai
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -26,7 +26,7 @@ func TestRerank_Success(t *testing.T) {
 		capturedAuth = r.Header.Get("Authorization")
 		capturedBody = decodeBody(t, r)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"id":    "call-1",
 			"model": "Salesforce/Llama-Rank-v1",
 			"usage": map[string]any{
@@ -85,7 +85,7 @@ func TestRerank_NoTopN(t *testing.T) {
 	_, p := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		capturedBody = decodeBody(t, r)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model": "m",
 			"usage": map[string]any{"total_tokens": 10},
 			"results": []map[string]any{
@@ -104,7 +104,7 @@ func TestRerank_ProviderOptionsRankFields(t *testing.T) {
 	_, p := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		capturedBody = decodeBody(t, r)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"model":   "m",
 			"usage":   map[string]any{"total_tokens": 5},
 			"results": []map[string]any{},

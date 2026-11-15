@@ -11,7 +11,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -54,7 +54,7 @@ func run() error {
 		"get_time": core.NewTool(
 			"get_time",
 			"Get the current date and time",
-			json.RawMessage(`{"type":"object","properties":{},"required":[]}`),
+			jsontext.Value(`{"type":"object","properties":{},"required":[]}`),
 			func(ctx context.Context, input string) (string, error) {
 				return time.Now().Format(time.RFC1123), nil
 			},

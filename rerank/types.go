@@ -12,7 +12,7 @@ type Request struct {
 	Documents []string `json:"documents"`
 	// TopN limits the result to the top N documents. When 0 (or unset)
 	// all documents are returned in ranked order.
-	TopN int `json:"top_n,omitempty"`
+	TopN int `json:"top_n,omitzero"`
 	// ProviderOptions carries provider-specific options.
 	ProviderOptions map[string]any `json:"provider_options,omitempty"`
 }

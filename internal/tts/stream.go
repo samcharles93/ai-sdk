@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -155,7 +155,7 @@ type wireSpeechEvent struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 		TotalTokens  int `json:"total_tokens"`
-	} `json:"usage,omitempty"`
+	} `json:"usage,omitzero"`
 }
 
 func (s *sseStream) Next(ctx context.Context) (speech.SpeechChunk, error) {

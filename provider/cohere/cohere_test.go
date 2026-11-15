@@ -2,7 +2,8 @@ package cohere
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -92,7 +93,7 @@ func TestChat_NonStreaming(t *testing.T) {
 			t.Errorf("auth = %s, want Bearer secret", r.Header.Get("Authorization"))
 		}
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if body["model"] != "command-r" {
 			t.Errorf("model = %v", body["model"])
 		}
@@ -150,7 +151,7 @@ func TestChat_NonStreaming(t *testing.T) {
 func TestChat_History(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		// The last user message "latest question" should be in "message".
 		if body["message"] != "latest question" {
 			t.Errorf("message = %v", body["message"])
@@ -194,7 +195,7 @@ func TestChat_History(t *testing.T) {
 func TestChat_ToolCalls(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		// Verify tools are sent correctly.
 		tools, ok := body["tools"].([]any)
 		if !ok || len(tools) != 1 {
@@ -226,7 +227,7 @@ func TestChat_ToolCalls(t *testing.T) {
 		Tools: []chat.Tool{{
 			Name:        "get_weather",
 			Description: "Get weather",
-			Parameters:  json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`),
+			Parameters:  jsontext.Value(`{"type":"object","properties":{"city":{"type":"string"}}}`),
 		}},
 	})
 	if err != nil {
@@ -289,7 +290,7 @@ func TestChat_FinishReasonMappings(t *testing.T) {
 func TestChatStream_Basic(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if body["stream"] != true {
 			t.Errorf("stream flag missing: %v", body["stream"])
 		}
@@ -364,7 +365,7 @@ func TestEmbed(t *testing.T) {
 			t.Errorf("path = %s, want /embed", r.URL.Path)
 		}
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if body["model"] != "embed-english-v3" {
 			t.Errorf("model = %v", body["model"])
 		}
@@ -423,7 +424,7 @@ func TestRerank(t *testing.T) {
 			t.Errorf("path = %s, want /rerank", r.URL.Path)
 		}
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.UnmarshalRead(r.Body, &body)
 		if body["model"] != "rerank-english-v3" {
 			t.Errorf("model = %v", body["model"])
 		}

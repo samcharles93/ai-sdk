@@ -5,7 +5,7 @@ package openai
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,7 +24,7 @@ type wireEmbedRequest struct {
 	Model          string   `json:"model"`
 	Input          []string `json:"input"`
 	EncodingFormat string   `json:"encoding_format,omitempty"`
-	Dimensions     int      `json:"dimensions,omitempty"`
+	Dimensions     int      `json:"dimensions,omitzero"`
 	User           string   `json:"user,omitempty"`
 }
 
@@ -101,7 +101,7 @@ func (p *Provider) Embed(ctx context.Context, req embed.Request) (embed.Response
 	}
 
 	var wr wireEmbedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return embed.Response{}, fmt.Errorf("openai: decode embed response: %w", err)
 	}
 

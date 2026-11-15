@@ -2,7 +2,7 @@ package sse
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/samcharles93/ai-sdk/core"

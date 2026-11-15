@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -44,7 +44,7 @@ func openAICompatibleHandler(w http.ResponseWriter, r *http.Request) {
 			"usage":   map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		_ = json.MarshalWrite(w, resp)
 		return
 	}
 

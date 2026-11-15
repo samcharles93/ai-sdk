@@ -7,7 +7,7 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,16 +17,21 @@ import (
 
 // Schema describes a tool's interface for LLM function-calling.
 type Schema struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Parameters  json.RawMessage `json:"parameters"` // JSON Schema object
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  jsontext.Value `json:"parameters"` // JSON Schema object
 }
+
+// Duration is an execution time in nanoseconds. encoding/json/v2 has no
+// default JSON representation for time.Duration, so Result carries this
+// integer type instead; time.Duration(r.Duration) converts back.
+type Duration time.Duration
 
 // Result is the output of a tool execution.
 type Result struct {
 	Content   string `json:"content"`
 	Details   any    `json:"details,omitempty"`
-	IsError   bool   `json:"is_error,omitempty"`
+	IsError   bool   `json:"is_error,omitzero"`
 	ErrorKind string `json:"error_kind,omitempty"`
 	// MetricLabels adds tool-specific low-cardinality dimensions to the
 	// coordinator's authoritative completion metric.
@@ -34,11 +39,11 @@ type Result struct {
 
 	// Execution fields are populated by the coordinator after execution so
 	// the same facts drive events, metrics, and persisted tool messages.
-	Duration    time.Duration `json:"duration,omitempty"`
-	ResultBytes int           `json:"result_bytes,omitempty"`
-	Truncated   bool          `json:"truncated,omitempty"`
-	StartedAt   time.Time     `json:"started_at,omitzero"`
-	CompletedAt time.Time     `json:"completed_at,omitzero"`
+	Duration    Duration  `json:"duration,omitzero"`
+	ResultBytes int       `json:"result_bytes,omitzero"`
+	Truncated   bool      `json:"truncated,omitzero"`
+	StartedAt   time.Time `json:"started_at,omitzero"`
+	CompletedAt time.Time `json:"completed_at,omitzero"`
 }
 
 // DiffDetails is carried in Result.Details by tools that replace file
@@ -51,14 +56,15 @@ type DiffDetails struct {
 }
 
 // Executor is a function that executes a tool with the given parameters.
-type Executor func(ctx context.Context, params json.RawMessage, ui UIBridge) (Result, error)
-
-// Tool is a registered tool comprising its schema and executor.
-type Tool struct {
-	Schema  Schema
-	Execute Executor
-	Source  string // "builtin", "extension:<name>"
-}
+type (
+	Executor func(ctx context.Context, params jsontext.Value, ui UIBridge) (Result, error)
+	// Tool is a registered tool comprising its schema and executor.
+	Tool struct {
+		Schema  Schema
+		Execute Executor
+		Source  string // "builtin", "extension:<name>"
+	}
+)
 
 // Registry holds all registered tools and provides thread-safe access.
 type Registry struct {
@@ -194,7 +200,7 @@ type PluginToolDef struct {
 }
 
 // PluginToolExecutor is called by the registry when a plugin tool is executed.
-type PluginToolExecutor func(ctx context.Context, pluginName, toolName string, args json.RawMessage) (Result, error)
+type PluginToolExecutor func(ctx context.Context, pluginName, toolName string, args jsontext.Value) (Result, error)
 
 // SetPluginToolExecutor sets the executor for plugin tools. The executor is
 // called whenever a plugin-registered tool is invoked by the agent.
@@ -250,7 +256,7 @@ func (r *Registry) RegisterPluginTool(pluginName string, def PluginToolDef) erro
 			Name:        toolName,
 			Description: "[" + pluginName + "] " + def.Description,
 		},
-		Execute: func(ctx context.Context, params json.RawMessage, ui UIBridge) (Result, error) {
+		Execute: func(ctx context.Context, params jsontext.Value, ui UIBridge) (Result, error) {
 			reg.mu.RLock()
 			exec := reg.pluginToolExecutor
 			reg.mu.RUnlock()
@@ -262,7 +268,7 @@ func (r *Registry) RegisterPluginTool(pluginName string, def PluginToolDef) erro
 		Source: "plugin:" + pluginName,
 	}
 	if def.InputSchema != "" {
-		tool.Schema.Parameters = json.RawMessage(def.InputSchema)
+		tool.Schema.Parameters = jsontext.Value(def.InputSchema)
 	}
 	return r.Replace(tool)
 }

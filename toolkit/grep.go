@@ -3,7 +3,8 @@ package toolkit
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,11 +35,11 @@ type GrepParams struct {
 	Pattern       string `json:"pattern"`
 	Path          string `json:"path,omitempty"`    // file or directory
 	Include       string `json:"include,omitempty"` // glob pattern for file names
-	Literal       bool   `json:"literal,omitempty"`
-	CaseSensitive bool   `json:"case_sensitive,omitempty"`
-	ContextBefore int    `json:"context_before,omitempty"` // lines before each match (-B)
-	ContextAfter  int    `json:"context_after,omitempty"`  // lines after each match (-A)
-	Limit         int    `json:"limit,omitempty"`          // max matches to return
+	Literal       bool   `json:"literal,omitzero"`
+	CaseSensitive bool   `json:"case_sensitive,omitzero"`
+	ContextBefore int    `json:"context_before,omitzero"` // lines before each match (-B)
+	ContextAfter  int    `json:"context_after,omitzero"`  // lines after each match (-A)
+	Limit         int    `json:"limit,omitzero"`          // max matches to return
 }
 
 // GrepIndex provides conservative workspace-wide candidate files. The grep
@@ -50,7 +51,7 @@ type GrepIndex interface {
 var grepSchema = Schema{
 	Name:        "grep",
 	Description: fmt.Sprintf("Search file contents for a regex pattern using ripgrep (rg). Respects .gitignore. Returns matching lines with file paths and line numbers. Supports alternation (e.g. 'foo|bar') and full regex syntax. Use context_before/context_after to show surrounding lines. Output is capped at %d matches (adjustable via limit) and long lines are truncated to %d chars.", grepDefaultLimit, grepMaxLineChars),
-	Parameters: json.RawMessage(`{
+	Parameters: jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"pattern": {
@@ -105,7 +106,7 @@ func NewGrepTool(cwd string, indexes ...GrepIndex) Tool {
 }
 
 func makeGrepExecutor(cwd string, workspaceIndex GrepIndex) Executor {
-	return func(ctx context.Context, params json.RawMessage, _ UIBridge) (Result, error) {
+	return func(ctx context.Context, params jsontext.Value, _ UIBridge) (Result, error) {
 		var p GrepParams
 		if err := json.Unmarshal(params, &p); err != nil {
 			return Result{Content: fmt.Sprintf("invalid parameters: %v", err), IsError: true}, nil

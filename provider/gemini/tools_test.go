@@ -2,7 +2,8 @@ package gemini
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -21,7 +22,9 @@ func canonicalise(t *testing.T, raw string) string {
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
 		t.Fatalf("canonicalise: %v (raw=%q)", err, raw)
 	}
-	out, err := json.Marshal(v)
+	// Deterministic keeps map key ordering out of the comparison; v2 leaves
+	// map order unspecified.
+	out, err := json.Marshal(v, json.Deterministic(true))
 	if err != nil {
 		t.Fatalf("canonicalise remarshal: %v", err)
 	}
@@ -84,7 +87,7 @@ func TestChat_ToolBodyShape(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var gotBody map[string]any
 			p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 					t.Fatalf("decode body: %v", err)
 				}
 				_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
@@ -96,7 +99,7 @@ func TestChat_ToolBodyShape(t *testing.T) {
 				Tools: []chat.Tool{{
 					Name:        "get_weather",
 					Description: "Get weather",
-					Parameters:  json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`),
+					Parameters:  jsontext.Value(`{"type":"object","properties":{"city":{"type":"string"}}}`),
 				}},
 				ToolChoice: tc.choice,
 			})
@@ -143,7 +146,7 @@ func TestChat_ToolBodyShape(t *testing.T) {
 func TestChat_ToolBodyShape_NoChoiceOmitsToolConfig(t *testing.T) {
 	var gotBody map[string]any
 	p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
 	})
 	_, err := p.Chat(context.Background(), chat.Request{
@@ -161,7 +164,7 @@ func TestChat_ToolBodyShape_NoChoiceOmitsToolConfig(t *testing.T) {
 func TestChat_AssistantToolCallContents(t *testing.T) {
 	var gotBody map[string]any
 	p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
 	})
 
@@ -213,7 +216,7 @@ func TestChat_ToolResultContents(t *testing.T) {
 	t.Run("json content", func(t *testing.T) {
 		var gotBody map[string]any
 		p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-			_ = json.NewDecoder(r.Body).Decode(&gotBody)
+			_ = json.UnmarshalRead(r.Body, &gotBody)
 			_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
 		})
 		_, err := p.Chat(context.Background(), chat.Request{
@@ -251,7 +254,7 @@ func TestChat_ToolResultContents(t *testing.T) {
 	t.Run("non-json content wrapped", func(t *testing.T) {
 		var gotBody map[string]any
 		p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-			_ = json.NewDecoder(r.Body).Decode(&gotBody)
+			_ = json.UnmarshalRead(r.Body, &gotBody)
 			_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
 		})
 		_, err := p.Chat(context.Background(), chat.Request{
@@ -279,7 +282,7 @@ func TestChat_ToolResultContents(t *testing.T) {
 	t.Run("name fallback to tool_call_id", func(t *testing.T) {
 		var gotBody map[string]any
 		p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-			_ = json.NewDecoder(r.Body).Decode(&gotBody)
+			_ = json.UnmarshalRead(r.Body, &gotBody)
 			_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
 		})
 		_, err := p.Chat(context.Background(), chat.Request{

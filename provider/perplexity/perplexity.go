@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -109,7 +109,7 @@ type wireDeltaToolCall struct {
 	Index    int               `json:"index"`
 	ID       string            `json:"id,omitempty"`
 	Type     string            `json:"type,omitempty"`
-	Function *wireFunctionCall `json:"function,omitempty"`
+	Function *wireFunctionCall `json:"function,omitzero"`
 }
 
 type wireDelta struct {
@@ -128,7 +128,7 @@ type wireStreamChunk struct {
 	ID      string             `json:"id"`
 	Model   string             `json:"model"`
 	Choices []wireStreamChoice `json:"choices"`
-	Usage   *wireUsage         `json:"usage,omitempty"`
+	Usage   *wireUsage         `json:"usage,omitzero"`
 }
 
 // --- request building ----------------------------------------------------
@@ -332,7 +332,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 		return chat.Response{}, classifyHTTPError(resp)
 	}
 	var wr wireResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wr); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &wr); err != nil {
 		return chat.Response{}, fmt.Errorf("perplexity: decode response: %w", err)
 	}
 	out := chat.Response{

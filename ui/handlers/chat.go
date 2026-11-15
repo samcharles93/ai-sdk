@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -68,7 +68,7 @@ type sendRequest struct {
 
 func (h *ChatHandler) handleSend(w http.ResponseWriter, r *http.Request) {
 	var req sendRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "decode request: "+err.Error())
 		return
 	}
@@ -114,7 +114,7 @@ func (h *ChatHandler) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(assistant); err != nil {
+	if err := json.MarshalWrite(w, assistant); err != nil {
 		h.logger.Error("encode response", "error", err)
 	}
 }
@@ -192,7 +192,7 @@ func (h *ChatHandler) resolveProvider(name string) (chat.Provider, error) {
 func (h *ChatHandler) writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	_ = json.MarshalWrite(w, map[string]string{"error": msg})
 }
 
 // isClientGone reports whether err indicates the client disconnected.

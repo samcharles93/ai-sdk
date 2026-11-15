@@ -2,7 +2,7 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 
 	"github.com/samcharles93/ai-sdk/core"
@@ -22,7 +22,7 @@ func (r *Registry) CoreToolSet(ui UIBridge) core.ToolSet {
 			tool.Schema.Description,
 			tool.Schema.Parameters,
 			func(ctx context.Context, input string) (string, error) {
-				res, err := tool.Execute(ctx, json.RawMessage(input), ui)
+				res, err := tool.Execute(ctx, jsontext.Value(input), ui)
 				if err != nil {
 					return "", err
 				}

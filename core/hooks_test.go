@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"strings"
 	"sync/atomic"
@@ -281,7 +281,7 @@ func TestHook_PanicCapturesStack(t *testing.T) {
 	if string(err.Stack) != "stack-bytes" {
 		t.Errorf("Stack field not preserved: %q", err.Stack)
 	}
-	_ = json.RawMessage{} // keep json import warm for future test additions
+	_ = jsontext.Value{} // keep json import warm for future test additions
 }
 
 // ---------------------------------------------------------------------------

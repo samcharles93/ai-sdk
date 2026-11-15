@@ -1,6 +1,8 @@
 package chat
 
-import "encoding/json"
+import (
+	"encoding/json/jsontext"
+)
 
 // Role identifies the author of a Message in a chat conversation.
 type Role string
@@ -85,9 +87,9 @@ func (m Message) Text() string {
 // their wire format (OpenAI/DeepSeek "function", Gemini "functionDeclaration",
 // Ollama "tools").
 type Tool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  jsontext.Value `json:"parameters,omitzero"`
 }
 
 // ToolCall is a single tool invocation requested by the model.
@@ -139,14 +141,14 @@ type ModelInfo struct {
 	// it; an OpenAI-compatible endpoint keeps max_tokens because such
 	// servers ignore or reject the rename. false means
 	// classic/non-reasoning, or unknown.
-	Reasoning bool `json:"reasoning,omitempty"`
+	Reasoning bool `json:"reasoning,omitzero"`
 
 	// Temperature reports whether the model accepts a temperature
 	// parameter. nil means unknown: callers may set Temperature and the
 	// provider sends it. false means OpenAI's own API rejects it and the
 	// provider must omit it there; an OpenAI-compatible endpoint keeps
 	// sending the caller's temperature.
-	Temperature *bool `json:"temperature,omitempty"`
+	Temperature *bool `json:"temperature,omitzero"`
 }
 
 // TemperatureSupported reports whether a temperature parameter may be sent
@@ -171,13 +173,13 @@ func (m ModelInfo) TemperatureSupported() bool {
 type Request struct {
 	Model           string            `json:"model"`
 	Messages        []Message         `json:"messages"`
-	MaxTokens       int               `json:"max_tokens,omitempty"`
-	Temperature     float32           `json:"temperature,omitempty"`
-	TopP            float32           `json:"top_p,omitempty"`
+	MaxTokens       int               `json:"max_tokens,omitzero"`
+	Temperature     float32           `json:"temperature,omitzero"`
+	TopP            float32           `json:"top_p,omitzero"`
 	Stop            []string          `json:"stop,omitempty"`
-	Stream          bool              `json:"stream,omitempty"`
+	Stream          bool              `json:"stream,omitzero"`
 	Tools           []Tool            `json:"tools,omitempty"`
-	ToolChoice      *ToolChoice       `json:"tool_choice,omitempty"`
+	ToolChoice      *ToolChoice       `json:"tool_choice,omitzero"`
 	Metadata        map[string]string `json:"metadata,omitempty"`
 	ProviderOptions map[string]any    `json:"provider_options,omitempty"`
 
@@ -197,12 +199,12 @@ type Usage struct {
 	// (OpenAI's automatic prefix cache, or an Anthropic cache-control
 	// read), billed at a reduced rate. Zero when the provider doesn't
 	// report it or nothing was served from cache.
-	CachedTokens int `json:"cached_tokens,omitempty"`
+	CachedTokens int `json:"cached_tokens,omitzero"`
 	// CacheCreationTokens is Anthropic-specific: the token count written
 	// to the cache on this call (billed at a premium over normal input
 	// tokens, the cost of the cache warming up). Zero for providers with
 	// no separate cache-write charge, e.g. OpenAI's automatic caching.
-	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitzero"`
 }
 
 // Response is a non-streaming chat completion result.
@@ -276,8 +278,8 @@ type Chunk struct {
 	Role             Role            `json:"role,omitempty"`
 	ToolCallDeltas   []ToolCallDelta `json:"tool_call_deltas,omitempty"`
 	FinishReason     string          `json:"finish_reason,omitempty"`
-	Usage            *Usage          `json:"usage,omitempty"`
+	Usage            *Usage          `json:"usage,omitzero"`
 	Warnings         []Warning       `json:"warnings,omitempty"`
 	ProviderMetadata map[string]any  `json:"provider_metadata,omitempty"`
-	Done             bool            `json:"done,omitempty"`
+	Done             bool            `json:"done,omitzero"`
 }

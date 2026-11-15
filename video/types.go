@@ -26,7 +26,7 @@ type GenerateVideoRequest struct {
 	// Resolution is the requested video resolution (e.g. "1920x1080").
 	Resolution string `json:"resolution,omitempty"`
 	// FrameRate is the requested frames per second.
-	FrameRate int `json:"frame_rate,omitempty"`
+	FrameRate int `json:"frame_rate,omitzero"`
 	// Mode selects the video generation mode (text-to-video, edit-video,
 	// extend-video, reference-to-video).
 	Mode VideoMode `json:"mode,omitempty"`

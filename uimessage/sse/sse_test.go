@@ -3,7 +3,7 @@ package sse
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"net/http/httptest"
 	"strings"
@@ -39,7 +39,7 @@ func TestWriterSerialisesChunks(t *testing.T) {
 		t.Fatalf("events=%d, want %d", len(events), len(chunks))
 	}
 	// First event should be the start chunk and re-decode cleanly.
-	c, err := uimessage.UnmarshalChunk(json.RawMessage(events[0]))
+	c, err := uimessage.UnmarshalChunk(jsontext.Value(events[0]))
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestWriterExhaustiveChunkTypes(t *testing.T) {
 			if len(events) != 1 {
 				t.Fatalf("events=%d, want 1", len(events))
 			}
-			got, err := uimessage.UnmarshalChunk(json.RawMessage(events[0]))
+			got, err := uimessage.UnmarshalChunk(jsontext.Value(events[0]))
 			if err != nil {
 				t.Fatalf("UnmarshalChunk: %v", err)
 			}
@@ -916,7 +916,7 @@ func TestWriteRaw(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriterTo(&buf)
 
-	if err := w.WriteRaw(json.RawMessage(`{"key":"value"}`)); err != nil {
+	if err := w.WriteRaw(jsontext.Value(`{"key":"value"}`)); err != nil {
 		t.Fatalf("WriteRaw: %v", err)
 	}
 	body := buf.String()
@@ -932,7 +932,7 @@ func TestWriteRawWithFlush(t *testing.T) {
 	rec := httptest.NewRecorder()
 	w := NewWriter(rec)
 
-	if err := w.WriteRaw(json.RawMessage(`{"flushed":true}`)); err != nil {
+	if err := w.WriteRaw(jsontext.Value(`{"flushed":true}`)); err != nil {
 		t.Fatalf("WriteRaw: %v", err)
 	}
 	if !rec.Flushed {
@@ -989,7 +989,7 @@ func TestWriteChunkWriteError(t *testing.T) {
 
 func TestWriteRawWriteError(t *testing.T) {
 	w := NewWriterTo(&failingWriter{limit: -1})
-	err := w.WriteRaw(json.RawMessage(`{}`))
+	err := w.WriteRaw(jsontext.Value(`{}`))
 	if err == nil {
 		t.Error("expected error from failing writer")
 	}

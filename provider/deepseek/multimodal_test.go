@@ -2,7 +2,7 @@ package deepseek
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,10 +17,10 @@ import (
 func TestChat_Multimodal_ImagePart_Warns(t *testing.T) {
 	var got map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+		if err := json.UnmarshalRead(r.Body, &got); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"id":    "x",
 			"model": "deepseek-chat",
 			"choices": []any{map[string]any{
@@ -68,7 +68,7 @@ func TestChat_Multimodal_ImagePart_Warns(t *testing.T) {
 // response field is decoded into a ReasoningPart.
 func TestChat_Reasoning_Content(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.MarshalWrite(w, map[string]any{
 			"id":    "x",
 			"model": "deepseek-reasoner",
 			"choices": []any{map[string]any{

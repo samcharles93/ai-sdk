@@ -7,7 +7,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,7 +56,7 @@ func (p *Provider) Name() string { return "ollama" }
 
 // ollamaMessage mirrors the wire shape used by Ollama's /api/chat for
 // both request and response. ToolCalls carries assistant tool invocations;
-// arguments is an OBJECT on the wire (json.RawMessage), not a string as in
+// arguments is an OBJECT on the wire (jsontext.Value), not a string as in
 // the OpenAI family.
 //
 // Note: Ollama does not use a tool_call_id field for tool results — tool
@@ -75,8 +76,8 @@ type ollamaToolCall struct {
 }
 
 type ollamaToolCallFunction struct {
-	Name      string          `json:"name"`
-	Arguments json.RawMessage `json:"arguments,omitempty"`
+	Name      string         `json:"name"`
+	Arguments jsontext.Value `json:"arguments,omitzero"`
 }
 
 type ollamaTool struct {
@@ -85,15 +86,15 @@ type ollamaTool struct {
 }
 
 type ollamaToolFunction struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  jsontext.Value `json:"parameters,omitzero"`
 }
 
 type ollamaOptions struct {
-	Temperature float32  `json:"temperature,omitempty"`
-	TopP        float32  `json:"top_p,omitempty"`
-	NumPredict  int      `json:"num_predict,omitempty"`
+	Temperature float32  `json:"temperature,omitzero"`
+	TopP        float32  `json:"top_p,omitzero"`
+	NumPredict  int      `json:"num_predict,omitzero"`
 	Stop        []string `json:"stop,omitempty"`
 }
 
@@ -101,9 +102,9 @@ type ollamaRequest struct {
 	Model    string          `json:"model"`
 	Messages []ollamaMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
-	Options  *ollamaOptions  `json:"options,omitempty"`
+	Options  *ollamaOptions  `json:"options,omitzero"`
 	Tools    []ollamaTool    `json:"tools,omitempty"`
-	Think    bool            `json:"think,omitempty"`
+	Think    bool            `json:"think,omitzero"`
 }
 
 // ollamaProviderOptions carries ollama-specific request options, set via
@@ -179,9 +180,9 @@ func buildRequestBody(req chat.Request, stream bool) (ollamaRequest, []chat.Warn
 		if m.Role == chat.RoleAssistant && len(m.ToolCalls) > 0 {
 			om.ToolCalls = make([]ollamaToolCall, 0, len(m.ToolCalls))
 			for _, tc := range m.ToolCalls {
-				args := json.RawMessage(tc.Arguments)
+				args := jsontext.Value(tc.Arguments)
 				if len(args) == 0 {
-					args = json.RawMessage(`{}`)
+					args = jsontext.Value(`{}`)
 				}
 				om.ToolCalls = append(om.ToolCalls, ollamaToolCall{
 					Function: ollamaToolCallFunction{Name: tc.Name, Arguments: args},
@@ -294,7 +295,7 @@ func (p *Provider) Chat(ctx context.Context, req chat.Request) (chat.Response, e
 	defer resp.Body.Close()
 
 	var or ollamaResponse
-	if err := json.NewDecoder(resp.Body).Decode(&or); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &or); err != nil {
 		return chat.Response{}, fmt.Errorf("ollama: decode response: %w", err)
 	}
 	finish := or.DoneReason

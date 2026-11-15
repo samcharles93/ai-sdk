@@ -2,7 +2,7 @@ package groq
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -21,7 +21,7 @@ func TestGenerateSpeech_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -109,7 +109,7 @@ func TestGenerateSpeech_FormatPolicy(t *testing.T) {
 	// every other format must be rejected before any network call.
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -266,7 +266,7 @@ func TestGenerateSpeech_AuthAndServerErrors_TypedProviderError(t *testing.T) {
 func TestGenerateSpeech_SampleRate(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -307,7 +307,7 @@ func TestGenerateSpeech_RejectsInstructions(t *testing.T) {
 func TestGenerateSpeech_DefaultFormatOverride(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)

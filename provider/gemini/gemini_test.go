@@ -2,7 +2,7 @@ package gemini
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -53,7 +53,7 @@ func TestChat_NonStreaming(t *testing.T) {
 	p, _ := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotKey = r.URL.Query().Get("key")
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		_, _ = io.WriteString(w, `{

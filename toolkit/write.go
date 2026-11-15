@@ -2,7 +2,8 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,13 +13,13 @@ import (
 type WriteParams struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
-	Overwrite bool   `json:"overwrite,omitempty"`
+	Overwrite bool   `json:"overwrite,omitzero"`
 }
 
 var writeSchema = Schema{
 	Name:        "write",
 	Description: "Create or overwrite a file with the given content. Creates parent directories as needed. Set overwrite to true to replace an existing file; otherwise the tool will refuse to overwrite.",
-	Parameters: json.RawMessage(`{
+	Parameters: jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"path": {
@@ -48,7 +49,7 @@ func NewWriteTool(cwd string, mq *MutationQueue, rt *ReadTracker) Tool {
 }
 
 func makeWriteExecutor(cwd string, mq *MutationQueue, rt *ReadTracker) Executor {
-	return func(ctx context.Context, params json.RawMessage, _ UIBridge) (Result, error) {
+	return func(ctx context.Context, params jsontext.Value, _ UIBridge) (Result, error) {
 		var p WriteParams
 		if err := json.Unmarshal(params, &p); err != nil {
 			return Result{Content: fmt.Sprintf("invalid parameters: %v", err), IsError: true}, nil

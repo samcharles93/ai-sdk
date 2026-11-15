@@ -13,7 +13,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 
 	"github.com/samcharles93/ai-sdk/core"
@@ -35,7 +35,7 @@ func run() error {
 	// Define the schema for the object to generate. The schema follows
 	// JSON Schema conventions and describes what structured output the
 	// model should produce.
-	schema := json.RawMessage(`{
+	schema := jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"name": {

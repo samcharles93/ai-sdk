@@ -10,7 +10,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"log"
 	"os"
@@ -46,7 +47,7 @@ func run() error {
 	// Define a mock weather tool. The Parameters field is a JSON Schema
 	// describing the tool's expected input. The Execute function is called
 	// when the model requests this tool.
-	weatherSchema := json.RawMessage(`{
+	weatherSchema := jsontext.Value(`{
 		"type": "object",
 		"properties": {
 			"location": {

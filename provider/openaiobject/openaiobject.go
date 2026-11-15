@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -192,7 +192,7 @@ func (p *Provider) GenerateObject(ctx context.Context, req object.Request) (obje
 	}
 
 	var wire wireResponse
-	if err := json.NewDecoder(response.Body).Decode(&wire); err != nil {
+	if err := json.UnmarshalRead(response.Body, &wire); err != nil {
 		return nil, fmt.Errorf("openaiobject: decode response: %w", err)
 	}
 	if len(wire.Choices) == 0 {

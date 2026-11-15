@@ -9,13 +9,13 @@ type GenerateImageRequest struct {
 	// NegativePrompt describes what to exclude from the image.
 	NegativePrompt string `json:"negative_prompt,omitempty"`
 	// N is the number of images to generate. Defaults to 1.
-	N int `json:"n,omitempty"`
+	N int `json:"n,omitzero"`
 	// Size is the requested image dimensions (e.g. "1024x1024").
 	Size string `json:"size,omitempty"`
 	// AspectRatio is the target aspect ratio (e.g. "16:9").
 	AspectRatio string `json:"aspect_ratio,omitempty"`
 	// Seed enables deterministic generation when supported.
-	Seed *int64 `json:"seed,omitempty"`
+	Seed *int64 `json:"seed,omitzero"`
 	// ProviderOptions carries provider-specific options.
 	ProviderOptions map[string]any `json:"provider_options,omitempty"`
 }
@@ -54,7 +54,7 @@ type EditImageRequest struct {
 	// provided, only the masked area is modified.
 	Mask EditImageSource `json:"mask,omitempty"`
 	// N is the number of edited images to return. Defaults to 1.
-	N int `json:"n,omitempty"`
+	N int `json:"n,omitzero"`
 	// Size is the requested output dimensions (e.g. "1024x1024").
 	Size string `json:"size,omitempty"`
 	// AspectRatio is the target aspect ratio (e.g. "16:9").

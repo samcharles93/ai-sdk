@@ -15,7 +15,7 @@ package minimax
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -95,10 +95,10 @@ type VideoOptions struct {
 	Resolution string `json:"resolution,omitempty"`
 	// PollIntervalMs controls the delay between status queries. Zero uses
 	// defaultPollInterval.
-	PollIntervalMs int `json:"poll_interval_ms,omitempty"`
+	PollIntervalMs int `json:"poll_interval_ms,omitzero"`
 	// PollTimeoutMs bounds the complete submit-and-poll phase. Zero uses
 	// defaultPollTimeout.
-	PollTimeoutMs int `json:"poll_timeout_ms,omitempty"`
+	PollTimeoutMs int `json:"poll_timeout_ms,omitzero"`
 }
 
 // --- wire types ----------------------------------------------------------
@@ -112,7 +112,7 @@ type wireTaskStatus struct {
 	Error  *struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
-	} `json:"error,omitempty"`
+	} `json:"error,omitzero"`
 	Content struct {
 		URL string `json:"url"`
 	} `json:"content"`

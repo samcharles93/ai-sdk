@@ -2,7 +2,7 @@ package toolkit
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +13,7 @@ import (
 func execRead(t *testing.T, cwd string, params string) Result {
 	t.Helper()
 	tool := NewReadTool(cwd, nil)
-	res, err := tool.Execute(context.Background(), json.RawMessage(params), nil)
+	res, err := tool.Execute(context.Background(), jsontext.Value(params), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

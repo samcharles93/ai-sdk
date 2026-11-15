@@ -1,7 +1,8 @@
 package uimessage
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 )
@@ -39,9 +40,9 @@ const (
 // ToolApproval carries approval state on a tool part.
 type ToolApproval struct {
 	ID          string `json:"id"`
-	Approved    *bool  `json:"approved,omitempty"`
+	Approved    *bool  `json:"approved,omitzero"`
 	Reason      string `json:"reason,omitempty"`
-	IsAutomatic *bool  `json:"isAutomatic,omitempty"`
+	IsAutomatic *bool  `json:"isAutomatic,omitzero"`
 }
 
 // --- text ----------------------------------------------------------------
@@ -149,11 +150,11 @@ type ToolUIPart struct {
 	Output                 any              `json:"output,omitempty"`
 	RawInput               any              `json:"rawInput,omitempty"`
 	ErrorText              string           `json:"errorText,omitempty"`
-	Preliminary            *bool            `json:"preliminary,omitempty"`
-	ProviderExecuted       *bool            `json:"providerExecuted,omitempty"`
+	Preliminary            *bool            `json:"preliminary,omitzero"`
+	ProviderExecuted       *bool            `json:"providerExecuted,omitzero"`
 	CallProviderMetadata   ProviderMetadata `json:"callProviderMetadata,omitempty"`
 	ResultProviderMetadata ProviderMetadata `json:"resultProviderMetadata,omitempty"`
-	Approval               *ToolApproval    `json:"approval,omitempty"`
+	Approval               *ToolApproval    `json:"approval,omitzero"`
 }
 
 func (t ToolUIPart) PartType() string { return "tool-" + t.ToolName }
@@ -167,11 +168,11 @@ type DynamicToolUIPart struct {
 	Input                  any              `json:"input,omitempty"`
 	Output                 any              `json:"output,omitempty"`
 	ErrorText              string           `json:"errorText,omitempty"`
-	Preliminary            *bool            `json:"preliminary,omitempty"`
-	ProviderExecuted       *bool            `json:"providerExecuted,omitempty"`
+	Preliminary            *bool            `json:"preliminary,omitzero"`
+	ProviderExecuted       *bool            `json:"providerExecuted,omitzero"`
 	CallProviderMetadata   ProviderMetadata `json:"callProviderMetadata,omitempty"`
 	ResultProviderMetadata ProviderMetadata `json:"resultProviderMetadata,omitempty"`
-	Approval               *ToolApproval    `json:"approval,omitempty"`
+	Approval               *ToolApproval    `json:"approval,omitzero"`
 }
 
 func (DynamicToolUIPart) PartType() string { return "dynamic-tool" }
@@ -208,7 +209,7 @@ func (ps MessageParts) MarshalJSON() ([]byte, error) {
 	if ps == nil {
 		return []byte("null"), nil
 	}
-	out := make([]json.RawMessage, len(ps))
+	out := make([]jsontext.Value, len(ps))
 	for i, p := range ps {
 		raw, err := marshalPart(p)
 		if err != nil {
@@ -224,7 +225,7 @@ func (ps *MessageParts) UnmarshalJSON(data []byte) error {
 		*ps = nil
 		return nil
 	}
-	var raws []json.RawMessage
+	var raws []jsontext.Value
 	if err := json.Unmarshal(data, &raws); err != nil {
 		return fmt.Errorf("uimessage: parts: %w", err)
 	}

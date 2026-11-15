@@ -2,7 +2,7 @@ package azure
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -40,7 +40,7 @@ func TestChat_BodyShapesFromResolvedModelFlags(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var gotBody map[string]any
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				if err := json.UnmarshalRead(r.Body, &gotBody); err != nil {
 					t.Errorf("decode body: %v", err)
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -148,7 +148,7 @@ func TestChat_NonStreaming(t *testing.T) {
 		gotURL = r.URL.String()
 		gotAuth = r.Header.Get("api-key")
 		gotCT = r.Header.Get("Content-Type")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"id":"resp-1",
@@ -298,7 +298,7 @@ func TestEmbed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.String()
 		gotAuth = r.Header.Get("api-key")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"object":"list",
@@ -357,7 +357,7 @@ func TestImage_GenerateImage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.String()
 		gotAuth = r.Header.Get("api-key")
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.UnmarshalRead(r.Body, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{
 			"created":1713139200,
