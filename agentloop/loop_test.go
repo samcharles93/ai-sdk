@@ -31,6 +31,7 @@ type fakeProvider struct {
 	streams      int
 	block        chan struct{}
 	fail         error
+	failSummary  bool
 }
 
 func (p *fakeProvider) Name() string { return "fake" }
@@ -77,6 +78,9 @@ func (p *fakeProvider) Chat(ctx context.Context, req chat.Request) (chat.Respons
 	}
 	n := p.scriptIndex(req)
 	if n == -1 {
+		if p.failSummary {
+			return chat.Response{}, errors.New("fakeProvider: summary unavailable")
+		}
 		if p.summary.Content != "" {
 			return p.summary, nil
 		}
@@ -207,6 +211,27 @@ func (j *memJournal) recordCount() int {
 	return len(j.entries)
 }
 
+// holes reports positions inside the journal's span that hold no entry. A
+// spent position with nothing behind it is the bug that makes a resume retry
+// a call the loop had already moved past.
+func (j *memJournal) holes() []int64 {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	maxPos := int64(-1)
+	for pos := range j.entries {
+		if pos > maxPos {
+			maxPos = pos
+		}
+	}
+	var out []int64
+	for pos := int64(0); pos <= maxPos; pos++ {
+		if _, ok := j.entries[pos]; !ok {
+			out = append(out, pos)
+		}
+	}
+	return out
+}
+
 func (j *memJournal) entry(pos int64) (Entry, bool) {
 	e, err := j.Lookup(context.Background(), pos)
 	if err != nil || e == nil {
@@ -284,35 +309,58 @@ func entriesOfKind(j *memJournal, kind EntryKind) []int64 {
 // TestRunLoopKillAndResumeAtEveryPosition is issue test 23: resuming after
 // each position yields the same final transcript, and no tool runs twice.
 func TestRunLoopKillAndResumeAtEveryPosition(t *testing.T) {
+	resumeEverywhere(t, "plain",
+		func() *fakeProvider { return &fakeProvider{steps: loopScript()} },
+		loopCfg)
+}
+
+// TestRunLoopKillAndResumeWithFailedCompaction is issue test 23 over a run
+// whose compaction fails. A failed summary is not fatal: the loop keeps the
+// original history and carries on, so its position is spent without a live
+// call behind it, which is the shape most likely to leave a gap.
+func TestRunLoopKillAndResumeWithFailedCompaction(t *testing.T) {
+	resumeEverywhere(t, "failed_compaction",
+		func() *fakeProvider {
+			return &fakeProvider{steps: loopCompactionScript(), summary: loopCompactionSummary(), failSummary: true}
+		},
+		loopCompactionCfg)
+}
+
+// resumeEverywhere runs a scenario to completion, then kills it after every
+// position and checks that resuming from the journal reproduces it.
+func resumeEverywhere(t *testing.T, name string, newProvider func() *fakeProvider, newCfg func(chat.Provider, Journal, core.ToolSet) LoopConfig) {
+	t.Helper()
 	ctx := context.Background()
-	script := loopScript()
 
 	counts1 := map[string]int{}
 	j1 := newMemJournal()
-	p1 := &fakeProvider{steps: script}
-	res1, err := RunLoop(ctx, loopCfg(p1, j1, countingTools(counts1)))
+	p1 := newProvider()
+	res1, err := RunLoop(ctx, newCfg(p1, j1, countingTools(counts1)))
 	if err != nil {
-		t.Fatalf("full run: %v", err)
+		t.Fatalf("%s full run: %v", name, err)
 	}
 	if res1.Status != StatusCompleted || res1.StopReason != StopFinished {
-		t.Fatalf("full run = %s/%s, want completed/finished", res1.Status, res1.StopReason)
+		t.Fatalf("%s full run = %s/%s, want completed/finished", name, res1.Status, res1.StopReason)
 	}
 	total := int64(j1.recordCount())
 	if total == 0 {
-		t.Fatal("journal recorded nothing")
+		t.Fatalf("%s journal recorded nothing", name)
+	}
+	if holes := j1.holes(); len(holes) != 0 {
+		t.Fatalf("%s journal has no entry at positions %v: a spent position must be recorded", name, holes)
 	}
 	modelEntries := append(entriesOfKind(j1, EntryModel), entriesOfKind(j1, EntryCompact)...)
 	toolEntries := entriesOfKind(j1, EntryTool)
 	if len(modelEntries)+len(toolEntries) != int(total) {
-		t.Fatalf("entries = %d, model+tool = %d", total, len(modelEntries)+len(toolEntries))
+		t.Fatalf("%s entries = %d, model+tool = %d", name, total, len(modelEntries)+len(toolEntries))
 	}
 
 	for k := int64(0); k <= total; k++ {
-		t.Run(fmt.Sprintf("kill_at_%d", k), func(t *testing.T) {
-			p2 := &fakeProvider{steps: script}
+		t.Run(fmt.Sprintf("%s_kill_at_%d", name, k), func(t *testing.T) {
+			p2 := newProvider()
 			counts2 := map[string]int{}
 			j2 := j1.prefix(k)
-			res2, err := RunLoop(ctx, loopCfg(p2, j2, countingTools(counts2)))
+			res2, err := RunLoop(ctx, newCfg(p2, j2, countingTools(counts2)))
 			if err != nil {
 				t.Fatalf("resume: %v", err)
 			}
@@ -497,10 +545,17 @@ func TestRunLoopOutcomeUnknownStopsAndIsNeverRetried(t *testing.T) {
 		})
 	}
 
+	var afterHooks []bool
+	afterHook := core.ToolHookFuncs(nil, func(ctx context.Context, _ core.ToolCall, _ *core.ToolResult) {
+		afterHooks = append(afterHooks, core.Replayed(ctx))
+	})
+
 	counts1 := map[string]int{}
 	j := newMemJournal()
 	tools1 := core.ToolSet{"maybe": maybeTool(counts1)}
-	res1, err := RunLoop(ctx, loopCfg(&fakeProvider{steps: script}, j, tools1))
+	cfg1 := loopCfg(&fakeProvider{steps: script}, j, tools1)
+	cfg1.ToolHooks = []core.ToolHook{afterHook}
+	res1, err := RunLoop(ctx, cfg1)
 	if !errors.Is(err, core.ErrOutcomeUnknown) {
 		t.Fatalf("err = %v, want core.ErrOutcomeUnknown", err)
 	}
@@ -514,12 +569,18 @@ func TestRunLoopOutcomeUnknownStopsAndIsNeverRetried(t *testing.T) {
 	if counts1["maybe"] != 1 {
 		t.Fatalf("tool ran %d times, want 1", counts1["maybe"])
 	}
+	if !reflect.DeepEqual(afterHooks, []bool{false}) {
+		t.Fatalf("after-hooks on the live unknown = %v, want one live call", afterHooks)
+	}
 
 	// Resume from the same journal: the unknown outcome is replayed, the
 	// tool never re-runs, and the run stops the same way.
+	afterHooks = nil
 	counts2 := map[string]int{}
 	p2 := &fakeProvider{steps: script}
-	res2, err := RunLoop(ctx, loopCfg(p2, j, core.ToolSet{"maybe": maybeTool(counts2)}))
+	cfg2 := loopCfg(p2, j, core.ToolSet{"maybe": maybeTool(counts2)})
+	cfg2.ToolHooks = []core.ToolHook{afterHook}
+	res2, err := RunLoop(ctx, cfg2)
 	if !errors.Is(err, core.ErrOutcomeUnknown) || res2.StopReason != StopOutcomeUnknown {
 		t.Fatalf("resume err=%v stop=%q", err, res2.StopReason)
 	}
@@ -531,6 +592,9 @@ func TestRunLoopOutcomeUnknownStopsAndIsNeverRetried(t *testing.T) {
 	}
 	if !reflect.DeepEqual(res1.Messages, res2.Messages) {
 		t.Fatal("transcript diverged between the unknown stop and its replay")
+	}
+	if !reflect.DeepEqual(afterHooks, []bool{true}) {
+		t.Fatalf("after-hooks on the replayed unknown = %v, want one replayed call", afterHooks)
 	}
 }
 
@@ -972,6 +1036,30 @@ func TestRunLoopCancellationRecordsTools(t *testing.T) {
 		}
 	})
 
+	t.Run("tool that failed while cancelled is recorded as unknown", func(t *testing.T) {
+		runCtx, cancel := context.WithCancel(ctx)
+		counts := map[string]int{}
+		tools := core.ToolSet{
+			"slow": core.NewTool("slow", "", nil, func(context.Context, string) (string, error) {
+				counts["slow"]++
+				cancel()
+				return "", errors.New("write pipe closed")
+			}),
+		}
+		j := newMemJournal()
+		res, err := RunLoop(runCtx, loopCfg(&fakeProvider{steps: script}, j, tools))
+		if !errors.Is(err, core.ErrOutcomeUnknown) {
+			t.Fatalf("err = %v, want core.ErrOutcomeUnknown", err)
+		}
+		if res.StopReason != StopOutcomeUnknown {
+			t.Fatalf("stop_reason = %q, want %q", res.StopReason, StopOutcomeUnknown)
+		}
+		e, ok := j.entry(1)
+		if !ok || !e.Unknown {
+			t.Fatalf("entry 1 = %+v, want unknown: the tool errored while the run was being cancelled", e)
+		}
+	})
+
 	t.Run("interrupted tool is recorded as unknown", func(t *testing.T) {
 		runCtx, cancel := context.WithCancel(ctx)
 		counts := map[string]int{}
@@ -1078,4 +1166,93 @@ func TestRunLoopJournalContracts(t *testing.T) {
 			t.Fatalf("run without a journal: %v", err)
 		}
 	})
+}
+
+// loopCompactionScript drives four tool turns so the history crosses the
+// compaction threshold once, with a matching summary response.
+func loopCompactionScript() []chat.Response {
+	return []chat.Response{
+		loopToolStep("c1", "add", `{"a":1,"b":2}`),
+		loopToolStep("c2", "mul", `{"a":2,"b":3}`),
+		loopToolStep("c3", "add", `{"a":4,"b":5}`),
+		loopToolStep("c4", "mul", `{"a":6,"b":7}`),
+		loopStopStep("done"),
+	}
+}
+
+func loopCompactionSummary() chat.Response {
+	return chat.Response{Role: chat.RoleAssistant, Content: "SUMMARY", FinishReason: "stop", Usage: usage(10, 10)}
+}
+
+// loopCompactionCfg sizes the window so the preserved prefix (system + prompt)
+// sits just under the compaction threshold: four tool turns push the history
+// over it, and one compaction brings it back under.
+func loopCompactionCfg(p chat.Provider, j Journal, tools core.ToolSet) LoopConfig {
+	cfg := loopCfg(p, j, tools)
+	cfg.Prompt = strings.Repeat("x", 2740)
+	cfg.Compact = CompactionConfig{Enabled: true, ContextWindow: 1000}
+	return cfg
+}
+
+// TestRunLoopFailedCompactionIsRecorded is the resume half of issue item 10. A
+// compaction failure is not fatal: the loop keeps the original history and
+// carries on, so the position is already spent. It has to hold an entry, or a
+// resume retries the compaction against the same history, and once that
+// succeeds the next model request no longer matches what was recorded.
+func TestRunLoopFailedCompactionIsRecorded(t *testing.T) {
+	ctx := context.Background()
+	script := loopCompactionScript()
+	summary := loopCompactionSummary()
+
+	var replayedErrors int
+	hook := core.ModelHookFuncs(nil, func(ctx context.Context, _ chat.Request, _ *chat.Response, err error, _ time.Duration, _ *chat.Usage) {
+		if core.Replayed(ctx) && err != nil {
+			replayedErrors++
+		}
+	})
+	cfgWithHook := func(p chat.Provider, j Journal) LoopConfig {
+		cfg := loopCompactionCfg(p, j, countingTools(map[string]int{}))
+		cfg.ModelHooks = []core.ModelHook{hook}
+		return cfg
+	}
+
+	j := newMemJournal()
+	res1, err := RunLoop(ctx, cfgWithHook(&fakeProvider{
+		steps: script, summary: summary, failSummary: true,
+	}, j))
+	if err != nil {
+		t.Fatalf("run with a failing summary: %v", err)
+	}
+	if res1.Status != StatusCompleted {
+		t.Fatalf("status = %s/%s, want completed: a failed summary keeps the history", res1.Status, res1.StopReason)
+	}
+	if holes := j.holes(); len(holes) != 0 {
+		t.Fatalf("journal has no entry at positions %v: a spent position must be recorded", holes)
+	}
+	compactPos := entriesOfKind(j, EntryCompact)
+	if len(compactPos) != 1 {
+		t.Fatalf("compact entries = %v, want exactly one", compactPos)
+	}
+	if e, _ := j.entry(compactPos[0]); e.Error == "" || e.Message != nil {
+		t.Fatalf("compact entry = %+v, want the recorded failure and no summary", e)
+	}
+
+	// Resume from the complete journal with a summary that now succeeds. The
+	// recorded failure must replay as "history kept", not be retried, or the
+	// compacted history changes under the already-recorded model calls.
+	res2, err := RunLoop(ctx, cfgWithHook(&fakeProvider{
+		steps: script, summary: summary,
+	}, j))
+	if err != nil {
+		t.Fatalf("resume after a failed compaction: %v", err)
+	}
+	if res2.Status != StatusCompleted {
+		t.Fatalf("resumed status = %s/%s, want completed", res2.Status, res2.StopReason)
+	}
+	if !reflect.DeepEqual(res1.Messages, res2.Messages) {
+		t.Fatalf("transcript diverged after replaying a failed compaction:\nrun1: %+v\nrun2: %+v", res1.Messages, res2.Messages)
+	}
+	if replayedErrors != 1 {
+		t.Fatalf("replayed errors = %d, want 1: the recorded compaction failure must replay as a failure", replayedErrors)
+	}
 }

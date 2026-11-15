@@ -363,15 +363,19 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 			s.replayed++
 			s.spent = addUsage(s.spent, entry.Usage)
 			resp := entry.response()
+			var replayErr error
+			if entry.Error != "" {
+				replayErr = errors.New(entry.Error)
+			}
+			respPtr, usagePtr := hookArgs(resp, replayErr)
 			rctx := core.WithReplayed(ctx)
 			if err := fireModelStarted(rctx, s.hooks, req); err != nil {
 				return chat.Response{}, err
 			}
-			usage := resp.Usage
-			if err := fireModelFinished(rctx, s.hooks, req, &resp, nil, 0, &usage); err != nil {
+			if err := fireModelFinished(rctx, s.hooks, req, respPtr, replayErr, 0, usagePtr); err != nil {
 				return chat.Response{}, err
 			}
-			return resp, nil
+			return resp, replayErr
 		}
 	}
 
@@ -386,14 +390,7 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 		resp, err = s.provider.Chat(ctx, req)
 	}
 	latency := time.Since(start)
-	var respPtr *chat.Response
-	var usagePtr *chat.Usage
-	if err == nil {
-		respCopy := resp
-		respPtr = &respCopy
-		usageCopy := resp.Usage
-		usagePtr = &usageCopy
-	}
+	respPtr, usagePtr := hookArgs(resp, err)
 	if ferr := fireModelFinished(ctx, s.hooks, req, respPtr, err, latency, usagePtr); ferr != nil {
 		return chat.Response{}, ferr
 	}
@@ -402,7 +399,7 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 		return resp, ctx.Err()
 	}
 	s.spent = addUsage(s.spent, resp.Usage)
-	if err != nil {
+	if err != nil && kind != EntryCompact {
 		// A failed model call has no side effect, so it records nothing: the
 		// position re-runs on resume instead of replaying the failure for
 		// ever. Only a final failure reaches here; transient ones are the
@@ -416,14 +413,23 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 		Digest:       digest,
 		FinishReason: resp.FinishReason,
 		Usage:        resp.Usage,
-		Message:      &msg,
+	}
+	if err != nil {
+		// A failed compaction is the exception: the loop may keep the
+		// original history and carry on past it, and the position is already
+		// spent, so it has to hold an entry. Without one, a resume retries
+		// the compaction and the next model request no longer matches what
+		// was recorded.
+		entry.Error = err.Error()
+	} else {
+		entry.Message = &msg
 	}
 	if s.journal != nil {
 		if rerr := s.journal.Record(ctx, entry); rerr != nil {
 			return resp, &JournalRejectedError{Position: pos, Err: rerr}
 		}
 	}
-	return resp, nil
+	return resp, err
 }
 
 // runTool performs one journalled tool call at the next position. The tool
@@ -493,10 +499,13 @@ func (s *journalState) runTool(ctx context.Context, call core.ToolCall, set core
 	}
 	// A cancelled model call records nothing because it has no side effect; a
 	// tool does. Record what the tool returned, so resume cannot repeat it. A
-	// tool cut off by the cancellation is recorded as unknown instead: its
-	// side effect may or may not have landed, and the caller has to
-	// reconcile it (see core.ErrOutcomeUnknown).
-	interrupted := ctx.Err() != nil && errors.Is(execErr, ctx.Err())
+	// tool that failed while the run was being cancelled is recorded as
+	// unknown instead: it may have landed its side effect before the
+	// cancellation reached it, and the caller has to reconcile that (see
+	// core.ErrOutcomeUnknown). A tool that returned cleanly is recorded as
+	// what it returned even if the cancellation arrived afterwards, because
+	// its outcome is known.
+	interrupted := ctx.Err() != nil && execErr != nil
 	entry := Entry{
 		Position:   pos,
 		Kind:       EntryTool,
@@ -523,7 +532,9 @@ func (s *journalState) runTool(ctx context.Context, call core.ToolCall, set core
 	}
 	msg := toolMessage(call, res)
 	if entry.Unknown {
-		// Recorded as unknown: never retried, and the run stops distinctly.
+		// Hooks fire for this call as they do on replay, before the loop
+		// stops: telemetry must see the same calls either way.
+		runAfterHooks(tctx, hooks, call, &res)
 		return res, msg, fmt.Errorf("%w: tool %q at position %d", core.ErrOutcomeUnknown, call.ToolName, pos)
 	}
 	runAfterHooks(tctx, hooks, call, &res)
@@ -531,6 +542,18 @@ func (s *journalState) runTool(ctx context.Context, call core.ToolCall, set core
 		return res, chat.Message{}, ctx.Err()
 	}
 	return res, msg, nil
+}
+
+// hookArgs is what a model hook sees of the call. A failed call reports no
+// response and no usage, so a hook can tell a failure from a zero-token
+// success; a replayed failure is reported the same way.
+func hookArgs(resp chat.Response, err error) (*chat.Response, *chat.Usage) {
+	if err != nil {
+		return nil, nil
+	}
+	r := resp
+	u := resp.Usage
+	return &r, &u
 }
 
 // fireModelStarted runs ModelCallStarted on every hook. A panic stops the
