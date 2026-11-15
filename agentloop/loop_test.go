@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -29,6 +30,7 @@ type fakeProvider struct {
 	calls        int
 	streams      int
 	block        chan struct{}
+	fail         error
 }
 
 func (p *fakeProvider) Name() string { return "fake" }
@@ -66,6 +68,9 @@ func (p *fakeProvider) Chat(ctx context.Context, req chat.Request) (chat.Respons
 		case <-ctx.Done():
 			return chat.Response{}, ctx.Err()
 		}
+	}
+	if p.fail != nil {
+		return chat.Response{}, p.fail
 	}
 	if len(p.streamChunks) > 0 {
 		return chat.Response{}, errors.New("fakeProvider: non-stream call not expected")
@@ -257,6 +262,7 @@ func loopCfg(p chat.Provider, j Journal, tools core.ToolSet) LoopConfig {
 		Prompt:   "do the thing",
 		Tools:    tools,
 		Journal:  j,
+		RunID:    "run-test",
 		Budget:   Budget{MaxSteps: 20},
 	}
 }
@@ -271,6 +277,7 @@ func entriesOfKind(j *memJournal, kind EntryKind) []int64 {
 			out = append(out, pos)
 		}
 	}
+	slices.Sort(out)
 	return out
 }
 
@@ -486,7 +493,7 @@ func TestRunLoopOutcomeUnknownStopsAndIsNeverRetried(t *testing.T) {
 	maybeTool := func(counts map[string]int) *core.Tool {
 		return core.NewTool("maybe", "", nil, func(context.Context, string) (string, error) {
 			counts["maybe"]++
-			return "", fmt.Errorf("write may have landed: %w", ErrOutcomeUnknown)
+			return "", fmt.Errorf("write may have landed: %w", core.ErrOutcomeUnknown)
 		})
 	}
 
@@ -494,8 +501,8 @@ func TestRunLoopOutcomeUnknownStopsAndIsNeverRetried(t *testing.T) {
 	j := newMemJournal()
 	tools1 := core.ToolSet{"maybe": maybeTool(counts1)}
 	res1, err := RunLoop(ctx, loopCfg(&fakeProvider{steps: script}, j, tools1))
-	if !errors.Is(err, ErrOutcomeUnknown) {
-		t.Fatalf("err = %v, want ErrOutcomeUnknown", err)
+	if !errors.Is(err, core.ErrOutcomeUnknown) {
+		t.Fatalf("err = %v, want core.ErrOutcomeUnknown", err)
 	}
 	if res1.StopReason != StopOutcomeUnknown {
 		t.Fatalf("stop_reason = %q", res1.StopReason)
@@ -513,7 +520,7 @@ func TestRunLoopOutcomeUnknownStopsAndIsNeverRetried(t *testing.T) {
 	counts2 := map[string]int{}
 	p2 := &fakeProvider{steps: script}
 	res2, err := RunLoop(ctx, loopCfg(p2, j, core.ToolSet{"maybe": maybeTool(counts2)}))
-	if !errors.Is(err, ErrOutcomeUnknown) || res2.StopReason != StopOutcomeUnknown {
+	if !errors.Is(err, core.ErrOutcomeUnknown) || res2.StopReason != StopOutcomeUnknown {
 		t.Fatalf("resume err=%v stop=%q", err, res2.StopReason)
 	}
 	if counts2["maybe"] != 0 {
@@ -632,11 +639,11 @@ func TestRunLoopStreamDrainedAndRecorded(t *testing.T) {
 			{Delta: "lo"},
 			{ToolCallDeltas: []chat.ToolCallDelta{{Index: 0, ID: "c1", Name: "add", ArgsDelta: `{"a":`}}},
 			{ToolCallDeltas: []chat.ToolCallDelta{{Index: 0, ArgsDelta: `1,"b":2}`}}},
-			{FinishReason: "tool_calls", Usage: ptrUsage(usage(10, 10)), Done: true},
+			{FinishReason: "tool_calls", Usage: new(usage(10, 10)), Done: true},
 		},
 		{
 			{Delta: "done"},
-			{FinishReason: "stop", Usage: ptrUsage(usage(5, 5)), Done: true},
+			{FinishReason: "stop", Usage: new(usage(5, 5)), Done: true},
 		},
 	}
 
@@ -683,8 +690,6 @@ func TestRunLoopStreamDrainedAndRecorded(t *testing.T) {
 	}
 }
 
-func ptrUsage(u chat.Usage) *chat.Usage { return &u }
-
 // TestRunLoopHooksKnowAboutReplay is issue items 21 and 8: hooks fire for
 // real and replayed calls alike, replayed ones are flagged through the
 // context, and tool calls see a position-derived idempotency key.
@@ -714,7 +719,7 @@ func TestRunLoopHooksKnowAboutReplay(t *testing.T) {
 	if !reflect.DeepEqual(modelReplay, []bool{false, false, false}) {
 		t.Fatalf("live model replay flags = %v, want all false", modelReplay)
 	}
-	if !reflect.DeepEqual(toolReplay, []bool{false, false}) || !reflect.DeepEqual(keys, []string{"run:1", "run:3"}) {
+	if !reflect.DeepEqual(toolReplay, []bool{false, false}) || !reflect.DeepEqual(keys, []string{"run-test:1", "run-test:3"}) {
 		t.Fatalf("live tool flags=%v keys=%v", toolReplay, keys)
 	}
 
@@ -732,8 +737,8 @@ func TestRunLoopHooksKnowAboutReplay(t *testing.T) {
 	if !reflect.DeepEqual(toolReplay, []bool{true, false}) {
 		t.Fatalf("resumed tool replay flags = %v, want [true false]", toolReplay)
 	}
-	if !reflect.DeepEqual(keys, []string{"run:1", "run:3"}) {
-		t.Fatalf("resumed keys = %v, want the same position-derived keys [run:1 run:3]", keys)
+	if !reflect.DeepEqual(keys, []string{"run-test:1", "run-test:3"}) {
+		t.Fatalf("resumed keys = %v, want the same position-derived keys [run-test:1 run-test:3]", keys)
 	}
 }
 
@@ -916,4 +921,161 @@ func TestRunLoopCompactionIsJournalled(t *testing.T) {
 	if !reflect.DeepEqual(res1.Messages, res3.Messages) {
 		t.Fatal("transcript diverged when the compaction was re-made")
 	}
+}
+
+// TestRunLoopCancellationRecordsTools covers what a cancelled tool call leaves
+// in the journal. A model call has no side effect, so cancelling one records
+// nothing and the position re-runs; a tool does, so leaving no entry would run
+// the side effect twice.
+func TestRunLoopCancellationRecordsTools(t *testing.T) {
+	ctx := context.Background()
+	script := []chat.Response{
+		loopToolStep("c1", "slow", `{}`),
+		loopStopStep("done"),
+	}
+
+	t.Run("returned result is recorded and not repeated", func(t *testing.T) {
+		runCtx, cancel := context.WithCancel(ctx)
+		counts := map[string]int{}
+		tools := core.ToolSet{
+			"slow": core.NewTool("slow", "", nil, func(context.Context, string) (string, error) {
+				counts["slow"]++
+				cancel() // the tool finishes, then the run is cancelled before its record
+				return `{"ok":true}`, nil
+			}),
+		}
+		j := newMemJournal()
+		res, err := RunLoop(runCtx, loopCfg(&fakeProvider{steps: script}, j, tools))
+		if err != nil {
+			t.Fatalf("cancelled run returned infrastructure error: %v", err)
+		}
+		if res.StopReason != StopCanceled {
+			t.Fatalf("stop_reason = %q, want canceled", res.StopReason)
+		}
+		e, ok := j.entry(1)
+		if !ok || e.Kind != EntryTool || e.Unknown {
+			t.Fatalf("entry 1 = %+v, want the tool's known result", e)
+		}
+		if e.Output != `{"ok":true}` {
+			t.Fatalf("recorded output = %q, want the tool's output", e.Output)
+		}
+
+		res2, err := RunLoop(ctx, loopCfg(&fakeProvider{steps: script}, j, tools))
+		if err != nil {
+			t.Fatalf("resume: %v", err)
+		}
+		if counts["slow"] != 1 {
+			t.Fatalf("tool ran %d times, want 1: a recorded tool must not run again", counts["slow"])
+		}
+		if res2.Status != StatusCompleted {
+			t.Fatalf("resumed status = %s/%s", res2.Status, res2.StopReason)
+		}
+	})
+
+	t.Run("interrupted tool is recorded as unknown", func(t *testing.T) {
+		runCtx, cancel := context.WithCancel(ctx)
+		counts := map[string]int{}
+		tools := core.ToolSet{
+			"slow": core.NewTool("slow", "", nil, func(ctx context.Context, _ string) (string, error) {
+				counts["slow"]++
+				cancel()
+				<-ctx.Done()
+				return "", ctx.Err()
+			}),
+		}
+		j := newMemJournal()
+		res, err := RunLoop(runCtx, loopCfg(&fakeProvider{steps: script}, j, tools))
+		if !errors.Is(err, core.ErrOutcomeUnknown) {
+			t.Fatalf("err = %v, want core.ErrOutcomeUnknown", err)
+		}
+		if res.StopReason != StopOutcomeUnknown {
+			t.Fatalf("stop_reason = %q, want %q", res.StopReason, StopOutcomeUnknown)
+		}
+		e, ok := j.entry(1)
+		if !ok || !e.Unknown {
+			t.Fatalf("entry 1 = %+v, want an unknown outcome", e)
+		}
+
+		res2, err := RunLoop(ctx, loopCfg(&fakeProvider{steps: script}, j, tools))
+		if !errors.Is(err, core.ErrOutcomeUnknown) || res2.StopReason != StopOutcomeUnknown {
+			t.Fatalf("resume = %v/%s, want an unknown outcome", err, res2.StopReason)
+		}
+		if counts["slow"] != 1 {
+			t.Fatalf("tool ran %d times, want 1: an unknown outcome is never retried", counts["slow"])
+		}
+	})
+}
+
+// TestRunLoopJournalContracts pins the checkpoint rules that a kill-and-resume
+// run does not exercise: what is deliberately left unrecorded, what a request
+// digest must not depend on, and what a journal requires of its caller.
+func TestRunLoopJournalContracts(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("a failed model call records nothing and re-runs on resume", func(t *testing.T) {
+		j := newMemJournal()
+		outage := errors.New("provider unavailable")
+		res, err := RunLoop(ctx, loopCfg(&fakeProvider{steps: loopScript(), fail: outage}, j, countingTools(map[string]int{})))
+		if !errors.Is(err, outage) {
+			t.Fatalf("err = %v, want the provider failure", err)
+		}
+		if res.StopReason != StopProviderError {
+			t.Fatalf("stop_reason = %q, want %q", res.StopReason, StopProviderError)
+		}
+		if j.recordCount() != 0 {
+			t.Fatalf("records = %d, want 0: a failed model call has no side effect, so an outage must not poison the run", j.recordCount())
+		}
+
+		res2, err := RunLoop(ctx, loopCfg(&fakeProvider{steps: loopScript()}, j, countingTools(map[string]int{})))
+		if err != nil {
+			t.Fatalf("resume after the outage: %v", err)
+		}
+		if res2.Status != StatusCompleted {
+			t.Fatalf("resumed status = %s/%s, want completed", res2.Status, res2.StopReason)
+		}
+	})
+
+	t.Run("model info is not part of the request digest", func(t *testing.T) {
+		j := newMemJournal()
+		if _, err := RunLoop(ctx, loopCfg(&fakeProvider{steps: loopScript()}, j, countingTools(map[string]int{}))); err != nil {
+			t.Fatalf("full run: %v", err)
+		}
+		cfg := loopCfg(&fakeProvider{steps: loopScript()}, j.prefix(int64(j.recordCount())), countingTools(map[string]int{}))
+		// Security patch or catalog refresh between attempts: resolved
+		// capabilities change, the requests do not.
+		cfg.ModelInfo = chat.ModelInfo{Reasoning: true}
+		res, err := RunLoop(ctx, cfg)
+		if err != nil {
+			t.Fatalf("resume with changed model info: %v", err)
+		}
+		if res.Status != StatusCompleted {
+			t.Fatalf("resumed status = %s/%s, want completed", res.Status, res.StopReason)
+		}
+	})
+
+	t.Run("an unencodable request is an error, not a panic", func(t *testing.T) {
+		j := newMemJournal()
+		cfg := loopCfg(&fakeProvider{steps: loopScript()}, j, countingTools(map[string]int{}))
+		cfg.ProviderOptions = map[string]any{"callback": func() {}}
+		if _, err := RunLoop(ctx, cfg); err == nil {
+			t.Fatal("err = nil, want an encoding error for a non-JSON provider option")
+		}
+		if j.recordCount() != 0 {
+			t.Fatalf("records = %d, want 0", j.recordCount())
+		}
+	})
+
+	t.Run("RunID is required with a journal", func(t *testing.T) {
+		cfg := loopCfg(&fakeProvider{steps: loopScript()}, newMemJournal(), countingTools(map[string]int{}))
+		cfg.RunID = ""
+		if _, err := RunLoop(ctx, cfg); err == nil {
+			t.Fatal("err = nil, want an error: idempotency keys would all be run:0, run:1, ...")
+		}
+
+		// Without a journal there is no replay, so the prefix is unused.
+		cfg.Journal = nil
+		if _, err := RunLoop(ctx, cfg); err != nil {
+			t.Fatalf("run without a journal: %v", err)
+		}
+	})
 }

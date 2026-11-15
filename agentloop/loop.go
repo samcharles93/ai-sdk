@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"runtime/debug"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -58,8 +59,10 @@ type LoopConfig struct {
 	// compaction. ai-sdk owns no storage; the caller's run engine implements
 	// Journal, typically over durable storage with a lease.
 	Journal Journal
-	// RunID names the run inside idempotency keys (see core.IdempotencyKey);
-	// "run" when empty.
+	// RunID names the run inside idempotency keys (see core.IdempotencyKey).
+	// It is required when Journal is set: every tool call's idempotency key
+	// is RunID and its position, so a shared placeholder would let two runs
+	// present the same key to an external system.
 	RunID string
 
 	// Stream makes model calls through ChatStream, draining each stream
@@ -134,6 +137,9 @@ func RunLoop(ctx context.Context, cfg LoopConfig) (LoopResult, error) {
 
 	runID := cfg.RunID
 	if runID == "" {
+		if cfg.Journal != nil {
+			return LoopResult{}, errors.New("agentloop: LoopConfig.RunID is required when a Journal is set")
+		}
 		runID = "run"
 	}
 	st := &journalState{
@@ -182,7 +188,11 @@ func RunLoop(ctx context.Context, cfg LoopConfig) (LoopResult, error) {
 			res.ToolCalls = append(res.ToolCalls, s.ToolCalls...)
 			res.ToolResults = append(res.ToolResults, s.ToolResults...)
 		}
-		if err != nil && ctx.Err() == nil {
+		// A failure caused by the cancellation itself is a mission-level
+		// outcome, reported through Status; anything else (a rejected
+		// record, an unknown outcome) really happened and must not be
+		// swallowed just because the run was being cancelled at the time.
+		if err != nil && !errors.Is(err, ctx.Err()) {
 			return res, err
 		}
 		return res, nil
@@ -265,7 +275,7 @@ func RunLoop(ctx context.Context, cfg LoopConfig) (LoopResult, error) {
 		for _, call := range calls {
 			res, msg, terr := st.runTool(ctx, call, cfg.Tools, cfg.ToolHooks)
 			if terr != nil {
-				if errors.Is(terr, ErrOutcomeUnknown) {
+				if errors.Is(terr, core.ErrOutcomeUnknown) {
 					// The unknown outcome is recorded; append it so the
 					// transcript matches a resume that stops the same way.
 					steps[len(steps)-1].ToolResults = append(steps[len(steps)-1].ToolResults, res)
@@ -326,13 +336,17 @@ func (s *journalState) ChatStream(ctx context.Context, req chat.Request) (chat.S
 
 // callModel performs one journalled model call at the next position: replay
 // the recorded entry when the journal holds one, otherwise make the live
-// call and record the result before returning. A final provider failure is
-// recorded too (transient failures are the retry middleware's job, at the
-// same position); a cancelled call records nothing.
+// call and record the result before returning. A failure records nothing, so
+// the position re-runs on resume; only a final failure gets here, because
+// transient ones are the retry middleware's job at this same position. A
+// cancelled call records nothing either.
 func (s *journalState) callModel(ctx context.Context, req chat.Request, kind EntryKind) (chat.Response, error) {
 	pos := s.next
 	s.next++
-	digest := digestRequest(req)
+	digest, err := digestRequest(req)
+	if err != nil {
+		return chat.Response{}, err
+	}
 
 	if s.journal != nil {
 		entry, err := s.journal.Lookup(ctx, pos)
@@ -357,9 +371,6 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 			if err := fireModelFinished(rctx, s.hooks, req, &resp, nil, 0, &usage); err != nil {
 				return chat.Response{}, err
 			}
-			if entry.Error != "" {
-				return resp, errors.New(entry.Error)
-			}
 			return resp, nil
 		}
 	}
@@ -368,10 +379,7 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 		return chat.Response{}, err
 	}
 	start := time.Now()
-	var (
-		resp chat.Response
-		err  error
-	)
+	var resp chat.Response
 	if s.stream {
 		resp, err = drainStream(ctx, s.provider, req)
 	} else {
@@ -394,25 +402,28 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 		return resp, ctx.Err()
 	}
 	s.spent = addUsage(s.spent, resp.Usage)
+	if err != nil {
+		// A failed model call has no side effect, so it records nothing: the
+		// position re-runs on resume instead of replaying the failure for
+		// ever. Only a final failure reaches here; transient ones are the
+		// retry middleware's job, at this same position.
+		return resp, err
+	}
+	msg := assistantMessage(resp)
 	entry := Entry{
 		Position:     pos,
 		Kind:         kind,
 		Digest:       digest,
 		FinishReason: resp.FinishReason,
 		Usage:        resp.Usage,
-	}
-	if err != nil {
-		entry.Error = err.Error()
-	} else {
-		msg := assistantMessage(resp)
-		entry.Message = &msg
+		Message:      &msg,
 	}
 	if s.journal != nil {
 		if rerr := s.journal.Record(ctx, entry); rerr != nil {
 			return resp, &JournalRejectedError{Position: pos, Err: rerr}
 		}
 	}
-	return resp, err
+	return resp, nil
 }
 
 // runTool performs one journalled tool call at the next position. The tool
@@ -448,7 +459,7 @@ func (s *journalState) runTool(ctx context.Context, call core.ToolCall, set core
 			runAfterHooks(rctx, hooks, replayed, &res)
 			msg := toolMessage(call, res)
 			if entry.Unknown {
-				return res, msg, fmt.Errorf("%w: tool %q at position %d", ErrOutcomeUnknown, call.ToolName, pos)
+				return res, msg, fmt.Errorf("%w: tool %q at position %d", core.ErrOutcomeUnknown, call.ToolName, pos)
 			}
 			return res, msg, nil
 		}
@@ -480,10 +491,12 @@ func (s *journalState) runTool(ctx context.Context, call core.ToolCall, set core
 			}
 		}
 	}
-	if ctx.Err() != nil {
-		// Cancelled mid-call: leave no entry, the position re-runs on resume.
-		return res, chat.Message{}, ctx.Err()
-	}
+	// A cancelled model call records nothing because it has no side effect; a
+	// tool does. Record what the tool returned, so resume cannot repeat it. A
+	// tool cut off by the cancellation is recorded as unknown instead: its
+	// side effect may or may not have landed, and the caller has to
+	// reconcile it (see core.ErrOutcomeUnknown).
+	interrupted := ctx.Err() != nil && errors.Is(execErr, ctx.Err())
 	entry := Entry{
 		Position:   pos,
 		Kind:       EntryTool,
@@ -494,19 +507,28 @@ func (s *journalState) runTool(ctx context.Context, call core.ToolCall, set core
 		Output:     res.Output,
 		Error:      res.Error,
 	}
-	if errors.Is(execErr, ErrOutcomeUnknown) {
+	if errors.Is(execErr, core.ErrOutcomeUnknown) || interrupted {
 		entry.Unknown = true
 	}
 	if s.journal != nil {
-		if rerr := s.journal.Record(ctx, entry); rerr != nil {
+		// Recording has to survive the cancellation that just happened, or the
+		// entry would be lost and the tool would run again on resume.
+		rctx := ctx
+		if ctx.Err() != nil {
+			rctx = context.WithoutCancel(ctx)
+		}
+		if rerr := s.journal.Record(rctx, entry); rerr != nil {
 			return res, chat.Message{}, &JournalRejectedError{Position: pos, Err: rerr}
 		}
 	}
-	runAfterHooks(tctx, hooks, call, &res)
 	msg := toolMessage(call, res)
 	if entry.Unknown {
 		// Recorded as unknown: never retried, and the run stops distinctly.
-		return res, msg, fmt.Errorf("%w: tool %q at position %d", ErrOutcomeUnknown, call.ToolName, pos)
+		return res, msg, fmt.Errorf("%w: tool %q at position %d", core.ErrOutcomeUnknown, call.ToolName, pos)
+	}
+	runAfterHooks(tctx, hooks, call, &res)
+	if ctx.Err() != nil {
+		return res, chat.Message{}, ctx.Err()
 	}
 	return res, msg, nil
 }
@@ -596,7 +618,7 @@ func drainStream(ctx context.Context, provider chat.Provider, req chat.Request) 
 	}
 	defer stream.Close()
 	var (
-		text, reasoning string
+		text, reasoning strings.Builder
 		deltas          []chat.ToolCallDelta
 		usage           chat.Usage
 		reason          string
@@ -606,7 +628,7 @@ func drainStream(ctx context.Context, provider chat.Provider, req chat.Request) 
 	partial := func(err error) (chat.Response, error) {
 		return chat.Response{
 			Role:             chat.RoleAssistant,
-			Content:          text,
+			Content:          text.String(),
 			ToolCalls:        chat.AssembleToolCalls(deltas),
 			FinishReason:     reason,
 			Usage:            usage,
@@ -622,8 +644,8 @@ func drainStream(ctx context.Context, provider chat.Provider, req chat.Request) 
 		if cerr != nil {
 			return partial(cerr)
 		}
-		text += chunk.Delta
-		reasoning += chunk.ReasoningDelta
+		text.WriteString(chunk.Delta)
+		reasoning.WriteString(chunk.ReasoningDelta)
 		deltas = append(deltas, chunk.ToolCallDeltas...)
 		if chunk.Usage != nil {
 			usage = *chunk.Usage
@@ -640,11 +662,11 @@ func drainStream(ctx context.Context, provider chat.Provider, req chat.Request) 
 		}
 	}
 	var parts chat.Parts
-	if reasoning != "" {
-		parts = append(parts, chat.ReasoningPart{Text: reasoning})
+	if reasoning.Len() > 0 {
+		parts = append(parts, chat.ReasoningPart{Text: reasoning.String()})
 	}
-	if text != "" {
-		parts = append(parts, chat.TextPart{Text: text})
+	if text.Len() > 0 {
+		parts = append(parts, chat.TextPart{Text: text.String()})
 	}
 	resp, perr := partial(nil)
 	resp.Parts = parts
@@ -684,16 +706,8 @@ func entryKindFromContext(ctx context.Context) EntryKind {
 // toolsToChatSorted converts the toolset to wire tools in name order, so the
 // request digest is canonical (map iteration order is not).
 func toolsToChatSorted(set core.ToolSet) []chat.Tool {
-	if len(set) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(set))
-	for name := range set {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	out := make([]chat.Tool, 0, len(set))
-	for _, name := range names {
+	var out []chat.Tool
+	for _, name := range slices.Sorted(maps.Keys(set)) {
 		t := set[name]
 		if t == nil {
 			continue

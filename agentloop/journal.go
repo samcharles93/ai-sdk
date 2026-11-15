@@ -36,10 +36,6 @@ var (
 	// call the loop is about to make (kind, tool name or digest). The loop
 	// stops rather than feed the model the wrong history.
 	ErrJournalDiverged = errors.New("agentloop: journal entry diverges from the replayed call")
-	// ErrOutcomeUnknown is returned by a tool whose side effect may or may
-	// not have happened. The loop records it as unknown, never retries it,
-	// and stops with StopOutcomeUnknown.
-	ErrOutcomeUnknown = errors.New("agentloop: tool outcome unknown")
 	// ErrModelHookPanic means a ModelHook panicked. Unlike a tool panic the
 	// loop stops with this error.
 	ErrModelHookPanic = errors.New("agentloop: model hook panicked")
@@ -127,8 +123,7 @@ type Entry struct {
 	FinishReason string `json:"finish_reason,omitempty"`
 	// Usage is the token usage of this call (model and compact entries).
 	Usage chat.Usage `json:"usage"`
-	// Output and Error are the tool result for tool entries; Error is also
-	// set on model entries whose provider call failed finally.
+	// Output and Error are the tool result for tool entries.
 	Output string `json:"output,omitempty"`
 	Error  string `json:"error,omitempty"`
 	// Unknown marks a tool entry whose outcome is unknown: recorded, never
@@ -160,26 +155,25 @@ type Journal interface {
 	Record(ctx context.Context, entry Entry) error
 }
 
-// digestRequest hashes the parts of a request that must be identical on
-// replay: model, messages, tools, tool choice, and sampling options.
-// encoding/json sorts map keys, so the encoding is canonical.
-func digestRequest(req chat.Request) string {
+// digestRequest hashes the parts of a request that decide what the model
+// does: model, messages, tools, tool choice and sampling options. ModelInfo
+// carries resolved capabilities filled in by the runtime, not a request
+// parameter, so a catalog update between two attempts must not make a resumed
+// run diverge. encoding/json sorts map keys, so the encoding is canonical.
+func digestRequest(req chat.Request) (string, error) {
 	type wireRequest chat.Request
-	sum := sha256.Sum256(mustJSON(wireRequest(req)))
-	return hex.EncodeToString(sum[:])
+	r := wireRequest(req)
+	r.ModelInfo = chat.ModelInfo{}
+	b, err := json.Marshal(r)
+	if err != nil {
+		return "", fmt.Errorf("agentloop: encode request for digest: %w", err)
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // digestToolCall hashes the tool name and the input the model sent.
 func digestToolCall(name, input string) string {
 	sum := sha256.Sum256([]byte(name + "\x00" + input))
 	return hex.EncodeToString(sum[:])
-}
-
-func mustJSON(v any) []byte {
-	b, err := json.Marshal(v)
-	if err != nil {
-		// chat types marshal cleanly; a failure here is a programming error.
-		panic(err)
-	}
-	return b
 }

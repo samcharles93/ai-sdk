@@ -23,12 +23,17 @@ persistence and leases):
   `*DivergenceError`, carrying the position and the mismatch for a run
   engine to record.
 - A run killed at any point resumes from the journal with an identical
-  transcript and no repeated tool calls. Cancellation mid-call records
-  nothing, so the position simply re-runs on resume.
+  transcript and no repeated tool calls. A cancelled model call records
+  nothing (it has no side effect, so the position re-runs), while a cancelled
+  tool call records what the tool returned; a tool cut off mid-run is recorded
+  as unknown, because its side effect may or may not have landed. A failed
+  model call records nothing either, so an outage does not poison the run.
 - Each tool call sees a position-derived idempotency key
   (`core.IdempotencyKey`), stable across replays, so tools with side effects
-  can deduplicate. A tool can report `ErrOutcomeUnknown`; the loop records it
-  as unknown, never retries it, and stops with `StopOutcomeUnknown`.
+  can deduplicate. `LoopConfig.RunID` supplies the per-run part of that key and
+  is required whenever a journal is set. A tool can report
+  `core.ErrOutcomeUnknown`; the loop records it as unknown, never retries it,
+  and stops with `StopOutcomeUnknown`.
 - Budgets span resumptions: token and step budgets include usage recorded in
   earlier attempts and refuse the next model call before it is made.
   `LoopResult.Messages` carries the full journal-derived transcript and
