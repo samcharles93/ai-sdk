@@ -18,7 +18,7 @@ When sources disagree, the higher one wins:
 1. The maintainer's instruction in this session.
 2. Applicable `AGENTS.md` files (the nearest directory adds scoped guidance).
 3. The code as it is in the tree.
-4. Beads issues (`bd show <id>`): the plan for a piece of work.
+4. GitHub Issues (`gh issue view <n>`): the plan for a piece of work.
 5. Everything else (memories, comments, old docs) is a hint. Verify it against
    the code before acting on it.
 
@@ -117,8 +117,8 @@ Go version is in `go.mod`. Adopt `task fmt` output as-is.
 - Commit finished work without asking. Stage only your own paths and commit in
   the same command. Conventional Commits scoped by package (`feat(decide)`,
   `fix(openai)`). Push only when told.
-- Never commit binaries, `coverage.out`, scratch files or `.beads/`. Scratch
-  goes in `/tmp`.
+- Never commit binaries, `coverage.out` or scratch files. Scratch goes in
+  `/tmp`.
 - `ai-sdk-examples/` and `ai-sdk-local/` are separate modules; `task tidy`
   covers both.
 
@@ -127,17 +127,22 @@ Go version is in `go.mod`. Adopt `task fmt` output as-is.
 Never inspect an API key: not its value, not a presence check. Run the command
 and deal with credentials only if it fails for want of one.
 
-## Issues (beads)
+## Issues
 
-Work is tracked in `bd`, never in Markdown TODO files.
+Work is tracked in GitHub Issues on `samcharles93/ai-sdk`, never in Markdown
+TODO files.
 
 ```bash
-bd ready | bd show <id> | bd update <id> --claim | bd close <id>
+gh issue list --state open          # what is available
+gh issue view <n>                   # the plan for a piece of work
+gh issue create --title ... --body ...
+gh issue close <n>
 ```
 
 - An issue is the plan: what is wrong or wanted, and how you know it is done.
-- Bead state syncs through Dolt (`bd dolt push/pull`), only when told.
-- File follow-up work you find as a bead. Do not fix it in passing.
+- Labels carry type (`bug`, `enhancement`, `task`, `epic`, `spike`, `chore`),
+  priority (`P0` to `P3`), and area (`core`, `runtime`, `streaming`, ...).
+- File follow-up work you find as an issue. Do not fix it in passing.
 
 ## Scoped guidance
 
