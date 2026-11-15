@@ -15,6 +15,14 @@ var (
 	// ErrToolExecutionFailed indicates a tool's execute function returned an error.
 	ErrToolExecutionFailed = errors.New("core: tool execution failed")
 
+	// ErrOutcomeUnknown is returned by a tool whose side effect may or may
+	// not have landed, for example a webhook call that timed out after the
+	// request was sent. It travels here rather than in a loop package so a
+	// tool can report it without importing the orchestration above it. A
+	// checkpointed loop records it as unknown, never retries the call, and
+	// stops so the caller can reconcile.
+	ErrOutcomeUnknown = errors.New("core: tool outcome unknown")
+
 	// ErrToolPanicked indicates a tool's execute function (or a tool
 	// lifecycle hook) panicked during execution. The panic is recovered
 	// and re-surfaced as a typed [ToolPanicError] carrying the phase

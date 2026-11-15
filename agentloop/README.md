@@ -3,6 +3,45 @@
 `Run` executes one mission with built-in tools, optional custom tools, budgets,
 and a structured result. Orchestration between missions belongs to the caller.
 
+## Checkpointed loops
+
+`RunLoop` is the general agent loop underneath: it runs with only the caller's
+tools — no built-in file or shell tools, no `WorkDir`, gate, preflight or notes.
+When `LoopConfig.Journal` is set, every model call, tool call and compaction
+takes a stable sequence position and is checkpointed through the caller's
+`Journal` interface (ai-sdk owns no storage; the caller's run engine provides
+persistence and leases):
+
+- Before each call the loop looks the entry up at its position. A recorded
+  entry is verified against its kind and a digest of the request or tool
+  input, then replayed: the model response or tool result goes back to the
+  model verbatim and nothing runs again.
+- A fresh result is recorded before the loop continues. A rejected record
+  (e.g. a lost lease) stops the loop at once with `ErrJournalRejected` and no
+  further calls; a digest mismatch stops it with `ErrJournalDiverged`. Both
+  are also available typed, as `*JournalRejectedError` and
+  `*DivergenceError`, carrying the position and the mismatch for a run
+  engine to record.
+- A run killed at any point resumes from the journal with an identical
+  transcript and no repeated tool calls. A cancelled model call records
+  nothing (it has no side effect, so the position re-runs), while a cancelled
+  tool call records what the tool returned; a tool cut off mid-run is recorded
+  as unknown, because its side effect may or may not have landed. A failed
+  model call records nothing either, so an outage does not poison the run.
+- Each tool call sees a position-derived idempotency key
+  (`core.IdempotencyKey`), stable across replays, so tools with side effects
+  can deduplicate. `LoopConfig.RunID` supplies the per-run part of that key and
+  is required whenever a journal is set. A tool can report
+  `core.ErrOutcomeUnknown`; the loop records it as unknown, never retries it,
+  and stops with `StopOutcomeUnknown`.
+- Budgets span resumptions: token and step budgets include usage recorded in
+  earlier attempts and refuse the next model call before it is made.
+  `LoopResult.Messages` carries the full journal-derived transcript and
+  `Usage` the totals. Hooks still fire for replayed calls, flagged with
+  `core.Replayed(ctx)` so telemetry and cost are not double counted.
+
+`Run` without a journal behaves exactly as before.
+
 ## Observe and intercept
 
 Set `Config.ToolHooks` and `Config.ModelHooks` using the existing `core` hook
