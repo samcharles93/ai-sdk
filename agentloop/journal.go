@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -119,6 +120,11 @@ type Entry struct {
 	Input string `json:"input,omitempty"`
 	// Message is the assistant turn for model and compact entries.
 	Message *chat.Message `json:"message,omitzero"`
+	// Request is the model request exactly as it was sent, for an audit of the
+	// call: the system and messages, the tools offered and the sampling
+	// settings. ModelInfo is left out because it describes the model, not the
+	// call. A model entry replayed from before this field existed has none.
+	Request jsontext.Value `json:"request,omitzero"`
 	// FinishReason is the wire finish reason of a model entry.
 	FinishReason string `json:"finish_reason,omitempty"`
 	// Usage is the token usage of this call (model and compact entries).
@@ -161,15 +167,25 @@ type Journal interface {
 // parameter, so a catalog update between two attempts must not make a resumed
 // run diverge. encoding/json sorts map keys, so the encoding is canonical.
 func digestRequest(req chat.Request) (string, error) {
+	b, err := encodeRequest(req)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// encodeRequest renders a model request as it is hashed and recorded.
+// ModelInfo is left out because it describes the model, not the call.
+func encodeRequest(req chat.Request) (jsontext.Value, error) {
 	type wireRequest chat.Request
 	r := wireRequest(req)
 	r.ModelInfo = chat.ModelInfo{}
 	b, err := json.Marshal(r)
 	if err != nil {
-		return "", fmt.Errorf("agentloop: encode request for digest: %w", err)
+		return nil, fmt.Errorf("agentloop: encode request: %w", err)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	return b, nil
 }
 
 // digestToolCall hashes the tool name and the input the model sent.

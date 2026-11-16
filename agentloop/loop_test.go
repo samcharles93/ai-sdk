@@ -352,6 +352,14 @@ func resumeEverywhere(t *testing.T, name string, newProvider func() *fakeProvide
 	}
 	modelEntries := append(entriesOfKind(j1, EntryModel), entriesOfKind(j1, EntryCompact)...)
 	toolEntries := entriesOfKind(j1, EntryTool)
+	// A recorded model call keeps the request it sent, so an audit can see
+	// what the model was asked, not only what it answered.
+	for _, pos := range modelEntries {
+		e, ok := j1.entry(pos)
+		if !ok || len(e.Request) == 0 {
+			t.Fatalf("%s position %d recorded no request", name, pos)
+		}
+	}
 	if len(modelEntries)+len(toolEntries) != int(total) {
 		t.Fatalf("%s entries = %d, model+tool = %d", name, total, len(modelEntries)+len(toolEntries))
 	}

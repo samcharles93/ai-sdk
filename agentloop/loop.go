@@ -407,10 +407,12 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 		return resp, err
 	}
 	msg := assistantMessage(resp)
+	recorded, _ := encodeRequest(req)
 	entry := Entry{
 		Position:     pos,
 		Kind:         kind,
 		Digest:       digest,
+		Request:      recorded,
 		FinishReason: resp.FinishReason,
 		Usage:        resp.Usage,
 	}
