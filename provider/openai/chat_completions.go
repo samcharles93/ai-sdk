@@ -19,9 +19,32 @@ type chatCompletionsAPI struct {
 func (chatCompletionsAPI) path() string { return "/chat/completions" }
 
 type chatCompletionsFunctionCall struct {
-	Name      string `json:"name,omitempty"`
-	Arguments string `json:"arguments,omitempty"`
+	Name      string        `json:"name,omitempty"`
+	Arguments toolArguments `json:"arguments,omitempty"`
 }
+
+// toolArguments holds a tool call's arguments as JSON text. Some servers send
+// an object where the spec says a string; the object's JSON text is kept.
+type toolArguments string
+
+func (a *toolArguments) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		var text string
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		*a = toolArguments(text)
+		return nil
+	}
+	if string(data) == "null" {
+		return nil
+	}
+	*a = toolArguments(data)
+	return nil
+}
+
+// maxResponseBytes bounds a successful chat completions body.
+const maxResponseBytes = 32 << 20
 
 type chatCompletionsToolCall struct {
 	ID       string                      `json:"id,omitempty"`
@@ -217,7 +240,7 @@ func buildChatCompletionsMessages(messages []chat.Message) ([]chatCompletionsMes
 					}
 					wireMessage.ToolCalls[j] = chatCompletionsToolCall{
 						ID: id, Type: "function",
-						Function: chatCompletionsFunctionCall{Name: toolCall.Name, Arguments: toolCall.Arguments},
+						Function: chatCompletionsFunctionCall{Name: toolCall.Name, Arguments: toolArguments(toolCall.Arguments)},
 					}
 				}
 			}
@@ -255,8 +278,15 @@ func applyChatCompletionsToolChoice(body map[string]any, choice *chat.ToolChoice
 }
 
 func (chatCompletionsAPI) decodeResponse(reader io.Reader, warnings []chat.Warning) (chat.Response, error) {
+	body, err := io.ReadAll(io.LimitReader(reader, maxResponseBytes+1))
+	if err != nil {
+		return chat.Response{}, fmt.Errorf("openai: read chat completions response: %w", err)
+	}
+	if len(body) > maxResponseBytes {
+		return chat.Response{}, fmt.Errorf("openai: chat completions response exceeds %d bytes", maxResponseBytes)
+	}
 	var wireResponse chatCompletionsResponse
-	if err := json.UnmarshalRead(reader, &wireResponse); err != nil {
+	if err := json.Unmarshal(body, &wireResponse); err != nil {
 		return chat.Response{}, fmt.Errorf("openai: decode chat completions response: %w", err)
 	}
 	response := chat.Response{
@@ -283,7 +313,7 @@ func (chatCompletionsAPI) decodeResponse(reader io.Reader, warnings []chat.Warni
 	}
 	for _, toolCall := range choice.Message.ToolCalls {
 		response.ToolCalls = append(response.ToolCalls, chat.ToolCall{
-			ID: toolCall.ID, Name: toolCall.Function.Name, Arguments: toolCall.Function.Arguments,
+			ID: toolCall.ID, Name: toolCall.Function.Name, Arguments: string(toolCall.Function.Arguments),
 		})
 	}
 	if len(response.ToolCalls) > 0 && response.FinishReason == "" {
@@ -320,7 +350,7 @@ func (chatCompletionsAPI) parseStreamEvent(data []byte) (chat.Chunk, bool, error
 		delta := chat.ToolCallDelta{Index: toolCall.Index, ID: toolCall.ID}
 		if toolCall.Function != nil {
 			delta.Name = toolCall.Function.Name
-			delta.ArgsDelta = toolCall.Function.Arguments
+			delta.ArgsDelta = string(toolCall.Function.Arguments)
 		}
 		chunk.ToolCallDeltas = append(chunk.ToolCallDeltas, delta)
 	}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1173,5 +1174,58 @@ func TestChat_CachedTokens_ResponsesAPI(t *testing.T) {
 	}
 	if resp.Usage.CachedTokens != 1920 {
 		t.Errorf("CachedTokens = %d, want 1920", resp.Usage.CachedTokens)
+	}
+}
+
+// TestChat_Compatible_ToolsWithReasoningEffort covers a compatible server
+// that serves only /chat/completions: tools plus a reasoning effort must not
+// divert the request to /responses, and the body keeps the classic shape.
+func TestChat_Compatible_ToolsWithReasoningEffort(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.UnmarshalRead(r.Body, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"x","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"report_findings","arguments":{"findings":[]}}}]},"finish_reason":"stop"}]}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "k", BaseURL: srv.URL, Compatible: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.Chat(context.Background(), chat.Request{
+		Model:           "m",
+		Messages:        []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
+		Tools:           []chat.Tool{{Name: "report_findings", Parameters: jsontext.Value(`{"type":"object"}`)}},
+		ToolChoice:      &chat.ToolChoice{Type: chat.ToolChoiceTool, Name: "report_findings"},
+		MaxTokens:       64,
+		Temperature:     0.2,
+		ProviderOptions: map[string]any{"openai": Options{ReasoningEffort: "medium"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if gotPath != "/v1/chat/completions" {
+		t.Errorf("path = %q, want /v1/chat/completions", gotPath)
+	}
+	if gotBody["reasoning_effort"] != "medium" || gotBody["stream"] != false {
+		t.Errorf("body = %v", gotBody)
+	}
+	wantChoice := map[string]any{"type": "function", "function": map[string]any{"name": "report_findings"}}
+	if !reflect.DeepEqual(gotBody["tool_choice"], wantChoice) {
+		t.Errorf("tool_choice = %v", gotBody["tool_choice"])
+	}
+	// An object-valued arguments field still decodes, as its JSON text.
+	if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].Arguments != `{"findings":[]}` {
+		t.Errorf("tool calls = %+v", resp.ToolCalls)
+	}
+}
+
+func TestChatCompletions_DecodeResponse_RejectsOversizedBody(t *testing.T) {
+	body := `{"id":"x","choices":[],"pad":"` + strings.Repeat("a", maxResponseBytes) + `"}`
+	if _, err := (chatCompletionsAPI{}).decodeResponse(strings.NewReader(body), nil); err == nil {
+		t.Fatal("expected an error for an oversized body")
 	}
 }
