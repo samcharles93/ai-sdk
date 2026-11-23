@@ -821,12 +821,14 @@ func TestResponsesAssistantHistoryUsesOutputText(t *testing.T) {
 
 func TestSelectWireAPI(t *testing.T) {
 	tests := []struct {
-		name      string
-		model     string
-		effort    string
-		withTools bool
-		responses bool
+		name       string
+		model      string
+		effort     string
+		withTools  bool
+		compatible bool
+		responses  bool
 	}{
+		{name: "compatible provider never uses responses", model: "gpt-5.5", effort: "medium", withTools: true, compatible: true},
 		{name: "gpt 5.4 keeps legacy default", model: "gpt-5.4", withTools: true},
 		{name: "gpt 5.5 default", model: "gpt-5.5", withTools: true, responses: true},
 		{name: "gpt 5.6 alias default", model: "gpt-5.6", withTools: true, responses: true},
@@ -853,7 +855,7 @@ func TestSelectWireAPI(t *testing.T) {
 					"openai": openaiProviderOptions{ReasoningEffort: tt.effort},
 				}
 			}
-			_, gotResponses := (&Provider{}).selectWireAPI(request).(responsesAPI)
+			_, gotResponses := (&Provider{compatible: tt.compatible}).selectWireAPI(request).(responsesAPI)
 			if gotResponses != tt.responses {
 				t.Fatalf("selectWireAPI(%q, effort %q, tools %v) responses = %v, want %v",
 					tt.model, tt.effort, tt.withTools, gotResponses, tt.responses)

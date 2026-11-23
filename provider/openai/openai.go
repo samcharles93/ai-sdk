@@ -162,6 +162,10 @@ type openaiMessageOptions struct {
 
 func (p *Provider) selectWireAPI(req chat.Request) wireAPI {
 	chatCompletions := chatCompletionsAPI{compatible: p.compatible}
+	// OpenAI-compatible servers (vLLM, gateways) do not serve /responses.
+	if p.compatible {
+		return chatCompletions
+	}
 	options, _ := chat.ProviderOptionsFor[openaiProviderOptions](req.ProviderOptions, "openai")
 	if len(req.Tools) == 0 || options.ReasoningEffort == "none" {
 		return chatCompletions
