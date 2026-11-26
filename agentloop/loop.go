@@ -211,9 +211,9 @@ func RunLoop(ctx context.Context, cfg LoopConfig) (LoopResult, error) {
 		// Budgets span resumptions: refuse the next model call before it is
 		// made, counting steps and usage recorded in earlier attempts.
 		if len(steps) >= maxSteps ||
-			(cfg.Budget.MaxTokens > 0 && effectiveTotal(st.spent) >= cfg.Budget.MaxTokens) {
+			(cfg.Budget.MaxTokens > 0 && st.spent.TotalTokens >= cfg.Budget.MaxTokens) {
 			return finish(StatusParked, StopBudgetExhausted, fmt.Sprintf(
-				"stopped after %d/%d steps, %d tokens", len(steps), maxSteps, effectiveTotal(st.spent)), nil)
+				"stopped after %d/%d steps, %d tokens", len(steps), maxSteps, st.spent.TotalTokens), nil)
 		}
 		if compact != nil {
 			next, err := compact.onStep(withEntryKind(ctx, EntryCompact), messages)
@@ -324,6 +324,12 @@ type journalState struct {
 
 func (s *journalState) Name() string { return s.provider.Name() }
 
+func (s *journalState) accumulateUsage(usage chat.Usage) {
+	// A reported total on one call must not mask a missing total on another.
+	usage.TotalTokens = effectiveTotal(usage)
+	s.spent = addUsage(s.spent, usage)
+}
+
 // Chat journals the call with the entry kind carried by ctx (compaction tags
 // its context; anything else is a plain model entry).
 func (s *journalState) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
@@ -361,7 +367,7 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 				}
 			}
 			s.replayed++
-			s.spent = addUsage(s.spent, entry.Usage)
+			s.accumulateUsage(entry.Usage)
 			resp := entry.response()
 			var replayErr error
 			if entry.Error != "" {
@@ -398,7 +404,7 @@ func (s *journalState) callModel(ctx context.Context, req chat.Request, kind Ent
 		// Cancelled mid-call: leave no entry, the position re-runs on resume.
 		return resp, ctx.Err()
 	}
-	s.spent = addUsage(s.spent, resp.Usage)
+	s.accumulateUsage(resp.Usage)
 	if err != nil && kind != EntryCompact {
 		// A failed model call has no side effect, so it records nothing: the
 		// position re-runs on resume instead of replaying the failure for

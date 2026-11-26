@@ -611,34 +611,42 @@ func TestRunLoopOutcomeUnknownStopsAndIsNeverRetried(t *testing.T) {
 // token or step cap refuses the next model call before it is made.
 func TestRunLoopBudgetSpansResumptions(t *testing.T) {
 	ctx := context.Background()
-	script := loopScript() // model entries carry 20 tokens each
+	script := loopScript()
+	// Use the provider's total when present, and prompt + completion otherwise.
+	script[0].Usage.TotalTokens = 25
+	script[1].Usage.TotalTokens = 0
 
 	j1 := newMemJournal()
 	if _, err := RunLoop(ctx, loopCfg(&fakeProvider{steps: script}, j1, countingTools(map[string]int{}))); err != nil {
 		t.Fatalf("full run: %v", err)
 	}
 
-	t.Run("token budget", func(t *testing.T) {
-		// Positions 0 (model, 20 tokens) and 2 (model, 20 tokens) recorded:
-		// the resumed run replays them, then must refuse the next call.
-		j2 := j1.prefix(3)
-		p2 := &fakeProvider{steps: script}
-		cfg := loopCfg(p2, j2, countingTools(map[string]int{}))
-		cfg.Budget.MaxTokens = 40
-		res2, err := RunLoop(ctx, cfg)
-		if err != nil {
-			t.Fatalf("resume: %v", err)
-		}
-		if res2.StopReason != StopBudgetExhausted {
-			t.Fatalf("stop_reason = %q, want budget_exhausted", res2.StopReason)
-		}
-		if p2.callCount() != 0 {
-			t.Fatalf("provider calls = %d, want 0: the cap must refuse the call before it is made", p2.callCount())
-		}
-		if res2.ReplayedEntries != 3 {
-			t.Fatalf("replayed = %d, want 3", res2.ReplayedEntries)
-		}
-	})
+	for _, tc := range []struct {
+		name          string
+		journal       *memJournal
+		providerCalls int
+		replayed      int
+	}{
+		{name: "live token budget", journal: newMemJournal(), providerCalls: 2},
+		// Replay both model entries and the first tool entry, then run the second tool.
+		{name: "resumed token budget", journal: j1.prefix(3), replayed: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &fakeProvider{steps: script}
+			cfg := loopCfg(p, tc.journal, countingTools(map[string]int{}))
+			cfg.Budget.MaxTokens = 45
+			res, err := RunLoop(ctx, cfg)
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if res.StopReason != StopBudgetExhausted || p.callCount() != tc.providerCalls {
+				t.Fatalf("stop=%q provider calls=%d, want %q/%d", res.StopReason, p.callCount(), StopBudgetExhausted, tc.providerCalls)
+			}
+			if res.Usage.TotalTokens != 45 || res.ReplayedEntries != tc.replayed {
+				t.Fatalf("total tokens=%d replayed=%d, want 45/%d", res.Usage.TotalTokens, res.ReplayedEntries, tc.replayed)
+			}
+		})
+	}
 
 	t.Run("step budget", func(t *testing.T) {
 		j2 := j1.prefix(2) // one model entry recorded
